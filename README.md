@@ -17,7 +17,7 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 
 ## How to play
 
-1. Choose a gnome from the sliding avatar row below the map and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold.
+1. Choose a gnome from the sliding avatar row overlaid along the bottom of the battlefield and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold.
 2. Start a wave. Skeleton colors indicate different health and movement speeds. Gnomes attack automatically with small traveling projectiles. Damage, stuns, and on-kill explosions trigger on impact.
 3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome (including its hat or body) to open a small upgrade popup beside that gnome. Buttons explain how many more points you need.
 4. Each standard gnome has four paths with three upgrade levels. One individual gnome can invest in only two different paths. Choose carefully: spent upgrade points are not refunded on selling.
@@ -73,6 +73,6 @@ GitHub Actions tests and builds every push to `main`, then deploys `dist/` to Gi
 
 ## Playtest notes
 
-This is an initial playable prototype. Balance is provisional. Unlocks are stored on the current browser/device; active runs are not saved on reload. A modern browser with WebGL 2 is required. Desktop and tablet offer the most room for the battlefield; phone layouts stack controls below it.
+This is an initial playable prototype. Balance is provisional. Unlocks are stored on the current browser/device; active runs are not saved on reload. A modern browser with WebGL 2 is required. Desktop and tablet offer the most room for the battlefield; phone layouts keep compact controls overlaid on the battlefield.
 
 Useful feedback: map, wave, gnome combination, whether the game felt too easy or too hard, and any unexpected behavior. File issues at https://github.com/oj-kentd/gnomeward/issues.

@@ -22,6 +22,7 @@ export class UI {
       <div class="game-shell">
         <header class="topbar">
           <a class="brand" href="./" aria-label="Gnomeward home"><span class="brand-mark">g.</span><span><strong>GNOMEWARD</strong><small>A LITTLE GARDEN. A BIG ADVENTURE.</small></span></a>
+          <div class="field-toolbar"><button class="map-picker" id="map-button"><span class="tiny-label">YOUR GARDEN</span><span><strong id="map-name">Clover Bend</strong><span class="chevron">⌄</span></span></button><span class="field-note" id="field-note">A cozy place to make a stand.</span><div class="wave-count"><small>WAVE</small><strong id="hud-wave">0<span> / 20</span></strong></div></div>
           <div class="hud" aria-label="Game resources">
             <div class="hud-stat hearts">${icons.heart}<span><strong id="hud-lives">100</strong><small>LIVES</small></span></div>
             <div class="hud-stat coins">${icons.coin}<span><strong id="hud-gold">650</strong><small>GOLD</small></span></div>
@@ -31,7 +32,6 @@ export class UI {
         </header>
         <main class="game-main">
           <section class="field" aria-label="Garden battlefield">
-            <div class="field-toolbar"><button class="map-picker" id="map-button"><span class="tiny-label">YOUR GARDEN</span><span><strong id="map-name">Clover Bend</strong><span class="chevron">⌄</span></span></button><span class="field-note" id="field-note">A cozy place to make a stand.</span><div class="wave-count"><small>WAVE</small><strong id="hud-wave">0<span> / 20</span></strong></div></div>
             <div class="board-wrap"><div id="scene" aria-label="3D garden. Choose a gnome, then select an open patch to place it." role="application" tabindex="0"></div>
               <div class="loading-card" id="loading-card"><span class="loading-dot"></span><strong>Growing your garden…</strong><small id="loading-message">Unpacking the gnomes</small></div>
               <div class="welcome-tip" id="welcome-tip"><button id="dismiss-tip" aria-label="Dismiss welcome tip">×</button><span class="eyebrow">SMALL GNOMES. MIGHTY DEFENDERS.</span><h1>The garden needs you.</h1><p>Pick a gnome, plant them beside the path, and send in the skeletons.</p><span class="tip-foot">Click a planted gnome to open its upgrades.</span></div>
@@ -171,14 +171,18 @@ export class UI {
     const board = document.querySelector('.board-wrap');
     const panel = document.getElementById('selection-panel');
     const margin = 12;
-    panel.style.maxHeight = `${Math.max(100, Math.min(430, board.clientHeight - margin * 2))}px`;
+    const boardRect = board.getBoundingClientRect();
+    const overlayRect = (selector) => document.querySelector(selector).getBoundingClientRect();
+    const top = Math.max(margin, overlayRect('.topbar').bottom - boardRect.top + 10, overlayRect('.field-toolbar').bottom - boardRect.top + 10);
+    const bottom = Math.min(board.clientHeight - margin, overlayRect('.guardian-dock').top - boardRect.top - 10, overlayRect('.battle-controls').top - boardRect.top - 10);
+    panel.style.maxHeight = `${Math.max(80, Math.min(430, bottom - top))}px`;
     const width = panel.offsetWidth;
     const height = panel.offsetHeight;
     const x = Number.isFinite(anchor?.x) ? anchor.x : board.clientWidth / 2;
     const y = Number.isFinite(anchor?.y) ? anchor.y : board.clientHeight / 2;
     const beside = x + 22 + width <= board.clientWidth - margin ? x + 22 : x - width - 22;
     panel.style.left = `${Math.max(margin, Math.min(beside, board.clientWidth - width - margin))}px`;
-    panel.style.top = `${Math.max(margin, Math.min(y - 72, board.clientHeight - height - margin))}px`;
+    panel.style.top = `${Math.max(top, Math.min(y - 72, bottom - height))}px`;
   }
 
   renderSelection(game, tower, placingType) {

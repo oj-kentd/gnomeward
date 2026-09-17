@@ -76,7 +76,23 @@ export class GardenRenderer {
     const start=map.path[0];this.add('mushroom',THREE.MathUtils.clamp(start[0]+.8,-12,12),.08,THREE.MathUtils.clamp(start[1]-1.2,-7.6,7.6),.6,.6,.6);
     this.resize();
   }
-  resize(){const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;this.renderer.setSize(w,h);const a=w/h,halfW=Math.max(13.9,8.5*a),halfH=halfW/a;this.camera.left=-halfW;this.camera.right=halfW;this.camera.top=halfH;this.camera.bottom=-halfH;this.camera.updateProjectionMatrix();}
+  resize() {
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+    if (!w || !h) return;
+    this.renderer.setSize(w, h);
+    const aspect = w / h, portrait = aspect < .85;
+    // Fit the garden tightly; on phones its long side runs vertically.
+    this.camera.position.set(portrait ? 21 : 0, 32, portrait ? 0 : 21);
+    this.camera.lookAt(0, 0, 0);
+    const halfW = portrait ? Math.max(9.2, 11 * aspect) : Math.max(13.1, 8 * aspect);
+    const halfH = halfW / aspect;
+    this.camera.left = -halfW;
+    this.camera.right = halfW;
+    this.camera.top = halfH;
+    this.camera.bottom = -halfH;
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld();
+  }
   pick(e){const r=this.renderer.domElement.getBoundingClientRect();this.pointer.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);return this.raycaster.ray.intersectPlane(this.plane,this.point);}
   setGhost(type,x,z,valid,range) {
     if(!type){if(this.ghost)this.ghost.visible=false;return;}

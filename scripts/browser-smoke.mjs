@@ -5,6 +5,18 @@ const browser = await chromium.launch({executablePath:process.env.CHROMIUM_PATH 
 const page=await browser.newPage({viewport:{width:1440,height:960}});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text()+' '+m.location().url)});
 await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173');await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden);await page.waitForFunction(()=>gnomeward.renderer.renderer.info.render.frame>4);await page.screenshot({path:'playtest-results/initial.png'});
+const immersiveLayout = await page.evaluate(() => {
+  const canvas = document.querySelector('canvas').getBoundingClientRect();
+  const world = gnomeward.renderer;
+  const corners = [[-12.7,-8.7],[-12.7,8.7],[12.7,-8.7],[12.7,8.7]].map(([x,z]) => world.camera.position.clone().set(x,0,z).project(world.camera));
+  return {
+    canvasFillsScreen: canvas.width >= innerWidth * .98 && canvas.height >= innerHeight * .98,
+    gardenWidth: (Math.max(...corners.map(p=>p.x))-Math.min(...corners.map(p=>p.x))) / 2,
+    gardenHeight: (Math.max(...corners.map(p=>p.y))-Math.min(...corners.map(p=>p.y))) / 2,
+    noPageScroll: document.documentElement.scrollHeight <= innerHeight + 1,
+  };
+});
+if (!immersiveLayout.canvasFillsScreen || !immersiveLayout.noPageScroll || immersiveLayout.gardenWidth < .9 || immersiveLayout.gardenHeight < .75) throw Error('The actual garden must nearly fill the screen');
 async function place(type,x,z){await page.locator(`[data-tower="${type}"]`).click();await page.locator('canvas').scrollIntoViewIfNeeded();const p=await page.evaluate(({x,z})=>{const w=gnomeward.renderer,p=w.camera.position.clone().set(x,0,z).project(w.camera),r=w.renderer.domElement.getBoundingClientRect();return{x:r.x+(p.x+1)*r.width/2,y:r.y+(1-p.y)*r.height/2}},{x,z});await page.mouse.click(p.x,p.y);}
 await place('sprout',-5,2);await place('spore',-5,-2);await place('boom',-3,1);await place('sprout',1,1);
 await page.locator('#start-button').click();await page.waitForTimeout(1800);await page.screenshot({path:'playtest-results/playing.png'});
@@ -37,15 +49,16 @@ await page.locator('[data-upgrade="0"]').click();await page.locator('[data-upgra
 await page.screenshot({path:'playtest-results/upgrades.png'});
 const combat=await page.evaluate(()=>({wave:gnomeward.game.wave,lives:gnomeward.game.lives,points:gnomeward.game.points,kills:gnomeward.game.kills,levels:gnomeward.game.towers[0].levels}));
 for(const id of ['orchard','creek','quarry','hollow','meadow']){await page.locator('#map-button').click();await page.locator(`[data-map="${id}"]`).click();if(await page.evaluate(()=>gnomeward.game.map.id)!==id)throw Error('map failed '+id)}
-await page.setViewportSize({width:390,height:844});await place('sprout',-5,2);await page.screenshot({path:'playtest-results/mobile.png',fullPage:true});const mobile=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,canvas:document.querySelector('canvas').getBoundingClientRect().toJSON(),popup:document.getElementById('selection-panel').getBoundingClientRect().toJSON()}));
+await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>{const r=document.querySelector('canvas').getBoundingClientRect();return Math.abs(r.width-innerWidth)<1&&Math.abs(r.height-innerHeight)<1});await place('sprout',-5,2);await page.screenshot({path:'playtest-results/mobile.png',fullPage:true});const mobile=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,canvas:document.querySelector('canvas').getBoundingClientRect().toJSON(),popup:document.getElementById('selection-panel').getBoundingClientRect().toJSON()}));
 if (mobile.scroll > mobile.width || mobile.popup.top < mobile.canvas.top || mobile.popup.bottom > mobile.canvas.bottom + 1 || mobile.popup.left < mobile.canvas.left || mobile.popup.right > mobile.canvas.right + 1) throw Error('Mobile popup should stay within the battlefield');
 const rosterLayout = await page.evaluate(() => {
   const roster = document.getElementById('roster');
-  return { belowMap: roster.getBoundingClientRect().top >= document.querySelector('canvas').getBoundingClientRect().bottom, scrollable: roster.scrollWidth > roster.clientWidth, noSidebar: !document.querySelector('.sidebar') };
+  const box = roster.getBoundingClientRect(), canvas = document.querySelector('canvas').getBoundingClientRect();
+  return { overMap: box.top >= canvas.top && box.bottom <= canvas.bottom && box.left >= canvas.left && box.right <= canvas.right, scrollable: roster.scrollWidth > roster.clientWidth, noSidebar: !document.querySelector('.sidebar'), fullScreen: canvas.height >= innerHeight * .98 && canvas.width >= innerWidth * .98, noPageScroll: document.documentElement.scrollHeight <= innerHeight + 1 };
 });
-if (!rosterLayout.belowMap || !rosterLayout.scrollable || !rosterLayout.noSidebar) throw Error('Roster must slide horizontally below the map');
+if (!rosterLayout.overMap || !rosterLayout.scrollable || !rosterLayout.noSidebar || !rosterLayout.fullScreen || !rosterLayout.noPageScroll) throw Error('Roster must float over the full-screen map');
 await page.getByRole('button', {name:'Next gnomes'}).click();
 await page.waitForFunction(()=>document.getElementById('roster').scrollLeft > 0);
 await page.getByRole('button', {name:'Close upgrades'}).click();
 if (await page.evaluate(()=>gnomeward.state.selectedTowerId)!==null) throw Error('Upgrade popup must close');
-console.log(JSON.stringify({first,combat,projectileCheck,upgradesVisible,rosterLayout,mobile,errors},null,2));await browser.close();if(errors.length)process.exitCode=1;
+console.log(JSON.stringify({first,combat,projectileCheck,upgradesVisible,immersiveLayout,rosterLayout,mobile,errors},null,2));await browser.close();if(errors.length)process.exitCode=1;

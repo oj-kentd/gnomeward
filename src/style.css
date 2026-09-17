@@ -40,30 +40,69 @@
 .floating-upgrades .upgrade-hint{font-size:7px;margin-top:4px}.floating-upgrades .upgrade-price{font-size:13px}.floating-upgrades .upgrade-price>small{font-size:5px}
 .floating-upgrades .selection-footer{margin-top:9px}.floating-upgrades .selection-footer>span{font-size:7px;max-width:155px}.floating-upgrades .sell-button{font-size:8px;padding:6px 8px}
 
-/* Full-width battlefield with a sliding collection below the map. */
-.game-main{display:block;height:calc(100dvh - 122px);min-height:590px}
-.field{height:100%}.board-wrap{min-height:300px}
-.guardian-dock{flex-shrink:0;padding:10px 14px 11px;background:#1b382c;border-top:1px solid var(--line)}
-.dock-heading{display:flex;align-items:center;gap:13px;padding:0 35px 7px}
-.dock-heading h2{font-family:var(--serif);font-weight:500;font-size:17px;letter-spacing:-.3px}
-.dock-heading>span{font-size:9px;color:#a7bc92}.dock-heading>button{margin-left:auto;padding:0;background:none;color:#c3d69c;font-size:9px}
-.dock-slider{display:flex;align-items:center;gap:8px;min-width:0}
-.roster-arrow{height:48px;width:25px;flex-shrink:0;border:1px solid #57734a;border-radius:7px;background:#2b4933;color:#d4dfb4;font-size:27px;line-height:1}
+/* The garden fills the screen; compact controls float above it. */
+html,body,#app{width:100%;height:100%;overflow:hidden}
+body{min-width:320px}
+.game-shell{position:fixed;inset:0;width:100vw;height:100dvh;min-height:0;max-width:none;margin:0;padding:0;background:none}
+.game-main,.field,.board-wrap{position:absolute;inset:0;width:100%;height:100%;min-height:0;max-height:none;margin:0;padding:0;pointer-events:none}
+.game-main{display:block}.field{display:block;border:0;border-radius:0;overflow:visible;background:none;box-shadow:none}
+.board-wrap{z-index:0;overflow:hidden;flex:none}
+#scene{pointer-events:auto}
+.board-corner{display:none}
+.loading-card,.welcome-tip,.placement-banner,.floating-upgrades{pointer-events:auto}
+.topbar{position:fixed;z-index:20;left:16px;right:16px;top:max(12px,env(safe-area-inset-top));height:54px;display:flex;flex-wrap:nowrap;gap:14px;justify-content:space-between;pointer-events:none}
+.topbar>.brand,.topbar>.field-toolbar,.topbar>.hud,.topbar>.header-actions{pointer-events:auto}
+.brand,.field-toolbar,.hud{border:1px solid #bdd09344;border-radius:11px;background:#173c2bdc;backdrop-filter:blur(9px);box-shadow:0 4px 18px #12382125}
+.brand{gap:7px;padding:9px 13px;flex-shrink:0}.brand-mark{font-size:33px;width:31px;height:35px;letter-spacing:-4px}.brand strong{font-size:18px;letter-spacing:1.1px}.brand small{display:none}
+.field-toolbar{position:static;display:flex;height:54px;min-height:0;padding:9px 14px;gap:23px;flex-shrink:0}
+.field-note{display:none}.map-picker{min-width:0}.map-picker strong{font-size:17px}.map-picker>span:last-child{gap:12px}.tiny-label{font-size:6px;letter-spacing:1.2px;margin-bottom:4px}
+.wave-count{gap:7px;margin-left:0;padding-left:17px;border-left:1px solid var(--line)}.wave-count small{font-size:6px;letter-spacing:1px}.wave-count strong{font-size:20px}.wave-count strong span{font-size:11px}
+.hud{height:54px;gap:25px;margin:0 auto;padding:9px 18px}.hud-stat{gap:8px}.hud-stat svg{width:20px;height:20px}.hud-stat strong{font-size:19px}.hud-stat small{font-size:6px;letter-spacing:1px;margin-top:4px}
+.header-actions{display:flex;gap:0;flex-shrink:0}.playtest-badge{display:none}.icon-button{width:35px;height:35px;background:#173c2be8;border-color:#bdd09377}
+.guardian-dock{position:absolute;z-index:12;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(740px,calc(100vw - 32px));padding:7px 9px 8px;background:#173c2bdb;border:1px solid #bdd09355;border-radius:13px;backdrop-filter:blur(10px);box-shadow:0 5px 24px #102c2930;pointer-events:auto}
+.dock-heading{display:flex;align-items:center;gap:10px;padding:0 31px 3px;height:18px}
+.dock-heading h2{font-family:var(--serif);font-weight:500;font-size:13px;letter-spacing:-.2px}
+.dock-heading>span{font-size:7px;color:#b8caa4}.dock-heading>button{margin-left:auto;padding:0;background:none;color:#d4e3b2;font-size:8px}
+.dock-slider{display:flex;align-items:center;gap:6px;min-width:0}
+.roster-arrow{height:39px;width:23px;flex-shrink:0;border:1px solid #73905a77;border-radius:7px;background:#294d34cc;color:#d4dfb4;font-size:25px;line-height:1}
 .roster-arrow:hover{background:#43623e}
-.guardian-dock .roster{display:flex;flex:1;gap:9px;min-width:0;padding:3px 1px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;scrollbar-width:none;justify-content:safe center;overscroll-behavior-x:contain}
+.guardian-dock .roster{display:flex;flex:1;gap:7px;min-width:0;padding:3px 1px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;scrollbar-width:none;justify-content:safe center;overscroll-behavior-x:contain}
 .guardian-dock .roster::-webkit-scrollbar{display:none}
-.guardian-dock .tower-card{flex:0 0 122px;min-height:91px;height:91px;scroll-snap-align:start;border-radius:8px}
-.guardian-dock .tower-card:hover:not(:disabled){transform:none}
-.guardian-dock .tower-art{height:48px;flex-shrink:0}
-.guardian-dock .tower-art .portrait{height:64px;width:78px;margin-top:0}
-.guardian-dock .tower-info{padding:2px 5px 6px}
-.guardian-dock .tower-info>strong{font-size:11px;line-height:1.2}
+.guardian-dock .tower-card{flex:0 0 100px;min-height:76px;height:76px;scroll-snap-align:start;border-radius:8px;background:#31513abf}
+.guardian-dock .tower-card:hover:not(:disabled){transform:none;background:#466a40}
+.guardian-dock .tower-card.chosen{background:#53633bd9}
+.guardian-dock .tower-art{height:37px;flex-shrink:0}
+.guardian-dock .tower-art .portrait{height:52px;width:69px;margin-top:0}
+.guardian-dock .tower-info{padding:2px 4px 5px}
+.guardian-dock .tower-info>strong{font-size:10px;line-height:1.2}
 .guardian-dock .tower-info>small{display:none}
-.guardian-dock .tower-cost{font-size:10px;line-height:1.2;margin-top:3px}
-.guardian-dock .locked .tower-cost{font-size:8px}
-.guardian-dock .lock-badge{font-size:5px;right:4px;top:4px;padding:2px 3px}
+.guardian-dock .tower-cost{font-size:9px;line-height:1.2;margin-top:3px}.guardian-dock .tower-cost svg{width:10px;height:10px}
+.guardian-dock .locked .tower-cost{font-size:7px}
+.guardian-dock .lock-badge{font-size:4px;right:4px;top:4px;padding:2px 3px}
+.battle-controls{position:absolute;z-index:12;right:16px;bottom:136px;min-height:0;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:9px 10px;background:#173c2bdb;border:1px solid #bdd09355;border-radius:11px;backdrop-filter:blur(10px);box-shadow:0 4px 20px #102c2925;pointer-events:auto}
+.battle-status{margin:0;flex:auto;gap:7px}.battle-status strong{font-size:9px}.battle-status small{display:none}.status-dot{width:5px;height:5px}.play-controls{flex:none;gap:6px;justify-content:flex-end}
+.control-button{height:31px;padding:0 9px;font-size:10px;background:#24483399}.start-button{height:34px;min-width:137px;padding:0 11px;font-size:9px;gap:14px;margin-left:2px}
+.welcome-tip{left:20px;bottom:145px;width:267px;padding:20px}.welcome-tip h1{font-size:24px}.welcome-tip p{font-size:11px}.welcome-tip .eyebrow{font-size:7px}.welcome-tip .tip-foot{display:block;font-size:7px}
+.placement-banner{z-index:9;top:83px;gap:14px;font-size:11px}
+.floating-upgrades{z-index:10;background:#1d3b2eef;backdrop-filter:blur(10px)}
 .upgrade-close{min-height:24px;padding:5px;font-size:9px}
-@media(max-width:1170px) and (min-width:901px){.game-main{height:calc(100dvh - 104px)}}
-@media(max-width:900px) and (min-width:701px){.game-main{height:calc(100dvh - 92px)}.guardian-dock .tower-card{flex-basis:112px}}
-@media(min-width:1550px){.game-main{height:calc(100dvh - 128px)}}
-@media(max-width:700px){.game-main{height:auto;min-height:0}.field{height:auto}.board-wrap{height:clamp(260px,65vw,460px);min-height:260px}.guardian-dock{padding:9px 8px 10px}.dock-heading{padding:0 4px 6px;gap:9px}.dock-heading h2{font-size:15px}.dock-heading>span{font-size:7px}.dock-heading>button{font-size:8px}.dock-slider{gap:5px}.roster-arrow{width:23px;height:42px;font-size:24px}.guardian-dock .roster{gap:7px}.guardian-dock .tower-card{flex-basis:105px}.guardian-dock .tower-info>strong{font-size:10px}}
+.toast-stack{bottom:220px;z-index:22}
+@media(max-width:900px){.topbar{gap:8px;left:12px;right:12px}.brand{padding:9px}.brand strong{font-size:15px}.brand-mark{font-size:29px;width:26px}.field-toolbar{gap:12px;padding:9px 11px}.map-picker strong{font-size:15px}.wave-count{padding-left:10px}.hud{gap:16px;padding:9px 12px}.hud-stat{gap:5px}.hud-stat strong{font-size:17px}.hud-stat small{font-size:5px}.hud-stat svg{width:17px;height:17px}.battle-controls{right:12px}}
+@media(max-width:700px){
+.topbar{top:max(8px,env(safe-area-inset-top));left:9px;right:9px;height:43px;gap:7px;align-items:center}
+.brand{padding:5px 6px;height:42px}.brand>span:last-child{display:none}.brand-mark{width:26px;height:29px;font-size:28px}
+.hud{height:43px;gap:17px;margin:0 auto;padding:7px 12px;flex:1;justify-content:space-around}.hud-stat{gap:5px}.hud-stat strong{font-size:17px}.hud-stat svg{width:17px;height:17px}.hud-stat small{font-size:5px;letter-spacing:.7px}
+.header-actions{display:flex}.icon-button{width:30px;height:30px;font-size:16px}
+.field-toolbar{position:absolute;top:50px;left:0;height:41px;gap:15px;padding:6px 10px;border-radius:9px}.tiny-label{font-size:5px;margin-bottom:2px}.map-picker strong{font-size:14px}.map-picker>span:last-child{gap:8px}.wave-count strong{font-size:17px}.wave-count strong span{font-size:10px}.wave-count small{font-size:5px}.wave-count{padding-left:12px;gap:6px}
+.guardian-dock{bottom:max(8px,env(safe-area-inset-bottom));width:calc(100vw - 16px);padding:5px 5px 6px;border-radius:11px}.dock-heading{padding:0 26px 2px;height:16px;gap:8px}.dock-heading h2{font-size:12px}.dock-heading>span{font-size:6px}.dock-heading>button{font-size:7px}.dock-slider{gap:4px}.roster-arrow{width:21px;height:36px;font-size:23px}.guardian-dock .roster{gap:6px;padding:2px 1px}.guardian-dock .tower-card{flex-basis:91px;min-height:72px;height:72px}.guardian-dock .tower-art{height:34px}.guardian-dock .tower-art .portrait{height:48px;width:62px}.guardian-dock .tower-info>strong{font-size:9px}.guardian-dock .tower-cost{font-size:9px}
+.battle-controls{left:auto;right:8px;bottom:122px;padding:7px 8px;gap:4px}.battle-status strong{font-size:8px}.play-controls{gap:5px}.control-button{height:28px;padding:0 8px;font-size:9px}.start-button{height:30px;min-width:131px;font-size:8px;padding:0 10px}.pause-button{min-width:28px}.battle-status{flex-basis:auto}
+.welcome-tip{left:12px;bottom:200px;width:238px;padding:16px 18px}.welcome-tip h1{font-size:22px}.welcome-tip p{font-size:10px}.welcome-tip .eyebrow{font-size:6px}.welcome-tip .tip-foot{display:none}
+.placement-banner{top:111px;max-width:calc(100vw - 20px);font-size:10px;gap:10px;padding:8px 10px}.placement-banner kbd{display:none}.toast-stack{bottom:193px}.toast{padding:10px 14px;font-size:10px}
+}
+@media(max-width:380px){.hud{gap:9px;padding:6px 8px}.hud-stat strong{font-size:15px}.hud-stat svg{width:14px;height:14px}.hud-stat small{font-size:4px}.dock-heading>span{display:none}}
+@media(max-height:500px) and (min-width:701px){.guardian-dock{bottom:7px}.battle-controls{bottom:126px}.welcome-tip{bottom:145px;padding:14px 17px}.welcome-tip .tip-foot{display:none}.floating-upgrades .upgrade-instruction{display:none}}
+@media(max-height:500px) and (min-width:701px){
+.topbar{top:8px;height:42px}.brand{height:42px;padding:5px 9px}.field-toolbar,.hud{height:42px;padding-top:5px;padding-bottom:5px}
+.guardian-dock{padding:4px 7px}.dock-heading{display:none}.guardian-dock .tower-card{height:58px;min-height:58px}.guardian-dock .tower-art{height:23px}.guardian-dock .tower-art .portrait{height:37px;width:52px}.guardian-dock .tower-info{padding:1px 4px 3px}
+.battle-controls{bottom:84px;padding:5px 7px}.battle-status{display:none}.control-button{height:28px}.start-button{height:30px}.welcome-tip{bottom:90px}.toast-stack{bottom:140px}
+}

@@ -53,4 +53,4 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-last)/10
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},version:'0.1.1'};
+window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},version:'0.1.2'};
