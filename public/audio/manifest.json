@@ -1,0 +1,62 @@
+{
+  "sampleRate": 24000,
+  "channels": 1,
+  "format": "PCM16 WAV",
+  "original": true,
+  "tracks": [
+    {
+      "id": "rock",
+      "file": "rock.wav",
+      "title": "Pompom Patrol",
+      "bpm": 104,
+      "bars": 8,
+      "duration": 18.461542,
+      "description": "Picked electric power chords, a bright original melody, bass and a steady rock drum groove.",
+      "checks": {
+        "peak": 0.73,
+        "rms": 0.140037,
+        "seamDelta": 0.00073,
+        "maxAdjacentDelta": 0.666774,
+        "clippedSamples": 0,
+        "frames": 443077,
+        "bytes": 886198
+      }
+    },
+    {
+      "id": "chill",
+      "file": "chill.wav",
+      "title": "Mosslight Afternoon",
+      "bpm": 88,
+      "bars": 8,
+      "duration": 21.818167,
+      "description": "Warm electric keys and soft pads over mellow bass and a laid-back garden beat.",
+      "checks": {
+        "peak": 0.73,
+        "rms": 0.150309,
+        "seamDelta": 0.002964,
+        "maxAdjacentDelta": 0.630636,
+        "clippedSamples": 0,
+        "frames": 523636,
+        "bytes": 1047316
+      }
+    },
+    {
+      "id": "jazz",
+      "file": "jazz.wav",
+      "title": "The Mushroom Club",
+      "bpm": 108,
+      "bars": 8,
+      "duration": 17.777792,
+      "description": "Swung piano chords and a playful original piano melody, walking bass and brushed drums.",
+      "checks": {
+        "peak": 0.719315,
+        "rms": 0.155,
+        "seamDelta": 0.007634,
+        "maxAdjacentDelta": 0.298033,
+        "clippedSamples": 0,
+        "frames": 426667,
+        "bytes": 853378
+      }
+    }
+  ]
+}

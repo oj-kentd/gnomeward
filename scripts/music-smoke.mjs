@@ -1,0 +1,54 @@
+import { chromium } from 'playwright';
+import { mkdir } from 'node:fs/promises';
+await mkdir('playtest-results', {recursive:true});
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,headless:true,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const page=await browser.newPage({viewport:{width:1280,height:800}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const requests=[];page.on('request',r=>{if(r.url().endsWith('.wav'))requests.push(r.url());});
+try {
+ await page.goto(process.env.PLAYTEST_URL||'http://localhost:5173');
+ await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden);
+ if(requests.length||await page.evaluate(()=>gnomeward.music.context!==null))throw Error('Music must not load or autoplay on first visit');
+ await page.locator('#sound-button').click();
+ const tracks=[];
+ for(const genre of ['rock','chill','jazz']){
+  await page.locator(`[data-music="${genre}"]`).click();
+  await page.waitForFunction(g=>gnomeward.state.musicStatus==='playing'&&gnomeward.music.source?.track===g,genre);
+  const track=await page.evaluate(()=>{const p=gnomeward.music,s=p.source.node;const analyser=p.context.createAnalyser();p.master.disconnect();p.master.connect(analyser);analyser.connect(p.context.destination);window.musicAnalyser=analyser;return{genre:p.track,duration:s.buffer.duration,loop:s.loop,playbackRate:s.playbackRate.value};});
+  await page.waitForFunction(()=>{const data=new Float32Array(musicAnalyser.fftSize);musicAnalyser.getFloatTimeDomainData(data);return data.some(v=>Math.abs(v)>.0001);},null,{timeout:5000});
+  const rms=await page.evaluate(()=>{const samples=new Float32Array(musicAnalyser.fftSize);musicAnalyser.getFloatTimeDomainData(samples);gnomeward.music.master.disconnect(musicAnalyser);musicAnalyser.disconnect();gnomeward.music.master.connect(gnomeward.music.context.destination);return Math.sqrt(samples.reduce((s,x)=>s+x*x,0)/samples.length);});
+  if(!track.loop||track.duration<17||track.duration>25||track.playbackRate!==1||rms<.0001)throw Error('Track did not decode/play as a non-silent loop '+JSON.stringify({...track,rms}));
+  if(await page.locator(`[data-music="${genre}"]`).getAttribute('aria-pressed')!=='true')throw Error('Selected genre not reflected');
+  tracks.push({...track,rms});
+ }
+ await page.locator('#music-volume').focus();
+ await page.locator('#music-volume').press('Home');
+ for(let i=0;i<18;i++)await page.locator('#music-volume').press('ArrowRight');
+ await page.waitForFunction(()=>gnomeward.state.musicVolume===.18);
+ if(await page.evaluate(()=>document.activeElement.id)!=='music-volume')throw Error('Volume update lost slider focus');
+ await page.locator('[data-setting="sound"]').click();
+ if(!await page.evaluate(()=>gnomeward.state.sound&&gnomeward.music.source.track==='jazz'))throw Error('Effects and music must be independent');
+ await page.locator('[data-close]').first().click();
+ await page.locator('#speed-button').click();
+ if(await page.evaluate(()=>gnomeward.music.source.node.playbackRate.value)!==1)throw Error('Game speed changed music tempo');
+ await page.evaluate(()=>{window.musicSource=gnomeward.music.source;gnomeward.music.setHidden(true);});
+ await page.waitForFunction(()=>gnomeward.music.context.state==='suspended');
+ const time=await page.evaluate(()=>gnomeward.music.context.currentTime);
+ await page.waitForTimeout(250);
+ if(await page.evaluate(()=>gnomeward.music.context.currentTime)!==time)throw Error('Hidden audio clock still advances');
+ await page.evaluate(()=>gnomeward.music.setHidden(false));
+ await page.waitForFunction(()=>gnomeward.music.context.state==='running');
+ if(!await page.evaluate(()=>gnomeward.music.source===window.musicSource))throw Error('Returning to tab restarted/layered music');
+ await page.reload();await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden);
+ if(!await page.evaluate(()=>gnomeward.state.music==='jazz'&&gnomeward.state.musicVolume===.18&&gnomeward.state.sound&&gnomeward.music.context===null))throw Error('Audio preferences should persist without autoplay');
+ await page.setViewportSize({width:390,height:844});await page.locator('#help-button').click();
+ await page.waitForFunction(()=>gnomeward.state.musicStatus==='playing');
+ await page.locator('#music-settings').scrollIntoViewIfNeeded();
+ const bounds=await page.locator('#music-settings').boundingBox();if(bounds.x<0||bounds.x+bounds.width>390)throw Error('Mobile music panel overflows');
+ await page.screenshot({path:'playtest-results/music-mobile.png'});
+ await page.locator('[data-music="off"]').click();
+ if(!await page.evaluate(()=>gnomeward.music.source===null&&gnomeward.state.musicStatus==='off'&&gnomeward.state.sound))throw Error('Music Off must stop music and preserve effects');
+ await page.waitForTimeout(200);
+ console.log(JSON.stringify({tracks,requests:requests.length,mobileWidth:bounds.width,errors},null,2));
+ if(errors.length)process.exitCode=1;
+} finally {await browser.close();}

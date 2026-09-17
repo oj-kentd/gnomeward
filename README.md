@@ -34,7 +34,7 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 
 The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 75% of the purchase gold. Shooting gnomes can target First (farthest along the trail), Last, Strong (highest maximum health), or Close (nearest). Tap the targeting button in their upgrade popup to cycle modes. Morel plants mushrooms instead of targeting enemies. Bosses that escape do not grant boss-defeat unlocks. Map changes start a fresh run while retaining unlocked characters.
 
-**Controls:** Click/tap to select and place; Escape or right-click cancels; Space or the green play button starts the next wave, resumes a paused wave, or cycles speed during combat; P pauses; 1–6 select gnomes. Speed cycles 1× / 2× / 3×. Auto rounds optionally starts the next wave after a three-second building break. Pause and open menus freeze that countdown. The first wave always waits for you. Sound is optional and synthesized locally. No sign-in or server is needed.
+**Controls:** Click/tap to select and place; Escape or right-click cancels; Space or the green play button starts the next wave, resumes a paused wave, or cycles speed during combat; P pauses; 1–6 select gnomes. Speed cycles 1× / 2× / 3×. Auto rounds optionally starts the next wave after a three-second building break. Pause and open menus freeze that countdown. The first wave always waits for you. Open **☰ → Music**, or the **♪** button on desktop, to choose **Rock**, **Chill**, or **Jazz**. Each is an original 8-bar instrumental loop, with an independent volume slider and Off option. Music stays at its normal tempo at every game speed and pauses when the tab is hidden. Your genre, volume, and effects preference are saved in this browser; saved music resumes after your first interaction. Sound effects have their own Effects switch. No sign-in or server is needed.
 
 ## Five gardens
 
@@ -50,11 +50,16 @@ The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 7
 
 - `src/data.js`: maps, characters, enemy colors, and tuning.
 - `src/game.js`: deterministic simulation, upgrades, damage, unlocks.
+- `src/music.js`: lazy-loaded looping playback and audio controls.
 - `src/renderer.js`: Three.js scene, imported models, selection and effects.
 - `src/ui.js` / `src/style.css`: interface and responsive controls.
 - `tests/game.test.js`: gameplay regression checks.
 
 Original art and game presentation take inspiration from the supplied plush-gnome reference. No Bloons assets or code are included. The project was built with separate gameplay, Blender art, and interface agents, then integrated and tested together.
+
+## Original music
+
+Three short tracks are included in `public/audio/`: **Pompom Patrol** (Rock), **Mosslight Afternoon** (Chill), and **The Mushroom Club** (Jazz). They were composed and synthesized for Gnomeward without third-party recordings or samples. See [music notes](art/MUSIC.md) for track details, validation and regeneration with `scripts/generate_music.py`. Combined download size is about 2.8 MB; only selected tracks are loaded. Music is off until you choose a genre on your first visit.
 
 ## Browser checks
 
@@ -63,9 +68,10 @@ With the development server running in another terminal:
 ```sh
 npx playwright install chromium
 npm run test:browser
+npm run test:music
 ```
 
-The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all five maps, and checks the phone layout and console errors. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
+The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all five maps, and checks the phone layout and console errors. The music browser check exercises all three decoded loops, output levels, independent effects/volume, tab suspension, saved preferences and phone settings. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
 
 ## Publishing
 

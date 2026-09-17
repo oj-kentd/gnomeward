@@ -65,7 +65,7 @@ export class UI {
             <footer class="battle-controls">
               <div class="battle-status"><span class="status-dot" id="status-dot"></span><strong id="status-title">Ready to defend!</strong><small id="status-detail">Place a gnome to get started.</small></div>
               <button class="start-button" id="start-button"><span class="play-triangle" aria-hidden="true">▶</span><span id="start-label">START ROUND 1</span></button>
-              <div class="play-controls"><button class="control-button" id="pause-button" aria-label="Pause game" title="Pause / resume">Ⅱ</button><button class="control-button" id="speed-button" aria-label="Change game speed" title="Change game speed">1×</button><button class="control-button" id="sound-button" aria-label="Toggle sound" title="Toggle sound">♪ Off</button></div>
+              <div class="play-controls"><button class="control-button" id="pause-button" aria-label="Pause game" title="Pause / resume">Ⅱ</button><button class="control-button" id="speed-button" aria-label="Change game speed" title="Change game speed">1×</button><button class="control-button" id="sound-button" aria-label="Audio settings" title="Audio settings" aria-haspopup="dialog">♪</button></div>
               <button class="auto-button" id="auto-button" aria-pressed="false"><span class="toggle-check" aria-hidden="true"></span><span id="auto-label">Auto rounds: off</span></button>
             </footer>
             <section class="guardian-dock" aria-label="Choose a gnome to plant">
@@ -81,7 +81,7 @@ export class UI {
     click('start-button', () => actions.onStartWave?.());
     click('pause-button', () => actions.onPause?.());
     click('speed-button', () => actions.onSpeed?.());
-    click('sound-button', () => actions.onSound?.());
+    click('sound-button', () => this.showHelp('music'));
     click('auto-button', () => actions.onAuto?.());
     click('cancel-placement', () => actions.onCancel?.());
     click('dismiss-tip', () => this.dismissTip());
@@ -123,11 +123,21 @@ export class UI {
       if (map) { this.closeModal(); this.resultShown = ''; actions.onMap?.(map.dataset.map); }
       if (event.target.closest('[data-restart]')) { this.closeModal(); this.resultShown = ''; actions.onRestart?.(); }
       if (event.target.closest('[data-maps]')) this.showMaps();
+      const music = event.target.closest('[data-music]');
+      if (music) {
+        actions.onMusic?.(music.dataset.music);
+        this.syncAudioSettings(this.last?.state || {});
+      }
       const setting = event.target.closest('[data-setting]');
       if (setting) {
         ({ pause: actions.onPause, sound: actions.onSound, auto: actions.onAuto })[setting.dataset.setting]?.();
-        this.showHelp();
+        this.syncAudioSettings(this.last?.state || {});
       }
+    });
+    document.getElementById('dialog-content').addEventListener('input', (event) => {
+      if (event.target.id !== 'music-volume') return;
+      actions.onMusicVolume?.(Number(event.target.value) / 100);
+      this.syncAudioSettings(this.last?.state || {});
     });
   }
 
@@ -163,8 +173,8 @@ export class UI {
     set('pause-button', state.paused ? '▶' : 'Ⅱ');
     document.getElementById('pause-button').setAttribute('aria-label', state.paused ? 'Resume game' : 'Pause game');
     document.getElementById('pause-button').setAttribute('aria-pressed', String(!!state.paused));
-    set('sound-button', state.sound ? '♪ On' : '♪ Off');
-    document.getElementById('sound-button').setAttribute('aria-pressed', String(!!state.sound));
+    document.getElementById('sound-button').dataset.musicActive = String(state.music && state.music !== 'off');
+    this.syncAudioSettings(state);
     document.getElementById('auto-button').setAttribute('aria-pressed', String(!!state.autoStart));
     set('auto-label', countdown && !state.paused ? `Next round in ${Math.ceil(state.autoCountdown)}s` : `Auto rounds: ${state.autoStart ? 'on' : 'off'}`);
     const next = typeof game.nextWaveInfo === 'function' ? game.nextWaveInfo() : null;
@@ -286,10 +296,53 @@ export class UI {
     const currentId = typeof current === 'string' ? current : current?.id;
     this.openModal('maps', `<div class="modal-heading"><div><span class="eyebrow">PICK YOUR BATTLEFIELD</span><h2>Choose a garden</h2></div><button class="modal-close" data-close aria-label="Close map selection">×</button></div><p class="modal-intro">Changing gardens starts a new run. Your unlocked gnomes stay with you!</p><div class="map-grid">${MAPS.map((map, index) => `<button class="map-card ${map.id === currentId ? 'current' : ''}" data-map="${map.id}"><span class="map-number">${index + 1}</span><span class="map-difficulty">${esc(map.difficulty)}</span><h3>${esc(map.name)}</h3><p>${esc(map.description)}</p><span class="map-card-foot">${map.id === currentId ? 'RESTART GARDEN' : 'PLAY GARDEN'} <b>▶</b></span></button>`).join('')}</div>`);
   }
-  showHelp() {
+  showHelp(focusSection = null) {
     const state = this.last?.state || {};
-    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Sound: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
+    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Effects: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><section class="music-settings" id="music-settings" aria-labelledby="music-heading" tabindex="-1"><div class="music-heading"><h3 id="music-heading">♪ Music</h3><span>Original garden soundtracks</span></div><div class="music-choices" role="group" aria-label="Music style"><button class="music-choice" data-music="rock" aria-pressed="false"><strong>Rock</strong><span>Upbeat & energetic</span></button><button class="music-choice" data-music="chill" aria-pressed="false"><strong>Chill</strong><span>Relaxed & mellow</span></button><button class="music-choice" data-music="jazz" aria-pressed="false"><strong>Jazz</strong><span>Easygoing swing</span></button><button class="music-choice music-off" data-music="off" aria-pressed="true"><strong>Off</strong><span>No background music</span></button></div><div class="music-volume-row"><label for="music-volume">Music volume</label><input id="music-volume" type="range" min="0" max="100" step="1" value="35" aria-valuetext="35%"><output id="music-volume-value" for="music-volume">35%</output></div><p class="music-status" id="music-status" role="status" aria-live="polite">Music is off.</p><p class="music-hint">Choose a style to preview its loop. Music and game effects have separate controls.</p></section><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
+    this.syncAudioSettings(state);
+    if (focusSection === 'music') {
+      const section = document.getElementById('music-settings');
+      section.scrollIntoView({ block: 'start', behavior: 'instant' });
+      section.focus({ preventScroll: true });
+    }
   }
+
+  syncAudioSettings(state) {
+    if (this.modalType !== 'help') return;
+    const genre = ['rock', 'chill', 'jazz'].includes(state.music) ? state.music : 'off';
+    const names = { rock: 'Rock', chill: 'Chill', jazz: 'Jazz', off: 'Off' };
+    const percent = Math.round(Math.max(0, Math.min(1, Number.isFinite(state.musicVolume) ? state.musicVolume : .35)) * 100);
+    for (const button of document.querySelectorAll('[data-music]')) {
+      button.setAttribute('aria-pressed', String(button.dataset.music === genre));
+    }
+    const volume = document.getElementById('music-volume');
+    if (volume) {
+      // Keep the live range input intact while its thumb is being dragged.
+      if (document.activeElement !== volume) volume.value = String(percent);
+      const displayedVolume = Number(volume.value);
+      volume.setAttribute('aria-valuetext', `${displayedVolume}%`);
+      document.getElementById('music-volume-value').value = `${displayedVolume}%`;
+    }
+    const status = document.getElementById('music-status');
+    if (status) {
+      const descriptions = {
+        loading: `Loading ${names[genre]}…`,
+        playing: `${names[genre]} is playing${percent === 0 ? ' · volume muted' : ''}.`,
+        ready: `${names[genre]} selected · ready to play.`,
+        error: `Couldn't play ${names[genre]}. Choose it again to retry.`,
+      };
+      const message = genre === 'off' ? 'Music is off.' : descriptions[state.musicStatus] || descriptions.ready;
+      if (status.textContent !== message) status.textContent = message;
+      status.dataset.status = genre === 'off' ? 'off' : state.musicStatus || 'ready';
+    }
+    for (const button of document.querySelectorAll('[data-setting]')) {
+      const setting = button.dataset.setting;
+      const labels = { pause: state.paused ? '▶ Resume' : 'Ⅱ Pause', sound: `Effects: ${state.sound ? 'on' : 'off'}`, auto: `Auto rounds: ${state.autoStart ? 'on' : 'off'}` };
+      button.textContent = labels[setting];
+      if (setting !== 'pause') button.setAttribute('aria-pressed', String(!!(setting === 'sound' ? state.sound : state.autoStart)));
+    }
+  }
+
   showResult(game) {
     const won = game.status === 'won';
     this.openModal('result', `<div class="result-card"><span class="eyebrow">${won ? 'GARDEN SAVED!' : 'THE SKELETONS GOT THROUGH'}</span><h2>${won ? 'VICTORY!' : 'Try a new strategy!'}</h2><p>${won ? 'Your little guardians won a very big battle. Take the whole crew to another garden!' : 'Try mushrooms near a bend, overlapping attack ranges, and a few early upgrades.'}</p><div class="result-stats"><span><strong>${game.wave}</strong><small>ROUNDS</small></span><span><strong>${game.towers.length}</strong><small>GNOMES</small></span><span><strong>${n(game.lives)}</strong><small>LIVES</small></span></div><button class="primary-button" data-restart>PLAY AGAIN ▶</button><button class="text-button" data-maps>Choose another garden</button><button class="text-button" data-close>View the battlefield</button></div>`);
