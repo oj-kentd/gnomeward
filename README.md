@@ -18,7 +18,7 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 ## How to play
 
 1. Choose a gnome from the sliding avatar row overlaid along the bottom of the battlefield and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold. The compact shop can be hidden with **Hide ▾** and reopened with **Show ▴** to expose more of the battlefield.
-2. Start a wave. Skeleton colors indicate different health and movement speeds. Gnomes attack automatically with small traveling projectiles. Damage, stuns, and on-kill explosions trigger on impact.
+2. Start a wave. Skeleton colors indicate different health and movement speeds. Gnomes attack automatically with small traveling projectiles. Damage, slows, and on-kill explosions trigger on impact.
 3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome (including its hat or body) to open a small upgrade popup beside that gnome. The popup shows tier progress, the next stat changes, and how many more points you need.
 4. Each standard gnome has four paths with three upgrade levels. One individual gnome can invest in only two different paths. Choose carefully: spent upgrade points are not refunded on selling.
 5. Survive 20 waves. Bosses appear at the end of waves 10 and 20. Unlocks persist in this browser and carry into other maps and replays.
@@ -28,7 +28,7 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 | Sprout | Weak pebble attacks grow dramatically with upgrades; Growing Spirit scales with kills | Power, speed, range, growth; choose two | Starting crew |
 | Morel | Places trail mushrooms that poison passing skeletons over time | Venom, duration, planting speed, range; choose two | Starting crew |
 | Bramble | Enemies it defeats explode and can cause chain reactions | Power, blast, speed, range; choose two | Starting crew |
-| Poppy | Pink gun stuns for 2 seconds before upgrades | Stun duration, speed, power, range; choose two | Defeat wave 10 boss |
+| Poppy | Pink gun slows enemies by 50% for 2 seconds; repeated hits refresh without stacking | Slow duration, speed, power, range; choose two | Defeat wave 10 boss |
 | Tumble | Attacks multiple enemies; its single path raises damage, frequency, and targets | One path | Clear wave 15 |
 | Aster | Low initial damage and full-map targeting | Damage and shooting speed | Defeat wave 20 boss; usable in replays |
 

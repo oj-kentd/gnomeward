@@ -95,4 +95,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},version:'0.1.4'};
+window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},version:'0.1.5'};

@@ -111,25 +111,84 @@ test('on-kill blasts cause attributable chain reactions, never double-counting k
   assert.equal(tower.kills, 3);
 });
 
-test('Poppy freezes enemies for two seconds and stun upgrades extend duration', () => {
+test('Poppy slows only on impact, halves movement for two seconds, then restores full speed', () => {
   const g = openGame();
   const tower = g.placeTower('stun', -10, 1.5);
-  const e = setEnemy(g, 'gold', 2);
+  const enemy = setEnemy(g, 'gold', 2);
   g.status = 'wave';
   g.update(0.05);
-  assert.equal(e.stun, 0, 'the stun waits for the bubble to arrive');
+  assert.equal(enemy.slowRemaining, 0, 'the slow waits for the bubble to arrive');
+  assert.equal(enemy.slowMultiplier, 1);
+  assert.ok(Math.abs(enemy.progress - 2 - enemy.speed * 0.05) < 1e-9);
+  assert.equal(g.projectiles[0].slowDuration, 2);
+  assert.equal(g.projectiles[0].slowMultiplier, 0.5);
   tower.cooldown = 99;
-  for (let i = 0; i < 40 && e.stun === 0; i++) g.update(0.05);
-  assert.equal(e.stun, 2);
-  const progress = e.progress;
-  tower.cooldown = 99;
-  run(g, 1.5);
-  assert.equal(e.progress, progress);
-  run(g, 0.75);
-  assert.ok(e.progress > progress);
-  g.points = 10;
+  for (let i = 0; i < 40 && enemy.slowRemaining === 0; i++) g.update(0.05);
+  assert.ok(enemy.slowRemaining > 1.9 && enemy.slowRemaining <= 2);
+  assert.equal(enemy.slowMultiplier, 0.5);
+  const slowedStart = enemy.progress;
+  run(g, 1);
+  assert.ok(Math.abs(enemy.progress - slowedStart - enemy.speed * 0.5) < 1e-9);
+  const remaining = enemy.slowRemaining;
+  const beforeExpiry = enemy.progress;
+  g.update(remaining + 0.25);
+  assert.ok(Math.abs(enemy.progress - beforeExpiry - enemy.speed * (remaining * 0.5 + 0.25)) < 1e-9);
+  assert.equal(enemy.slowRemaining, 0);
+  assert.equal(enemy.slowMultiplier, 1);
+  const normalStart = enemy.progress;
+  run(g, 0.5);
+  assert.ok(Math.abs(enemy.progress - normalStart - enemy.speed * 0.5) < 1e-9);
+  g.points = 100;
   assert.ok(g.upgradeTower(tower.id, 0));
-  assert.equal(g.getStats(tower).stunDuration, 2.8);
+  assert.equal(g.getStats(tower).slowDuration, 2.8);
+  assert.ok(g.upgradeTower(tower.id, 0));
+  assert.equal(g.getStats(tower).slowDuration, 3.6);
+  assert.ok(g.upgradeTower(tower.id, 0));
+  assert.equal(g.getStats(tower).slowDuration, 4.4);
+  assert.equal(g.getStats(tower).slowMultiplier, 0.5);
+});
+
+test('repeated bubble impacts refresh duration without adding time or stacking slow strength', () => {
+  const g = openGame();
+  const tower = g.placeTower('stun', -10, 1.5);
+  const enemy = setEnemy(g, 'gold', 2);
+  const stats = g.getStats(tower);
+  enemy.slowRemaining = 0.25;
+  enemy.slowMultiplier = 0.5;
+  for (let i = 0; i < 4; i++) g._launch(tower, enemy, stats);
+  g._advanceProjectiles(2);
+  assert.equal(enemy.slowRemaining, 2, 'four simultaneous impacts refresh to two seconds');
+  assert.equal(enemy.slowMultiplier, 0.5);
+  enemy.slowRemaining = 3.5;
+  g._launch(tower, enemy, stats);
+  g._advanceProjectiles(2);
+  assert.equal(enemy.slowRemaining, 3.5, 'a weaker bubble cannot shorten an existing upgraded slow');
+  assert.equal(enemy.slowMultiplier, 0.5);
+});
+
+test('multiple fully upgraded rapid Poppies cannot stop or compound the slow on skeletons or bosses', () => {
+  for (const type of ['gold', 'boss']) {
+    const g = openGame();
+    const towers = [g.placeTower('stun', -10, 1.5), g.placeTower('stun', -8.5, 1.5)];
+    g.points = 1000;
+    for (const tower of towers) {
+      for (const path of [0, 1]) for (let tier = 0; tier < 3; tier++) assert.ok(g.upgradeTower(tower.id, path));
+    }
+    const enemy = setEnemy(g, type, 2);
+    g.status = 'wave';
+    let slowTicks = 0;
+    for (let tick = 0; tick < 160; tick++) {
+      const before = enemy.progress;
+      g.update(0.05);
+      assert.ok(enemy.hp > 0);
+      assert.ok(enemy.progress - before >= enemy.speed * 0.025 - 1e-9, `${type} keeps moving at at least half speed`);
+      assert.ok(enemy.slowRemaining <= 4.4);
+      assert.ok(enemy.slowMultiplier >= 0.5);
+      if (enemy.slowRemaining > 0) slowTicks++;
+    }
+    assert.ok(slowTicks > 140, 'rapid bubbles maintain the slow');
+    assert.ok(towers.every(tower => tower.damageDone > 12), 'both Poppies landed repeated hits');
+  }
 });
 
 test('unlocks require boss kills or wave 15 completion and persist between games', () => {

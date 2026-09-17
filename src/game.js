@@ -137,12 +137,12 @@ export class Game {
       case 'sprout': stats = { damage: [5, 11, 22, 42][a] + d * (3 + Math.min(35, tower.kills || 0) * 0.7), interval: 0.95 * 0.73 ** b, range: 3.4 + c * 1.0 }; break;
       case 'spore': stats = { damage: 0, interval: 2.5 * 0.68 ** c, range: 3.9 + d * 1.1, poisonDps: [6, 11, 19, 32][a], poisonDuration: 4 + b * 2, charges: 1 + b, trapRadius: 0.62 + d * 0.32 }; break;
       case 'boom': stats = { damage: [13, 24, 42, 70][a], interval: 1.4 * 0.73 ** c, range: 3.7 + d * 1.0, explosionDamage: [18, 30, 48, 75][b], explosionRadius: 1.5 + b * 0.5 }; break;
-      case 'stun': stats = { damage: [3, 10, 22, 40][c], interval: 1.7 * 0.73 ** b, range: 3.8 + d * 1.0, stunDuration: 2 + a * 0.8 }; break;
+      case 'stun': stats = { damage: [3, 10, 22, 40][c], interval: 1.7 * 0.73 ** b, range: 3.8 + d * 1.0, slowDuration: 2 + a * 0.8, slowMultiplier: 0.5 }; break;
       case 'multi': stats = { damage: [8, 15, 26, 42][a], interval: 1.3 * 0.72 ** a, range: 4, shots: 3 + a }; break;
       case 'sniper': stats = { damage: [5, 25, 65, 130][a], interval: 1.25 * 0.48 ** b, range: 100 }; break;
       default: stats = { damage: 0, interval: 1, range: 0 };
     }
-    return { shots: 1, poisonDps: 0, poisonDuration: 0, stunDuration: 0, explosionDamage: 0, explosionRadius: 0, ...stats, attackSpeed: 1 / stats.interval };
+    return { shots: 1, poisonDps: 0, poisonDuration: 0, slowDuration: 0, slowMultiplier: 1, explosionDamage: 0, explosionRadius: 0, ...stats, attackSpeed: 1 / stats.interval };
   }
 
   nextWaveInfo() {
@@ -168,7 +168,7 @@ export class Game {
   _spawn(type) {
     const spec = ENEMIES[type];
     const hp = spec.hp * (spec.boss ? 1 : 1 + Math.max(0, this.wave - 5) * 0.075);
-    const enemy = { id: ++this._id, type, ...this.pointAt(0), hp, maxHp: hp, progress: 0, stun: 0, poison: null, speed: spec.speed, boss: !!spec.boss, isBoss: !!spec.boss, color: spec.color };
+    const enemy = { id: ++this._id, type, ...this.pointAt(0), hp, maxHp: hp, progress: 0, slowRemaining: 0, slowMultiplier: 1, poison: null, speed: spec.speed, boss: !!spec.boss, isBoss: !!spec.boss, color: spec.color };
     this.enemies.push(enemy);
     return enemy;
   }
@@ -185,7 +185,7 @@ export class Game {
       unitType: tower.type, sourceId: tower.id, targetId: target.id,
       x: tower.x, z: tower.z, tx: target.x, tz: target.z,
       ttl: duration, maxTtl: duration, color: TOWERS[tower.type].color,
-      damage: stats.damage, stunDuration: stats.stunDuration,
+      damage: stats.damage, slowDuration: stats.slowDuration, slowMultiplier: stats.slowMultiplier,
     });
   }
 
@@ -203,7 +203,10 @@ export class Game {
         continue;
       }
       this._damage(target, shot.damage, shot.sourceId);
-      if (target.hp > 0 && shot.stunDuration) target.stun = Math.max(target.stun, shot.stunDuration);
+      if (target.hp > 0 && shot.slowDuration > 0) {
+        target.slowRemaining = Math.max(target.slowRemaining, shot.slowDuration);
+        target.slowMultiplier = shot.slowMultiplier;
+      }
       this._effect('impact', target, target, shot.color, 0.12);
     }
   }
@@ -265,7 +268,6 @@ export class Game {
     }
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0) continue;
-      enemy.stun = Math.max(0, enemy.stun - dt);
       if (enemy.poison) {
         const tick = Math.min(dt, enemy.poison.remaining);
         this._damage(enemy, enemy.poison.dps * tick, enemy.poison.sourceId);
@@ -293,7 +295,10 @@ export class Game {
     }
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0) continue;
-      if (enemy.stun <= 0) enemy.progress += enemy.speed * dt;
+      const slowedTime = Math.min(dt, enemy.slowRemaining);
+      enemy.progress += enemy.speed * (slowedTime * enemy.slowMultiplier + dt - slowedTime);
+      enemy.slowRemaining = Math.max(0, enemy.slowRemaining - dt);
+      if (enemy.slowRemaining === 0) enemy.slowMultiplier = 1;
       Object.assign(enemy, this.pointAt(enemy.progress));
       if (enemy.progress >= this.pathLength) {
         this.lives = Math.max(0, this.lives - ENEMIES[enemy.type].leak);
