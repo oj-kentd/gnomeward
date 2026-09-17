@@ -63,7 +63,7 @@ try {
   await world.load(progress=>ui.setLoading?.('Growing your garden… '+Math.round(progress*100)+'%'));
   world.setMap(game.map,0);ready=true;ui.setLoading?.(null);
 }catch(error){console.error(error);ui.setLoading?.('The garden could not load. Please reload in a browser with WebGL 2 enabled.');}
-window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;if(e.code==='Escape')cancel();else if(e.code==='Space'){e.preventDefault();start();}else if(e.code==='KeyP'){state.paused=!state.paused;refreshUI();}else if(/^Digit[1-6]$/.test(e.code))choose(Object.keys(TOWERS)[Number(e.code.slice(-1))-1]);});
+window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;if(e.code==='Escape')cancel();else if(e.code==='Space'){if(e.target.closest('button,a'))return;e.preventDefault();start();}else if(e.code==='KeyP'){state.paused=!state.paused;refreshUI();}else if(/^Digit[1-6]$/.test(e.code))choose(Object.keys(TOWERS)[Number(e.code.slice(-1))-1]);});
 let last=performance.now(),uiElapsed=0;
 // Returning to the tab must not count time spent away toward an automatic round.
 document.addEventListener('visibilitychange',()=>{last=performance.now();});
@@ -95,4 +95,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},version:'0.1.3'};
+window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},version:'0.1.4'};

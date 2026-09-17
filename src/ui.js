@@ -69,8 +69,8 @@ export class UI {
               <button class="auto-button" id="auto-button" aria-pressed="false"><span class="toggle-check" aria-hidden="true"></span><span id="auto-label">Auto rounds: off</span></button>
             </footer>
             <section class="guardian-dock" aria-label="Choose a gnome to plant">
-              <div class="dock-heading"><h2>GNOME SHOP</h2><span>Choose a guardian</span><button id="sidebar-help">How to play ?</button></div>
-              <div class="dock-slider"><button class="roster-arrow" id="roster-previous" aria-label="Previous gnomes">‹</button><div class="roster" id="roster" aria-label="Gnome collection"></div><button class="roster-arrow" id="roster-next" aria-label="Next gnomes">›</button></div>
+              <div class="dock-heading"><h2>GNOME SHOP</h2><span>Choose a guardian</span><button id="shop-toggle" aria-expanded="true" aria-controls="shop-slider">Hide ▾</button></div>
+              <div class="dock-slider" id="shop-slider"><button class="roster-arrow" id="roster-previous" aria-label="Previous gnomes">‹</button><div class="roster" id="roster" aria-label="Gnome collection"></div><button class="roster-arrow" id="roster-next" aria-label="Next gnomes">›</button></div>
             </section>
           </section>
         </main>
@@ -87,7 +87,14 @@ export class UI {
     click('dismiss-tip', () => this.dismissTip());
     click('map-button', () => this.showMaps());
     click('help-button', () => this.showHelp());
-    click('sidebar-help', () => this.showHelp());
+    click('shop-toggle', () => {
+      const collapsed = document.querySelector('.game-shell').classList.toggle('shop-collapsed');
+      document.getElementById('shop-slider').hidden = collapsed;
+      const toggle = document.getElementById('shop-toggle');
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+      toggle.textContent = collapsed ? 'Show ▴' : 'Hide ▾';
+      if (this.last) this.update(this.last.game, this.last.state);
+    });
     const slideRoster = (direction) => {
       const roster = document.getElementById('roster');
       roster.scrollBy({ left: direction * Math.max(130, roster.clientWidth * .7), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });

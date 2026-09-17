@@ -17,7 +17,7 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 
 ## How to play
 
-1. Choose a gnome from the sliding avatar row overlaid along the bottom of the battlefield and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold.
+1. Choose a gnome from the sliding avatar row overlaid along the bottom of the battlefield and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold. The compact shop can be hidden with **Hide ▾** and reopened with **Show ▴** to expose more of the battlefield.
 2. Start a wave. Skeleton colors indicate different health and movement speeds. Gnomes attack automatically with small traveling projectiles. Damage, stuns, and on-kill explosions trigger on impact.
 3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome (including its hat or body) to open a small upgrade popup beside that gnome. The popup shows tier progress, the next stat changes, and how many more points you need.
 4. Each standard gnome has four paths with three upgrade levels. One individual gnome can invest in only two different paths. Choose carefully: spent upgrade points are not refunded on selling.
