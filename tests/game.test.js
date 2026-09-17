@@ -117,6 +117,9 @@ test('Poppy freezes enemies for two seconds and stun upgrades extend duration', 
   const e = setEnemy(g, 'gold', 2);
   g.status = 'wave';
   g.update(0.05);
+  assert.equal(e.stun, 0, 'the stun waits for the bubble to arrive');
+  tower.cooldown = 99;
+  for (let i = 0; i < 40 && e.stun === 0; i++) g.update(0.05);
   assert.equal(e.stun, 2);
   const progress = e.progress;
   tower.cooldown = 99;
@@ -169,6 +172,10 @@ test('multi attacks several targets; sniper attacks at full-map range', () => {
   const e3 = setEnemy(g, 'gold', 3);
   g.status = 'wave';
   g.update(0.05);
+  assert.equal(g.projectiles.length, 4);
+  assert.equal(e1.hp, 205, 'launching a projectile does not deal instant damage');
+  multi.cooldown = sniper.cooldown = 99;
+  run(g, 1.8);
   assert.equal(e1.hp, 197);
   assert.equal(e2.hp, 197);
   assert.equal(e3.hp, 192);
@@ -178,6 +185,47 @@ test('multi attacks several targets; sniper attacks at full-map range', () => {
   g.upgradeTower(multi.id, 0);
   assert.ok(g.getStats(multi).damage > 8);
   assert.ok(g.getStats(multi).interval < 1.3);
+});
+
+test('projectiles travel before impact and disappearing targets cannot award duplicate kills', () => {
+  const g = new Game();
+  const tower = g.placeTower('sprout', -10, 1.5);
+  const enemy = setEnemy(g, 'bone', 2);
+  enemy.speed = 0;
+  g.status = 'wave';
+  g.update(0.05);
+  const shot = g.projectiles[0];
+  assert.equal(shot.targetId, enemy.id);
+  assert.equal(enemy.hp, 13);
+  tower.cooldown = 99;
+  g.update(shot.maxTtl / 2);
+  assert.equal(enemy.hp, 13);
+  g.update(shot.maxTtl / 2 + 0.01);
+  assert.equal(enemy.hp, 8);
+  assert.equal(tower.damageDone, 5);
+  assert.equal(g.projectiles.length, 0);
+
+  tower.cooldown = 0;
+  g.update(0.05);
+  assert.equal(g.projectiles.length, 1);
+  g._damage(enemy, 8, tower.id);
+  run(g, 1);
+  assert.equal(g.projectiles.length, 0);
+  assert.equal(g.kills, 1);
+});
+
+test('Bramble projectile impacts trigger credited chain explosions', () => {
+  const g = new Game();
+  const tower = g.placeTower('boom', -10, 1.5);
+  const first = setEnemy(g, 'bone', 2);
+  const second = setEnemy(g, 'bone', 3);
+  first.speed = second.speed = 0;
+  g.status = 'wave';
+  g.update(0.05);
+  assert.equal(g.kills, 0);
+  run(g, 0.5);
+  assert.equal(g.kills, 2);
+  assert.equal(tower.kills, 2);
 });
 
 test('loss halts combat and final-wave completion produces a victory', () => {

@@ -14,6 +14,7 @@ export class UI {
     this.actions = actions;
     this.last = null;
     this.panelSignature = '';
+    this.selectedTowerId = null;
     this.rosterSignature = '';
     this.resultShown = '';
     this.modalType = null;
@@ -33,18 +34,17 @@ export class UI {
             <div class="field-toolbar"><button class="map-picker" id="map-button"><span class="tiny-label">YOUR GARDEN</span><span><strong id="map-name">Clover Bend</strong><span class="chevron">⌄</span></span></button><span class="field-note" id="field-note">A cozy place to make a stand.</span><div class="wave-count"><small>WAVE</small><strong id="hud-wave">0<span> / 20</span></strong></div></div>
             <div class="board-wrap"><div id="scene" aria-label="3D garden. Choose a gnome, then select an open patch to place it." role="application" tabindex="0"></div>
               <div class="loading-card" id="loading-card"><span class="loading-dot"></span><strong>Growing your garden…</strong><small id="loading-message">Unpacking the gnomes</small></div>
-              <div class="welcome-tip" id="welcome-tip"><button id="dismiss-tip" aria-label="Dismiss welcome tip">×</button><span class="eyebrow">SMALL GNOMES. MIGHTY DEFENDERS.</span><h1>The garden needs you.</h1><p>Pick a gnome, plant them beside the path, and send in the skeletons.</p><span class="tip-foot">Every good defense starts with a little Sprout.</span></div>
+              <div class="welcome-tip" id="welcome-tip"><button id="dismiss-tip" aria-label="Dismiss welcome tip">×</button><span class="eyebrow">SMALL GNOMES. MIGHTY DEFENDERS.</span><h1>The garden needs you.</h1><p>Pick a gnome, plant them beside the path, and send in the skeletons.</p><span class="tip-foot">Click a planted gnome to open its upgrades.</span></div>
               <div class="placement-banner" id="placement-banner" hidden><span id="placement-text"></span><button id="cancel-placement">Cancel <kbd>Esc</kbd></button></div>
               <div class="board-corner">KEEP THE GARDEN GROWING</div>
+              <section class="selection-panel floating-upgrades" id="selection-panel" aria-label="Selected defender" hidden></section>
             </div>
             <footer class="battle-controls"><div class="battle-status"><span class="status-dot" id="status-dot"></span><span><strong id="status-title">Make yourself at gnome.</strong><small id="status-detail">Place your defenders, then start the first wave.</small></span></div><div class="play-controls"><button class="control-button" id="sound-button" aria-label="Toggle sound" title="Toggle sound">Sound off</button><button class="control-button speed-button" id="speed-button" aria-label="Change game speed">1×</button><button class="control-button pause-button" id="pause-button" aria-label="Pause game" title="Pause game">Ⅱ</button><button class="start-button" id="start-button"><span>START WAVE</span><span class="play-triangle">▶</span></button></div></footer>
+            <section class="guardian-dock" aria-label="Choose a gnome to plant">
+              <div class="dock-heading"><h2>Garden guardians</h2><span>Choose a gnome to plant</span><button id="sidebar-help">Field guide ↗</button></div>
+              <div class="dock-slider"><button class="roster-arrow" id="roster-previous" aria-label="Previous gnomes">‹</button><div class="roster" id="roster" aria-label="Gnome collection"></div><button class="roster-arrow" id="roster-next" aria-label="Next gnomes">›</button></div>
+            </section>
           </section>
-          <aside class="sidebar" aria-label="Gnome defenders and upgrades">
-            <div class="sidebar-heading"><div><span class="eyebrow">YOUR TRUSTY CREW</span><h2>Garden guardians</h2></div><span class="roster-count">6</span></div>
-            <div class="roster" id="roster"></div>
-            <section class="selection-panel" id="selection-panel" aria-label="Selected defender"></section>
-            <div class="sidebar-bottom"><span class="small-leaf">✦</span><p>A little strategy.<br>A whole lot of gnome.</p><button id="sidebar-help">Field guide ↗</button></div>
-          </aside>
         </main>
         <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
         <dialog id="game-dialog" class="game-dialog"><div id="dialog-content"></div></dialog>
@@ -59,6 +59,12 @@ export class UI {
     byId('map-button', () => this.showMaps());
     byId('help-button', () => this.showHelp());
     byId('sidebar-help', () => this.showHelp());
+    const slideRoster = (direction) => {
+      const roster = document.getElementById('roster');
+      roster.scrollBy({ left: direction * Math.max(130, roster.clientWidth * .65), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+    };
+    byId('roster-previous', () => slideRoster(-1));
+    byId('roster-next', () => slideRoster(1));
     document.getElementById('roster').addEventListener('click', (event) => {
       const card = event.target.closest('[data-tower]');
       if (!card || card.disabled) return;
@@ -69,6 +75,7 @@ export class UI {
       const upgrade = event.target.closest('[data-upgrade]');
       if (upgrade && !upgrade.disabled) actions.onUpgrade?.(Number(upgrade.dataset.upgrade));
       if (event.target.closest('[data-sell]')) actions.onSell?.();
+      if (event.target.closest('[data-close-upgrades]')) actions.onCancel?.();
     });
     this.dialog = document.getElementById('game-dialog');
     this.dialog.addEventListener('click', (event) => { if (event.target === this.dialog) this.closeModal(); });
@@ -124,11 +131,35 @@ export class UI {
       }).join('');
     }
     const selected = game.towers.find((tower) => tower.id === state.selectedTowerId);
+    const selectedId = selected?.id ?? null;
+    const selectionChanged = selectedId !== this.selectedTowerId;
+    if (selectionChanged) {
+      this.selectedTowerId = selectedId;
+      const panel = document.getElementById('selection-panel');
+      panel.hidden = !selected;
+      if (selected) {
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-modal', 'false');
+        panel.setAttribute('aria-label', `Upgrade ${TOWERS[selected.type].name}`);
+        this.dismissTip();
+      } else {
+        panel.removeAttribute('role');
+        panel.removeAttribute('aria-modal');
+        panel.setAttribute('aria-label', 'Selected defender');
+        panel.style.removeProperty('left');
+        panel.style.removeProperty('top');
+        panel.style.removeProperty('max-height');
+      }
+    }
     const panelSignature = JSON.stringify([selected?.id, selected?.levels, selected?.kills, Math.floor(selected?.damageDone || 0), game.points, state.placingType]);
     if (panelSignature !== this.panelSignature) {
       this.panelSignature = panelSignature;
+      const panel = document.getElementById('selection-panel');
+      const scrollTop = selectionChanged ? 0 : panel.scrollTop;
       this.renderSelection(game, selected, state.placingType);
+      panel.scrollTop = scrollTop;
     }
+    if (selected) this.positionUpgrades(state.selectionAnchor);
     if (finished && this.resultShown !== `${map?.id}-${game.status}`) {
       this.resultShown = `${map?.id}-${game.status}`;
       this.showResult(game);
@@ -136,11 +167,24 @@ export class UI {
     if (!finished) this.resultShown = '';
   }
 
+  positionUpgrades(anchor) {
+    const board = document.querySelector('.board-wrap');
+    const panel = document.getElementById('selection-panel');
+    const margin = 12;
+    panel.style.maxHeight = `${Math.max(100, Math.min(430, board.clientHeight - margin * 2))}px`;
+    const width = panel.offsetWidth;
+    const height = panel.offsetHeight;
+    const x = Number.isFinite(anchor?.x) ? anchor.x : board.clientWidth / 2;
+    const y = Number.isFinite(anchor?.y) ? anchor.y : board.clientHeight / 2;
+    const beside = x + 22 + width <= board.clientWidth - margin ? x + 22 : x - width - 22;
+    panel.style.left = `${Math.max(margin, Math.min(beside, board.clientWidth - width - margin))}px`;
+    panel.style.top = `${Math.max(margin, Math.min(y - 72, board.clientHeight - height - margin))}px`;
+  }
+
   renderSelection(game, tower, placingType) {
     const container = document.getElementById('selection-panel');
     if (!tower) {
-      const def = TOWERS[placingType];
-      container.innerHTML = def ? `<div class="planting-info"><span class="eyebrow">READY TO PLANT</span><h3>${esc(def.name)}</h3><p>${esc(def.description)}</p><div class="instruction-note">Choose a clear patch of grass beside the path. A green ring means you're good to grow.</div></div>` : `<div class="empty-selection"><span class="selection-spark">✦</span><h3>Room to grow.</h3><p>Select a guardian above to plant it.<br>Select one in your garden to upgrade.</p><div class="path-rule"><strong>Choose your own specialty</strong><span>Spend points on up to 2 upgrade paths per gnome.</span></div></div>`;
+      container.replaceChildren();
       return;
     }
     const def = TOWERS[tower.type];
@@ -148,13 +192,14 @@ export class UI {
     const levels = tower.levels || def.paths.map(() => 0);
     const pathsUsed = levels.filter((level) => level > 0).length;
     const pathLimit = Math.min(2, def.paths.length);
-    container.innerHTML = `<div class="selected-heading">${portrait(tower.type)}<div><span class="eyebrow">IN YOUR GARDEN</span><h3>${esc(def.name)}</h3><small>${n(tower.kills)} vanquished · ${n(tower.damageDone)} damage</small></div></div><div class="tower-stats"><span><small>${tower.type === 'spore' ? 'POISON / SEC' : 'DAMAGE'}</small><strong>${n(tower.type === 'spore' ? stats.poisonDps : stats.damage)}</strong></span><span><small>RANGE</small><strong>${stats.range >= 40 ? '∞' : Number(stats.range || 0).toFixed(1)}</strong></span><span><small>PATHS</small><strong>${pathsUsed}<i> / ${pathLimit}</i></strong></span></div><div class="upgrade-heading"><strong>Make a little magic</strong><span>${icons.leaf}${n(game.points)} points</span></div><div class="upgrade-paths">${def.paths.map((path, index) => {
+    container.innerHTML = `<div class="selected-heading">${portrait(tower.type)}<div><span class="eyebrow">SELECTED GUARDIAN</span><h3>Upgrade ${esc(def.name)}</h3><small>${n(tower.kills)} vanquished · ${n(tower.damageDone)} damage</small></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">Close ×</button></div><div class="tower-stats"><span><small>${tower.type === 'spore' ? 'POISON / SEC' : 'DAMAGE'}</small><strong>${n(tower.type === 'spore' ? stats.poisonDps : stats.damage)}</strong></span><span><small>RANGE</small><strong>${stats.range >= 40 ? '∞' : Number(stats.range || 0).toFixed(1)}</strong></span><span><small>PATHS</small><strong>${pathsUsed}<i> / ${pathLimit}</i></strong></span></div><p class="upgrade-instruction">Defeat skeletons and clear waves for points. Choose an upgrade below.</p><div class="upgrade-heading"><strong>Choose an upgrade</strong><span>${icons.leaf}${n(game.points)} points</span></div><div class="upgrade-paths">${def.paths.map((path, index) => {
       const level = levels[index] || 0;
       const costs = path.costs || [8, 15, 25];
       const maxed = level >= costs.length;
       const locked = level === 0 && pathsUsed >= pathLimit;
       const cost = costs[level];
-      return `<button class="upgrade-path ${level > 0 ? 'invested' : ''} ${locked ? 'path-locked' : ''}" data-upgrade="${index}" ${maxed || locked || game.points < cost ? 'disabled' : ''} title="${esc(path.description)}"><span class="upgrade-copy"><strong>${esc(path.name)}</strong><small>${esc(path.description)}</small><span class="upgrade-pips">${costs.map((_, p) => `<i class="${p < level ? 'filled' : ''}"></i>`).join('')}</span></span><span class="upgrade-price">${locked ? 'Locked' : maxed ? 'MAX' : `${n(cost)}<small>POINTS</small>`}</span></button>`;
+      const reason = locked ? 'Two paths already chosen' : maxed ? 'Fully upgraded' : game.points < cost ? `Need ${n(cost - game.points)} more points` : `Unlock level ${level + 1}`;
+      return `<button class="upgrade-path ${level > 0 ? 'invested' : ''} ${locked ? 'path-locked' : ''}" data-upgrade="${index}" ${maxed || locked || game.points < cost ? 'disabled' : ''} title="${esc(path.description)} ${esc(reason)}"><span class="upgrade-copy"><strong>${esc(path.name)}</strong><small>${esc(path.description)}</small><span class="upgrade-pips">${costs.map((_, p) => `<i class="${p < level ? 'filled' : ''}"></i>`).join('')}</span><span class="upgrade-hint">${reason}</span></span><span class="upgrade-price">${locked ? 'Locked' : maxed ? 'MAX' : `${n(cost)}<small>POINTS</small>`}</span></button>`;
     }).join('')}</div><div class="selection-footer"><span>${def.paths.length > 2 ? 'Only 2 paths per guardian. Choose wisely!' : def.paths.length === 1 ? 'One path. A whole flurry of possibilities.' : 'Specialize in power, speed, or a little of both.'}</span><button class="sell-button" data-sell>Sell gnome</button></div>`;
   }
 

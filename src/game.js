@@ -31,6 +31,7 @@ export class Game {
     this.enemies = [];
     this.traps = [];
     this.effects = [];
+    this.projectiles = [];
     this.events = [];
     this.status = 'planning';
     this.kills = 0;
@@ -160,6 +161,36 @@ export class Game {
     if (this.effects.length > 180) this.effects.splice(0, this.effects.length - 180);
   }
 
+  _launch(tower, target, stats) {
+    const duration = clamp(distance(tower, target) / 14, 0.16, 1.8);
+    this.projectiles.push({
+      id: ++this._id, type: tower.type === 'stun' ? 'stun' : 'shot',
+      unitType: tower.type, sourceId: tower.id, targetId: target.id,
+      x: tower.x, z: tower.z, tx: target.x, tz: target.z,
+      ttl: duration, maxTtl: duration, color: TOWERS[tower.type].color,
+      damage: stats.damage, stunDuration: stats.stunDuration,
+    });
+  }
+
+  _advanceProjectiles(dt) {
+    const flying = this.projectiles;
+    this.projectiles = [];
+    for (const shot of flying) {
+      const target = this.enemies.find(e => e.id === shot.targetId && e.hp > 0);
+      if (!target) continue;
+      shot.tx = target.x;
+      shot.tz = target.z;
+      shot.ttl -= dt;
+      if (shot.ttl > 0) {
+        this.projectiles.push(shot);
+        continue;
+      }
+      this._damage(target, shot.damage, shot.sourceId);
+      if (target.hp > 0 && shot.stunDuration) target.stun = Math.max(target.stun, shot.stunDuration);
+      this._effect('impact', target, target, shot.color, 0.12);
+    }
+  }
+
   _unlock(type) {
     if (this.isUnlocked(type)) return;
     this.profile.unlocks.push(type);
@@ -209,7 +240,7 @@ export class Game {
     this.time += dt;
     for (const effect of this.effects) effect.ttl -= dt;
     this.effects = this.effects.filter(e => e.ttl > 0);
-    if (this.status !== 'wave') return;
+    if (this.status !== 'wave') { this.projectiles = []; return; }
     this._spawnTimer -= dt;
     if (this._queue.length && this._spawnTimer <= 0) {
       this._spawn(this._queue.shift());
@@ -225,6 +256,7 @@ export class Game {
         if (enemy.poison.remaining <= 0) enemy.poison = null;
       }
     }
+    this._advanceProjectiles(dt);
     for (const tower of this.towers) {
       tower.cooldown = Math.max(0, tower.cooldown - dt);
       if (tower.cooldown > 0) continue;
@@ -239,9 +271,7 @@ export class Game {
       tower.cooldown = stats.interval;
       for (const target of targets) {
         if (target.hp <= 0) continue;
-        this._effect(tower.type === 'stun' ? 'stun' : 'shot', tower, target, TOWERS[tower.type].color);
-        this._damage(target, stats.damage, tower.id);
-        if (target.hp > 0 && stats.stunDuration) target.stun = Math.max(target.stun, stats.stunDuration);
+        this._launch(tower, target, stats);
       }
     }
     for (const enemy of this.enemies) {
@@ -274,10 +304,12 @@ export class Game {
     this.enemies = this.enemies.filter(e => e.hp > 0);
     if (this.lives <= 0) {
       this.status = 'lost';
+      this.projectiles = [];
       this._event('defeat', 'The garden needs another try. Your character unlocks are saved.');
       return;
     }
     if (!this._queue.length && !this.enemies.length) {
+      this.projectiles = [];
       this.gold += 65 + this.wave * 5;
       this.points += 6 + Math.floor(this.wave / 2);
       if (this.wave === 15) this._unlock('multi');

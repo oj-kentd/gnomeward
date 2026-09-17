@@ -17,9 +17,9 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 
 ## How to play
 
-1. Choose a gnome and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold.
-2. Start a wave. Skeleton colors indicate different health and movement speeds. Gnomes attack automatically.
-3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome to upgrade it.
+1. Choose a gnome from the sliding avatar row below the map and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold.
+2. Start a wave. Skeleton colors indicate different health and movement speeds. Gnomes attack automatically with small traveling projectiles. Damage, stuns, and on-kill explosions trigger on impact.
+3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome (including its hat or body) to open a small upgrade popup beside that gnome. Buttons explain how many more points you need.
 4. Each standard gnome has four paths with three upgrade levels. One individual gnome can invest in only two different paths. Choose carefully: spent upgrade points are not refunded on selling.
 5. Survive 20 waves. Bosses appear at the end of waves 10 and 20. Unlocks persist in this browser and carry into other maps and replays.
 

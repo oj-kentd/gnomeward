@@ -17,3 +17,53 @@
 
 @media(min-width:701px){.game-main{height:calc(100dvh - 122px);min-height:570px}.sidebar{min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#698052 transparent}.sidebar>*{flex-shrink:0}.board-wrap{min-height:350px}.toast-stack{bottom:105px}}
 @media(max-width:700px){.board-wrap{height:clamp(260px,65vw,460px);min-height:260px}.welcome-tip{width:245px;bottom:14px;padding:14px 18px}.welcome-tip .tip-foot{display:none}}
+
+/* Nonmodal upgrades stay beside the selected guardian, inside the garden. */
+.upgrade-instruction{font-size:10px;line-height:1.6;color:#b9cba7;margin:0 0 13px}
+.upgrade-hint{display:block;margin-top:6px;color:#d8dcb1;font-size:8px;font-weight:600;line-height:1.3}
+.upgrade-path:disabled .upgrade-hint{color:#afbf9a}
+.floating-upgrades{position:absolute;z-index:8;width:280px;max-width:calc(100% - 24px);padding:12px;border:1px solid #c1d49699;border-radius:12px;background:#1e3b2ef7;box-shadow:0 10px 35px #092c2366;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#79955d transparent}
+.floating-upgrades .selected-heading{gap:6px;position:relative;padding-right:37px}
+.floating-upgrades .selected-heading>.portrait{height:45px;width:35px}
+.floating-upgrades .selected-heading h3{font-size:19px;letter-spacing:-.5px;margin:2px 0}
+.floating-upgrades .selected-heading .eyebrow{font-size:6px;letter-spacing:1px}
+.floating-upgrades .selected-heading small{font-size:7px}
+.upgrade-close{position:absolute;right:0;top:0;padding:5px 4px;border-radius:4px;background:#3a573a;color:#dbe7bd;font-size:8px;white-space:nowrap}
+.upgrade-close:hover{background:#547447}
+.floating-upgrades .tower-stats{padding:7px;margin:9px 0}
+.floating-upgrades .tower-stats small{font-size:6px}.floating-upgrades .tower-stats strong{font-size:13px}
+.floating-upgrades .upgrade-instruction{font-size:8px;line-height:1.5;margin-bottom:9px}
+.floating-upgrades .upgrade-heading{margin-bottom:7px}.floating-upgrades .upgrade-heading>strong{font-size:10px}.floating-upgrades .upgrade-heading>span{font-size:9px}
+.floating-upgrades .upgrade-paths{display:flex;flex-direction:column;gap:5px}
+.floating-upgrades .upgrade-path{padding:7px 8px;gap:8px}
+.floating-upgrades .upgrade-copy>strong{font-size:10px}.floating-upgrades .upgrade-copy>small{font-size:7px;line-height:1.3;margin:3px 0 4px}
+.floating-upgrades .upgrade-hint{font-size:7px;margin-top:4px}.floating-upgrades .upgrade-price{font-size:13px}.floating-upgrades .upgrade-price>small{font-size:5px}
+.floating-upgrades .selection-footer{margin-top:9px}.floating-upgrades .selection-footer>span{font-size:7px;max-width:155px}.floating-upgrades .sell-button{font-size:8px;padding:6px 8px}
+
+/* Full-width battlefield with a sliding collection below the map. */
+.game-main{display:block;height:calc(100dvh - 122px);min-height:590px}
+.field{height:100%}.board-wrap{min-height:300px}
+.guardian-dock{flex-shrink:0;padding:10px 14px 11px;background:#1b382c;border-top:1px solid var(--line)}
+.dock-heading{display:flex;align-items:center;gap:13px;padding:0 35px 7px}
+.dock-heading h2{font-family:var(--serif);font-weight:500;font-size:17px;letter-spacing:-.3px}
+.dock-heading>span{font-size:9px;color:#a7bc92}.dock-heading>button{margin-left:auto;padding:0;background:none;color:#c3d69c;font-size:9px}
+.dock-slider{display:flex;align-items:center;gap:8px;min-width:0}
+.roster-arrow{height:48px;width:25px;flex-shrink:0;border:1px solid #57734a;border-radius:7px;background:#2b4933;color:#d4dfb4;font-size:27px;line-height:1}
+.roster-arrow:hover{background:#43623e}
+.guardian-dock .roster{display:flex;flex:1;gap:9px;min-width:0;padding:3px 1px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;scrollbar-width:none;justify-content:safe center;overscroll-behavior-x:contain}
+.guardian-dock .roster::-webkit-scrollbar{display:none}
+.guardian-dock .tower-card{flex:0 0 122px;min-height:91px;height:91px;scroll-snap-align:start;border-radius:8px}
+.guardian-dock .tower-card:hover:not(:disabled){transform:none}
+.guardian-dock .tower-art{height:48px;flex-shrink:0}
+.guardian-dock .tower-art .portrait{height:64px;width:78px;margin-top:0}
+.guardian-dock .tower-info{padding:2px 5px 6px}
+.guardian-dock .tower-info>strong{font-size:11px;line-height:1.2}
+.guardian-dock .tower-info>small{display:none}
+.guardian-dock .tower-cost{font-size:10px;line-height:1.2;margin-top:3px}
+.guardian-dock .locked .tower-cost{font-size:8px}
+.guardian-dock .lock-badge{font-size:5px;right:4px;top:4px;padding:2px 3px}
+.upgrade-close{min-height:24px;padding:5px;font-size:9px}
+@media(max-width:1170px) and (min-width:901px){.game-main{height:calc(100dvh - 104px)}}
+@media(max-width:900px) and (min-width:701px){.game-main{height:calc(100dvh - 92px)}.guardian-dock .tower-card{flex-basis:112px}}
+@media(min-width:1550px){.game-main{height:calc(100dvh - 128px)}}
+@media(max-width:700px){.game-main{height:auto;min-height:0}.field{height:auto}.board-wrap{height:clamp(260px,65vw,460px);min-height:260px}.guardian-dock{padding:9px 8px 10px}.dock-heading{padding:0 4px 6px;gap:9px}.dock-heading h2{font-size:15px}.dock-heading>span{font-size:7px}.dock-heading>button{font-size:8px}.dock-slider{gap:5px}.roster-arrow{width:23px;height:42px;font-size:24px}.guardian-dock .roster{gap:7px}.guardian-dock .tower-card{flex-basis:105px}.guardian-dock .tower-info>strong{font-size:10px}}

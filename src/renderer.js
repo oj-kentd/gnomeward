@@ -26,7 +26,15 @@ export class GardenRenderer {
     this.observer=new ResizeObserver(()=>this.resize()); this.observer.observe(container);
     this.renderer.domElement.addEventListener('pointermove',e=>{const p=this.pick(e);if(p)this.handlers.onHover(p.x,p.z)});
     this.renderer.domElement.addEventListener('pointerleave',()=>{if(this.ghost)this.ghost.visible=false;});
-    this.renderer.domElement.addEventListener('pointerdown',e=>{if(e.button!==0)return;const p=this.pick(e);if(p)this.handlers.onClick(p.x,p.z)});
+    this.renderer.domElement.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      const point = this.pick(e);
+      if (!point) return;
+      const towers = [...this.entities].filter(([key]) => key.startsWith('t')).map(([, object]) => object);
+      let hit = this.raycaster.intersectObjects(towers, true)[0]?.object;
+      while (hit && hit.userData.towerId === undefined) hit = hit.parent;
+      this.handlers.onClick(point.x, point.z, hit?.userData.towerId);
+    });
     this.renderer.domElement.addEventListener('contextmenu',e=>{e.preventDefault();this.handlers.onCancel()});
     this.resize();
   }
@@ -78,11 +86,43 @@ export class GardenRenderer {
   showRange(x,z,range,valid=true){this.range.position.set(x,.13,z);this.range.scale.set(Math.min(range,35),1,Math.min(range,35));this.range.visible=true;this.range.traverse(o=>{if(o.isMesh)o.material.color.set(valid?0xd5f395:0xf3817e)})}
   render(game,state,time) {
     const seen=new Set();
-    for(const t of game.towers){const key='t'+t.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone('gnome-'+t.type);this.actors.add(o);this.entities.set(key,o)}o.position.set(t.x,.07,t.z);const nearest=game.enemies.reduce((best,e)=>!best||Math.hypot(e.x-t.x,e.z-t.z)<Math.hypot(best.x-t.x,best.z-t.z)?e:best,null);if(nearest)o.rotation.y=Math.atan2(nearest.x-t.x,nearest.z-t.z);o.scale.setScalar(1+Math.min(t.levels.reduce((a,b)=>a+b,0),6)*.035);}
+    for(const t of game.towers){const key='t'+t.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone('gnome-'+t.type);o.userData.towerId=t.id;this.actors.add(o);this.entities.set(key,o)}o.position.set(t.x,.07,t.z);const nearest=game.enemies.reduce((best,e)=>!best||Math.hypot(e.x-t.x,e.z-t.z)<Math.hypot(best.x-t.x,best.z-t.z)?e:best,null);if(nearest)o.rotation.y=Math.atan2(nearest.x-t.x,nearest.z-t.z);o.scale.setScalar(1+Math.min(t.levels.reduce((a,b)=>a+b,0),6)*.035);}
     for(const e of game.enemies){const key='e'+e.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone(e.boss||e.isBoss?'skeleton-boss':'skeleton');const color=e.color||ENEMIES[e.type]?.color; if(color)o.traverse(m=>{if(!m.isMesh)return;const tint=mat=>{if(!/cream|purple|bone|skull|rib/i.test(mat.name))return mat;const k=mat.uuid+color;if(!this.tintMaterials.has(k)){const copy=mat.clone();copy.color.set(color);this.tintMaterials.set(k,copy)}return this.tintMaterials.get(k)};m.material=Array.isArray(m.material)?m.material.map(tint):tint(m.material)});this.actors.add(o);this.entities.set(key,o);const hp=this.clone('path',0xd5f395);hp.name='health';hp.scale.set(.8,.055,.065);hp.position.set(0,1.65,0);o.add(hp);}o.position.set(e.x,.1+Math.sin(time*10+e.id)*.035,e.z);if(o.userData.lastX!==undefined){const dx=e.x-o.userData.lastX,dz=e.z-o.userData.lastZ;if(Math.abs(dx)+Math.abs(dz)>.001)o.rotation.y=Math.atan2(dx,dz)}o.userData.lastX=e.x;o.userData.lastZ=e.z;const hp=o.getObjectByName('health');if(hp){hp.scale.x=.8*Math.max(.01,e.hp/e.maxHp);hp.visible=e.hp<e.maxHp;}if(e.stun>0)o.rotation.z=Math.sin(time*16)*.05;else o.rotation.z=0;}
     for(const [key,o]of this.entities)if(!seen.has(key)){this.actors.remove(o);this.entities.delete(key)}
     const ts=new Set();for(const trap of game.traps){ts.add(trap.id);let o=this.traps.get(trap.id);if(!o){o=this.clone('mushroom');o.scale.setScalar(.42);this.actors.add(o);this.traps.set(trap.id,o)}o.position.set(trap.x,.12,trap.z)}for(const[id,o]of this.traps)if(!ts.has(id)){this.actors.remove(o);this.traps.delete(id)}
-    const fs=new Set();for(const effect of game.effects){fs.add(effect.id);let o=this.fx.get(effect.id);if(!o){o=this.clone(effect.type==='explosion'?'explosion':'projectile',effect.color|| (effect.type==='poison'?0xb4dd56:effect.type==='stun'?0xff70ae:0xffd37a));this.actors.add(o);this.fx.set(effect.id,o)}o.position.set(effect.x,.65,effect.z);if(effect.type==='explosion'){o.scale.setScalar((effect.radius||1.5)*Math.max(.1,1-effect.ttl/.5));}else if(effect.type==='poison'){o.position.y=.4;o.scale.setScalar(.26);}else if(effect.tx!==undefined){const dx=effect.tx-effect.x,dz=effect.tz-effect.z;o.position.set((effect.x+effect.tx)/2,.7,(effect.z+effect.tz)/2);o.scale.set(.045,.045,Math.hypot(dx,dz)*.5);o.rotation.y=Math.atan2(dx,dz);}else{o.scale.setScalar(.16)}}for(const[id,o]of this.fx)if(!fs.has(id)){this.actors.remove(o);this.fx.delete(id)}
+    const fs = new Set();
+    for (const effect of [...game.effects, ...game.projectiles]) {
+      fs.add(effect.id);
+      let object = this.fx.get(effect.id);
+      if (!object) {
+        object = this.clone(effect.type === 'explosion' ? 'explosion' : 'projectile', effect.color);
+        this.actors.add(object);
+        this.fx.set(effect.id, object);
+      }
+      const progress = THREE.MathUtils.clamp(1 - effect.ttl / effect.maxTtl, 0, 1);
+      object.position.set(effect.x, .65, effect.z);
+      if (effect.type === 'explosion') {
+        object.scale.setScalar((effect.radius || 1.5) * Math.max(.1, progress));
+      } else if (effect.type === 'poison') {
+        object.position.y = .4;
+        object.scale.setScalar(.26);
+      } else if (effect.type === 'impact') {
+        object.scale.setScalar(.08 + .18 * (1 - progress));
+      } else {
+        // A compact Blender-made pellet travels from the weapon to its moving target.
+        const target = game.enemies.find(enemy => enemy.id === effect.targetId);
+        const tx = target?.x ?? effect.tx, tz = target?.z ?? effect.tz;
+        const dx = tx - effect.x, dz = tz - effect.z;
+        const arc = effect.unitType === 'boom' ? .45 : effect.unitType === 'sprout' ? .2 : .08;
+        object.position.set(effect.x + dx * progress, .75 + Math.sin(progress * Math.PI) * arc, effect.z + dz * progress);
+        const radius = effect.type === 'stun' ? .17 : effect.unitType === 'boom' ? .15 : .11;
+        object.scale.setScalar(radius);
+        object.rotation.set(progress * Math.PI * 4, Math.atan2(dx, dz), 0);
+      }
+    }
+    for (const [id, object] of this.fx) {
+      if (!fs.has(id)) { this.actors.remove(object); this.fx.delete(id); }
+    }
     if(!state.placingType){if(this.ghost)this.ghost.visible=false;const t=game.towers.find(t=>t.id===state.selectedTowerId);if(t)this.showRange(t.x,t.z,game.getStats(t).range);else this.range.visible=false;}
     this.renderer.render(this.scene,this.camera);
   }
