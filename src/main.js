@@ -40,6 +40,7 @@ function choose(type){if(!ready)return;if(!game.isUnlocked(type)){ui.toast(TOWER
 function cycleSpeed(){state.speed=state.speed===1?2:state.speed===2?3:1;}
 function start(){
   if(!ready)return;
+  if(game.status==='won'){ui.showResult(game);return;}
   if(game.status==='planning'){
     if(game.startWave()!==false){state.paused=false;state.autoCountdown=null;beep(700,.16);}
   }else if(game.status==='wave'){
@@ -57,6 +58,7 @@ function targetNext(){
 function newGarden(mapId){if(!ready)return;save();profile=game.profile;game=new Game(mapId,profile);Object.assign(state,{selectedTowerId:null,placingType:null,paused:false,autoCountdown:null});world?.setMap(game.map,MAPS.findIndex(m=>m.id===mapId));refreshUI();}
 const ui=new UI({
   onChooseTower:choose,onStartWave:start,
+  onContinueEndless:()=>{if(game.continueEndless()){Object.assign(state,{paused:false,autoCountdown:null,placingType:null,selectedTowerId:null});world?.setGhost(null);save();refreshUI();}},
   onPause:()=>{state.paused=!state.paused;refreshUI()},
   onSpeed:()=>{cycleSpeed();refreshUI()},
   onAuto:()=>{state.autoStart=!state.autoStart;state.autoCountdown=null;refreshUI()},
@@ -102,7 +104,7 @@ function frame(now){
   const elapsed=(now-last)/1000,dt=Math.min(elapsed,.08);last=now;
   if(!ready)return;
   const active=!state.paused&&!document.hidden&&!document.querySelector('dialog[open]');
-  if(!state.autoStart||game.status!=='planning'||game.wave===0||game.wave>=20){
+  if(!state.autoStart||game.status!=='planning'||game.wave===0||(!game.endless&&game.wave>=game.maxWaves)){
     state.autoCountdown=null;
   }else{
     state.autoCountdown??=3;
@@ -120,11 +122,11 @@ function frame(now){
     if(event.type==='summoned'){state.selectedTowerId=event.towerId;state.placingType=null;refreshUI();}
     if(event.type==='secret-found'||event.type==='summoned')save();
     if(['unlock','wave-complete','victory'].includes(event.type)){save();beep(920,.2);}
-    else if(event.type==='defeat')beep(140,.4);
+    else if(event.type==='defeat'){save();beep(140,.4);}
   }
   world.render(game,state,now/1000);
   uiElapsed+=dt;if(uiElapsed>.15){refreshUI();uiElapsed=0;}
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},version:'0.1.8'};
+window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},version:'0.1.9'};

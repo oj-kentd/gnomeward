@@ -73,3 +73,10 @@
 .helper-counts{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #b3bda055;padding-top:6px;margin-top:6px;font-size:11px}.helper-counts b{color:#4b7444;font-size:13px}
 
 .cottage-clue{padding:22px 15px;margin:20px 0;background:#ecd6a8;border:1px solid #c6a370;border-radius:10px;text-align:center}.cottage-clue>p{max-width:470px;margin:auto;font-size:20px;line-height:1.7;color:#806035}.cottage-clue>small{display:block;margin-top:15px;color:#aa8250;font-size:12px;font-style:italic}
+
+/* Endless records stay within the existing HUD and map picker. */
+.wave-count .round-best{font-size:9px;letter-spacing:.2px;margin-top:3px;color:#85623a}
+.map-best{font-size:10px;font-weight:800;color:#637730;margin:0 0 9px}
+.result-card .result-best{padding:10px 14px;margin:0 auto 18px;border:1px solid #c4aa76;border-radius:9px;background:#e8d6a2;color:#735229;font-size:14px}
+.result-best small{display:block;font-size:11px;color:#937447;margin-top:3px}
+@media(max-width:700px){.result-stats{gap:18px}.result-stats small{font-size:10px}.result-card{padding:10px 0}.result-card [data-continue-endless]{padding:12px 10px;font-size:12px}}

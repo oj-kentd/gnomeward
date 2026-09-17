@@ -3,8 +3,16 @@ import { MAPS, TOWERS, ENEMIES, SECRETS, cottagePosition, cottageDoorPosition } 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
 
-export function wavePlan(wave) {
-  if (!Number.isInteger(wave) || wave < 1 || wave > 20) return [];
+export function wavePlan(wave, endless = false) {
+  if (!Number.isSafeInteger(wave) || wave < 1 || (!endless && wave > 20)) return [];
+  if (wave > 20) {
+    // Bound the crowd size for browser performance; enemy strength keeps growing.
+    const extra = wave - 20;
+    const roster = wave < 30 ? ['blue', 'red', 'purple', 'gold'] : wave < 50 ? ['red', 'purple', 'gold'] : ['purple', 'gold'];
+    const result = Array.from({ length: Math.min(180, 49 + extra * 3) }, (_, i) => roster[(i + wave) % roster.length]);
+    if (wave % 5 === 0) result.push(...Array(Math.min(6, 1 + Math.floor(extra / 20))).fill(wave % 10 === 0 ? 'king' : 'boss'));
+    return result;
+  }
   const roster = ['bone'];
   if (wave >= 3) roster.push('green');
   if (wave >= 5) roster.push('blue');
@@ -23,7 +31,13 @@ export class Game {
     this.map = MAPS.find(m => m.id === mapId) || MAPS[0];
     this.profile = profile && typeof profile === 'object' ? profile : {};
     if (!Array.isArray(this.profile.unlocks)) this.profile.unlocks = [];
+    const records = this.profile.bestRounds;
+    this.profile.bestRounds = Object.fromEntries(MAPS.map(map => [map.id,
+      Number.isSafeInteger(records?.[map.id]) && records[map.id] > 0 ? records[map.id] : 0]));
     this.wave = 0;
+    this.completedWaves = 0;
+    this.maxWaves = 20;
+    this.endless = false;
     this.lives = 100;
     this.gold = 650;
     this.points = 0;
@@ -259,31 +273,43 @@ export class Game {
     return { shots: 1, poisonDps: 0, poisonDuration: 0, poisonSpreadRadius: 0, poisonSpreadInterval: 0, poisonSpreadTargets: 0, poisonSpreadMultiplier: 0, slowDuration: 0, slowMultiplier: 1, explosionDamage: 0, explosionRadius: 0, ...stats, attackSpeed: 1 / stats.interval };
   }
 
+  get bestRound() { return this.profile.bestRounds[this.map.id] || 0; }
+
+  continueEndless() {
+    if (this.status !== 'won' || this.wave !== this.maxWaves || this.endless || this.lives <= 0) return false;
+    this.endless = true;
+    this.status = 'planning';
+    this._event('endless-start', 'Endless mode! The skeletons grow stronger every round.');
+    return true;
+  }
+
   nextWaveInfo() {
-    const wave = Math.min(20, this.wave + 1);
-    const plan = wavePlan(wave);
+    const wave = this.endless ? this.wave + 1 : Math.min(this.maxWaves, this.wave + 1);
+    const plan = wavePlan(wave, this.endless);
     const counts = {};
     for (const type of plan) counts[type] = (counts[type] || 0) + 1;
-    const boss = wave === 10 || wave === 20;
-    const description = `${plan.length} skeletons incoming${boss ? `, including ${ENEMIES[wave === 10 ? 'boss' : 'king'].name}` : ''}. Prepare your garden!`;
+    const bossType = plan.find(type => ENEMIES[type].boss);
+    const boss = !!bossType;
+    const description = `${plan.length} skeletons incoming${boss ? `, including ${ENEMIES[bossType].name}` : ''}. Prepare your garden!`;
     return { wave, count: plan.length, boss, types: [...new Set(plan)], counts, description };
   }
 
   startWave() {
-    if (this.status !== 'planning' || this.wave >= 20) return false;
+    if (this.status !== 'planning' || (!this.endless && this.wave >= this.maxWaves)) return false;
     this.wave++;
     this.status = 'wave';
-    this._queue = wavePlan(this.wave);
+    this._queue = wavePlan(this.wave, this.endless);
     this._spawnTimer = 0;
-    this._event('wave-start', `Wave ${this.wave}${this.wave % 10 === 0 ? ' · Boss incoming!' : ' has begun.'}`, { wave: this.wave });
+    this._event('wave-start', `Wave ${this.wave}${this._queue.some(type => ENEMIES[type].boss) ? ' · Boss incoming!' : ' has begun.'}`, { wave: this.wave });
     return true;
   }
 
   _spawn(type, routeIndex = this._spawnCount++ % this.routes.length) {
     if (!Number.isInteger(routeIndex) || !this.routes[routeIndex]) routeIndex = 0;
     const spec = ENEMIES[type];
-    const hp = spec.hp * (spec.boss ? 1 : 1 + Math.max(0, this.wave - 5) * 0.075);
-    const enemy = { id: ++this._id, type, routeIndex, ...this.pointAt(0, routeIndex), hp, maxHp: hp, progress: 0, slowRemaining: 0, slowMultiplier: 1, capturedBy: null, poison: null, speed: spec.speed, boss: !!spec.boss, isBoss: !!spec.boss, color: spec.color };
+    const extra = this.endless ? Math.max(0, this.wave - this.maxWaves) : 0;
+    const hp = spec.hp * (spec.boss ? 1 : 1 + Math.max(0, Math.min(this.wave, 20) - 5) * 0.075) * (1 + extra * 0.14) ** 2;
+    const enemy = { id: ++this._id, type, routeIndex, ...this.pointAt(0, routeIndex), hp, maxHp: hp, progress: 0, slowRemaining: 0, slowMultiplier: 1, capturedBy: null, poison: null, speed: spec.speed * (1 + extra * 0.018), attackDamage: spec.attackDamage * (1 + extra * 0.08), boss: !!spec.boss, isBoss: !!spec.boss, color: spec.color };
     this.enemies.push(enemy);
     return enemy;
   }
@@ -587,9 +613,9 @@ export class Game {
     const contactTime = travel > 1e-8 ? dt * clamp(Math.abs(nextProgress - contact) / travel, 0, 1) : dt;
     if (ally) {
       enemy.allyTargetId = ally.id;
-      ally.hp = Math.max(0, ally.hp - ENEMIES[enemy.type].attackDamage * contactTime);
+      ally.hp = Math.max(0, ally.hp - (enemy.attackDamage ?? ENEMIES[enemy.type].attackDamage) * contactTime);
     } else {
-      barrier.hp -= ENEMIES[enemy.type].attackDamage * Math.min(contactTime, barrier.ttl);
+      barrier.hp -= (enemy.attackDamage ?? ENEMIES[enemy.type].attackDamage) * Math.min(contactTime, barrier.ttl);
       if (barrier.hp <= 0) this._destroyBarrier(barrier);
     }
   }
@@ -603,7 +629,7 @@ export class Game {
     this._spawnTimer -= dt;
     if (this._queue.length && this._spawnTimer <= 0) {
       this._spawn(this._queue.shift());
-      this._spawnTimer += Math.max(0.32, 0.85 - this.wave * 0.018);
+      this._spawnTimer += Math.max(this.endless ? 0.18 : 0.32, 0.85 - this.wave * 0.018);
     }
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0) continue;
@@ -694,7 +720,7 @@ export class Game {
       this.holes = [];
       this.barriers = [];
       for (const enemy of this.enemies) enemy.capturedBy = null;
-      this._event('defeat', 'The garden needs another try. Your character unlocks are saved.');
+      this._event('defeat', `You survived ${this.completedWaves} rounds. Your best for this garden is ${this.bestRound}.`);
       return;
     }
     if (!this._queue.length && !this.enemies.length) {
@@ -702,12 +728,14 @@ export class Game {
       this.projectiles = [];
       this.holes = [];
       this.barriers = [];
+      this.completedWaves = this.wave;
+      this.profile.bestRounds[this.map.id] = Math.max(this.bestRound, this.completedWaves);
       this.gold += 65 + this.wave * 5;
       this.points += 6 + Math.floor(this.wave / 2);
       if (this.wave === 15) this._unlock('multi');
       this._event('wave-complete', `Wave ${this.wave} cleared! +${65 + this.wave * 5} gold, +${6 + Math.floor(this.wave / 2)} points.`, { wave: this.wave });
-      this.status = this.wave === 20 ? 'won' : 'planning';
-      if (this.status === 'won') this._event('victory', 'The garden is safe! Try another map with your new friends.');
+      this.status = !this.endless && this.wave === this.maxWaves ? 'won' : 'planning';
+      if (this.status === 'won') this._event('victory', 'The garden is safe! Continue in endless mode or try another garden.');
     }
   }
 

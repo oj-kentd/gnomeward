@@ -1,6 +1,6 @@
 {
   "name": "gnomeward",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,8 @@
     "test:secrets": "node scripts/secrets-smoke.mjs",
     "test:maps": "node scripts/maps-smoke.mjs",
     "test:poison": "node scripts/poison-smoke.mjs",
-    "test:necro": "node scripts/necro-smoke.mjs"
+    "test:necro": "node scripts/necro-smoke.mjs",
+    "test:endless": "node scripts/endless-smoke.mjs"
   },
   "dependencies": {
     "three": "^0.183.0"

@@ -22,6 +22,7 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome (including its hat or body) to open a small upgrade popup beside that gnome. The popup shows tier progress, the next stat changes, and how many more points you need.
 4. Each standard gnome has four paths with three upgrade levels. One individual gnome can invest in only two different paths. Choose carefully: spent upgrade points are not refunded on selling.
 5. Survive 20 waves. Bosses appear at the end of waves 10 and 20. Unlocks persist in this browser and carry into other maps and replays.
+6. After victory, choose **Continue in endless mode** to keep your defense, upgrades, gold, points, and remaining lives. Rounds keep growing tougher until you lose. Your highest fully cleared round is saved per garden in this browser and shown on the results screen and map cards. Losing during round 25 records round 24. Auto rounds also works in endless mode; victory always waits for your choice.
 
 | Gnome | Ability | Paths | Unlock |
 | --- | --- | --- | --- |
@@ -30,7 +31,7 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 | Bramble | Enemies it defeats explode and can cause chain reactions | Power, blast, speed, range; choose two | Starting crew |
 | Poppy | Pink gun slows enemies by 50% for 2 seconds; repeated hits refresh without stacking | Slow duration, speed, power, range; choose two | Defeat wave 10 boss |
 | Tumble | Attacks multiple enemies; its single path raises damage, frequency, and targets | One path | Clear wave 15 |
-| Aster | Low initial damage and full-map targeting | Damage and shooting speed | Defeat wave 20 boss; usable in replays |
+| Aster | Low initial damage and full-map targeting | Damage and shooting speed | Defeat wave 20 boss; usable in endless mode and replays |
 | Orbit | Pulls skeletons backward with temporary black holes; Event Horizon tier 3 captures them and deals 65 damage/second | Power, duration, radius, recovery; choose two | Three hidden moonstones in Mossy Meadow |
 | Prism | Raises breakable path barriers; Shattering Light adds explosions when enemies destroy them | Durability, blast, speed, range; choose two | Three special crystals in Crystal Quarry; first summon is free |
 | Morrow | Spell kills summon reborn gnomes from the cottage to march up the trail and battle skeletons | Reborn Champions, Soul Procession, Gravecraft; choose two of three | A hidden puzzle in Pumpkin Hollow |
@@ -40,6 +41,10 @@ The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 7
 **Controls:** Click/tap to select and place; Escape or right-click cancels; Space or the green play button starts the next wave, resumes a paused wave, or cycles speed during combat; P pauses; 1–9 select gnomes. Speed cycles 1× / 2× / 3×. Auto rounds optionally starts the next wave after a three-second building break. Pause and open menus freeze that countdown. The first wave always waits for you. Open **☰ → Music**, or the **♪** button on desktop, to choose **Rock**, **Chill**, or **Jazz**. Each is an original 8-bar instrumental loop, with an independent volume slider and Off option. Music stays at its normal tempo at every game speed and pauses when the tab is hidden. Your genre, volume, and effects preference are saved in this browser; saved music resumes after your first interaction. Sound effects have their own Effects switch. No sign-in or server is needed.
 
 Morel’s **Wild Garden** path unlocks contagious poison at tier 1. A directly poisoned skeleton can infect 1 / 2 / 3 nearby skeletons at tiers 1 / 2 / 3, one per second, over a wider radius each tier. Spread poison deals 65% of the original damage and inherits its remaining duration. Secondary infections cannot spread again or refresh an existing infection. Small green spores show each transmission.
+
+## Endless mode
+
+Rounds after 20 increase enemy health, movement speed, and damage to reborn helpers and crystal barriers. Stronger skeleton colors become more common, with returning bosses every five rounds and Skeleton Kings every ten. Crowd size is bounded for browser performance while enemy strength keeps increasing. Clearing rounds still awards gold and upgrade points. Records save after every clear, survive restarts and reloads, and never decrease; the active run itself is not saved.
 
 ## Hidden garden friends
 
@@ -97,6 +102,7 @@ npm run test:secrets
 npm run test:maps
 npm run test:poison
 npm run test:necro
+npm run test:endless
 ```
 
 The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all six maps, and checks the phone layout and console errors. The music browser check exercises all three decoded loops, output levels, independent effects/volume, tab suspension, saved preferences and phone settings. Additional browser checks verify hidden unlocks and combat effects, all six maps and entrance markers, Morel’s spread upgrades and animated spores, and Morrow’s hidden unlock, cottage departures, and melee helpers. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
