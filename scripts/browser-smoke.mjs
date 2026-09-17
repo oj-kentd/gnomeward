@@ -21,6 +21,10 @@ async function place(type,x,z){await page.locator(`[data-tower="${type}"]`).clic
 await place('sprout',-5,2);await place('spore',-5,-2);await place('boom',-3,1);await place('sprout',1,1);
 await page.locator('#start-button').click();await page.waitForTimeout(1800);await page.screenshot({path:'playtest-results/playing.png'});
 const first=await page.evaluate(()=>({towers:gnomeward.game.towers.length,gold:gnomeward.game.gold,status:gnomeward.game.status,enemies:gnomeward.game.enemies.length}));
+const speedBefore=await page.evaluate(()=>gnomeward.state.speed);
+const waveBefore=await page.evaluate(()=>gnomeward.game.wave);
+await page.locator('#start-button').click();
+if(await page.evaluate(()=>gnomeward.state.speed)===speedBefore||await page.evaluate(()=>gnomeward.game.wave)!==waveBefore)throw Error('Active play button must change speed without starting another wave');
 await page.locator('#pause-button').click();const t=await page.evaluate(()=>gnomeward.game.time);await page.waitForTimeout(300);if(await page.evaluate(()=>gnomeward.game.time)!==t)throw Error('pause failed');
 const projectileCheck = await page.evaluate(() => {
   const g = gnomeward.game, world = gnomeward.renderer;
@@ -45,10 +49,38 @@ const upgradesVisible = await page.evaluate(() => {
   return panel.top >= board.top && panel.bottom <= board.bottom + 1 && panel.left >= board.left && panel.right <= board.right + 1 && document.getElementById('selection-panel').parentElement.classList.contains('board-wrap');
 });
 if (!upgradesVisible) throw Error('Selected upgrades must be visible without scrolling');
+await page.locator('[data-targeting]').click();
+if(await page.evaluate(()=>gnomeward.game.towers[0].targeting)!=='last')throw Error('Targeting must cycle from First to Last');
 await page.locator('[data-upgrade="0"]').click();await page.locator('[data-upgrade="1"]').click();if(!await page.locator('[data-upgrade="2"]').isDisabled())throw Error('third path not locked');
 await page.screenshot({path:'playtest-results/upgrades.png'});
 const combat=await page.evaluate(()=>({wave:gnomeward.game.wave,lives:gnomeward.game.lives,points:gnomeward.game.points,kills:gnomeward.game.kills,levels:gnomeward.game.towers[0].levels}));
+// Auto rounds waits through pauses and menus, can be cancelled, and starts after the visible countdown.
+await page.locator('#auto-button').click();
+await page.waitForFunction(()=>gnomeward.state.autoCountdown!==null);
+const countdown=await page.evaluate(()=>gnomeward.state.autoCountdown);
+await page.waitForTimeout(350);
+if(await page.evaluate(()=>gnomeward.state.autoCountdown)!==countdown)throw Error('Paused auto countdown must freeze');
+await page.locator('#pause-button').click();
+await page.waitForFunction(()=>gnomeward.state.autoCountdown<2.7);
+await page.locator('#map-button').click();
+const menuCountdown=await page.evaluate(()=>gnomeward.state.autoCountdown);
+await page.waitForTimeout(350);
+if(await page.evaluate(()=>gnomeward.state.autoCountdown)!==menuCountdown)throw Error('Open menus must freeze auto countdown');
+await page.keyboard.press('Escape');
+await page.locator('#auto-button').click();
+if(await page.evaluate(()=>gnomeward.state.autoCountdown)!==null)throw Error('Disabling auto must cancel countdown');
+const autoWave=await page.evaluate(()=>gnomeward.game.wave);
+await page.waitForTimeout(500);
+if(await page.evaluate(()=>gnomeward.game.wave)!==autoWave)throw Error('Disabled auto must not start a round');
+await page.locator('#auto-button').click();
+await page.waitForFunction(w=>gnomeward.game.wave===w+1,autoWave,{timeout:7000});
+await page.locator('#auto-button').click();
+const autoRounds=true;
 for(const id of ['orchard','creek','quarry','hollow','meadow']){await page.locator('#map-button').click();await page.locator(`[data-map="${id}"]`).click();if(await page.evaluate(()=>gnomeward.game.map.id)!==id)throw Error('map failed '+id)}
+await page.locator('#auto-button').click();
+await page.waitForTimeout(400);
+if(await page.evaluate(()=>gnomeward.state.autoCountdown)!==null||await page.evaluate(()=>gnomeward.game.wave)!==0)throw Error('Auto rounds must wait for first manual start in a new garden');
+await page.locator('#auto-button').click();
 await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>{const r=document.querySelector('canvas').getBoundingClientRect();return Math.abs(r.width-innerWidth)<1&&Math.abs(r.height-innerHeight)<1});await place('sprout',-5,2);await page.screenshot({path:'playtest-results/mobile.png',fullPage:true});const mobile=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,canvas:document.querySelector('canvas').getBoundingClientRect().toJSON(),popup:document.getElementById('selection-panel').getBoundingClientRect().toJSON()}));
 if (mobile.scroll > mobile.width || mobile.popup.top < mobile.canvas.top || mobile.popup.bottom > mobile.canvas.bottom + 1 || mobile.popup.left < mobile.canvas.left || mobile.popup.right > mobile.canvas.right + 1) throw Error('Mobile popup should stay within the battlefield');
 const rosterLayout = await page.evaluate(() => {
@@ -61,4 +93,4 @@ await page.getByRole('button', {name:'Next gnomes'}).click();
 await page.waitForFunction(()=>document.getElementById('roster').scrollLeft > 0);
 await page.getByRole('button', {name:'Close upgrades'}).click();
 if (await page.evaluate(()=>gnomeward.state.selectedTowerId)!==null) throw Error('Upgrade popup must close');
-console.log(JSON.stringify({first,combat,projectileCheck,upgradesVisible,immersiveLayout,rosterLayout,mobile,errors},null,2));await browser.close();if(errors.length)process.exitCode=1;
+console.log(JSON.stringify({first,combat,autoRounds,projectileCheck,upgradesVisible,immersiveLayout,rosterLayout,mobile,errors},null,2));await browser.close();if(errors.length)process.exitCode=1;

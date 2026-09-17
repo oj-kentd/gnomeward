@@ -2,7 +2,7 @@
 
 A cozy, original 3D tower defense game made for a parent-and-child playtest. Protect five little gardens from colorful skeletons with six plush gnomes. Built in Three.js with original Blender-created models and portraits.
 
-**Play:** https://oj-kentd.github.io/gnomeward/
+**Play:** http://gnomeward.thekents.org/
 
 ## Play locally
 
@@ -19,7 +19,7 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 
 1. Choose a gnome from the sliding avatar row overlaid along the bottom of the battlefield and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold.
 2. Start a wave. Skeleton colors indicate different health and movement speeds. Gnomes attack automatically with small traveling projectiles. Damage, stuns, and on-kill explosions trigger on impact.
-3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome (including its hat or body) to open a small upgrade popup beside that gnome. Buttons explain how many more points you need.
+3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome (including its hat or body) to open a small upgrade popup beside that gnome. The popup shows tier progress, the next stat changes, and how many more points you need.
 4. Each standard gnome has four paths with three upgrade levels. One individual gnome can invest in only two different paths. Choose carefully: spent upgrade points are not refunded on selling.
 5. Survive 20 waves. Bosses appear at the end of waves 10 and 20. Unlocks persist in this browser and carry into other maps and replays.
 
@@ -32,9 +32,9 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 | Tumble | Attacks multiple enemies; its single path raises damage, frequency, and targets | One path | Clear wave 15 |
 | Aster | Low initial damage and full-map targeting | Damage and shooting speed | Defeat wave 20 boss; usable in replays |
 
-The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 75% of the purchase gold. Standard targeting prioritizes the skeleton farthest along the path. Bosses that escape do not grant boss-defeat unlocks. Map changes start a fresh run while retaining unlocked characters.
+The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 75% of the purchase gold. Shooting gnomes can target First (farthest along the trail), Last, Strong (highest maximum health), or Close (nearest). Tap the targeting button in their upgrade popup to cycle modes. Morel plants mushrooms instead of targeting enemies. Bosses that escape do not grant boss-defeat unlocks. Map changes start a fresh run while retaining unlocked characters.
 
-**Controls:** Click/tap to select and place; Escape or right-click cancels; Space starts the next wave; P pauses; 1–6 select gnomes. Speed cycles 1× / 2× / 3×. Sound is optional and synthesized locally. No sign-in or server is needed.
+**Controls:** Click/tap to select and place; Escape or right-click cancels; Space or the green play button starts the next wave, resumes a paused wave, or cycles speed during combat; P pauses; 1–6 select gnomes. Speed cycles 1× / 2× / 3×. Auto rounds optionally starts the next wave after a three-second building break. Pause and open menus freeze that countdown. The first wave always waits for you. Sound is optional and synthesized locally. No sign-in or server is needed.
 
 ## Five gardens
 
@@ -65,7 +65,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The browser smoke test places gnomes through the UI, checks pause, advances combat for upgrade checks, verifies the two-path lock, switches through all five maps, and checks the phone layout and console errors. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
+The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all five maps, and checks the phone layout and console errors. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
 
 ## Publishing
 

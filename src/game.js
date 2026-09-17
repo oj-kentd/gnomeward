@@ -81,7 +81,7 @@ export class Game {
 
   placeTower(type, x, z) {
     if (!this.canPlace(type, x, z)) return null;
-    const tower = { id: ++this._id, type, x, z, levels: TOWERS[type].paths.map(() => 0), kills: 0, damageDone: 0, cooldown: 0, planted: 0 };
+    const tower = { id: ++this._id, type, x, z, levels: TOWERS[type].paths.map(() => 0), kills: 0, damageDone: 0, cooldown: 0, planted: 0, targeting: 'first' };
     this.towers.push(tower);
     this.gold -= TOWERS[type].cost;
     this._event('placed', `${TOWERS[type].name} joined the garden.`, { towerId: tower.id });
@@ -100,6 +100,23 @@ export class Game {
     tower.levels[pathIndex]++;
     this._event('upgrade', `${TOWERS[tower.type].name}: ${TOWERS[tower.type].paths[pathIndex].name} ${level + 1}.`, { towerId: id });
     return true;
+  }
+
+  setTargeting(id, mode) {
+    if (!['planning', 'wave'].includes(this.status) || !['first', 'last', 'strong', 'close'].includes(mode)) return false;
+    const tower = this.towers.find(t => t.id === id);
+    if (!tower || tower.type === 'spore') return false;
+    tower.targeting = mode;
+    return true;
+  }
+
+  _targetPriority(tower, a, b) {
+    switch (tower.targeting) {
+      case 'last': return a.progress - b.progress;
+      case 'strong': return b.maxHp - a.maxHp || b.progress - a.progress;
+      case 'close': return distance(tower, a) - distance(tower, b) || b.progress - a.progress;
+      default: return b.progress - a.progress;
+    }
   }
 
   sellTower(id) {
@@ -266,7 +283,7 @@ export class Game {
         tower.cooldown = stats.interval;
         continue;
       }
-      const targets = this.enemies.filter(e => e.hp > 0 && distance(tower, e) <= stats.range).sort((a, b) => b.progress - a.progress).slice(0, stats.shots);
+      const targets = this.enemies.filter(e => e.hp > 0 && distance(tower, e) <= stats.range).sort((a, b) => this._targetPriority(tower, a, b)).slice(0, stats.shots);
       if (!targets.length) continue;
       tower.cooldown = stats.interval;
       for (const target of targets) {

@@ -302,3 +302,64 @@ test('a budget-respecting mixed defense can complete the campaign on all five ma
     assert.deepEqual(g.profile.unlocks, ['stun', 'multi', 'sniper']);
   }
 });
+
+test('target modes choose first, last, strongest, or closest enemies within attack range', () => {
+  for (const [mode, expectedIndex] of [['first', 3], ['last', 0], ['strong', 1], ['close', 2]]) {
+    const g = new Game();
+    const tower = g.placeTower('sprout', -10, 1.5);
+    assert.equal(tower.targeting, 'first');
+    const enemies = [['bone', 0.5], ['gold', 1], ['blue', 2], ['green', 3]].map(([type, progress]) => setEnemy(g, type, progress));
+    // Strong uses the enemy's health class, even after it has already taken damage.
+    enemies[1].hp = 1;
+    setEnemy(g, 'king', 30); // Out of range must not attract Strong or First.
+    assert.equal(g.setTargeting(tower.id, mode), true);
+    g.status = 'wave';
+    g.update(0.05);
+    assert.equal(g.projectiles.length, 1);
+    assert.equal(g.projectiles[0].targetId, enemies[expectedIndex].id, mode);
+  }
+});
+
+test('Strong and Close break equal priorities by choosing the furthest along the path', () => {
+  for (const mode of ['strong', 'close']) {
+    const g = new Game();
+    const tower = g.placeTower('sprout', -10, 1.5);
+    setEnemy(g, 'green', 1);
+    const front = setEnemy(g, 'green', 3);
+    g.setTargeting(tower.id, mode);
+    g.status = 'wave';
+    g.update(0.05);
+    assert.equal(g.projectiles[0].targetId, front.id, mode);
+  }
+});
+
+test('targeting changes reject unknown modes, missing gnomes, mushrooms, and finished games', () => {
+  const g = new Game();
+  const tower = g.placeTower('sprout', -10, 1.5);
+  const mushroom = g.placeTower('spore', -4, 0);
+  assert.equal(g.setTargeting(tower.id, 'last'), true);
+  assert.equal(g.setTargeting(tower.id, 'random'), false);
+  assert.equal(g.setTargeting(tower.id, null), false);
+  assert.equal(g.setTargeting(9999, 'first'), false);
+  assert.equal(g.setTargeting(mushroom.id, 'strong'), false);
+  assert.equal(tower.targeting, 'last');
+  g.status = 'wave';
+  assert.equal(g.setTargeting(tower.id, 'close'), true);
+  for (const status of ['won', 'lost']) {
+    g.status = status;
+    assert.equal(g.setTargeting(tower.id, 'first'), false);
+    assert.equal(tower.targeting, 'close');
+  }
+});
+
+test('multi-attacks follow target priority and select distinct targets', () => {
+  for (const [mode, order] of [['first', [3, 2, 1]], ['last', [0, 1, 2]], ['strong', [1, 2, 3]], ['close', [2, 3, 1]]]) {
+    const g = openGame();
+    const tower = g.placeTower('multi', -10, 1.5);
+    const enemies = [['bone', 0.5], ['gold', 1], ['blue', 2], ['green', 3]].map(([type, progress]) => setEnemy(g, type, progress));
+    g.setTargeting(tower.id, mode);
+    g.status = 'wave';
+    g.update(0.05);
+    assert.deepEqual(g.projectiles.map(shot => shot.targetId), order.map(index => enemies[index].id), mode);
+  }
+});
