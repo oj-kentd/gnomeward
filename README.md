@@ -1,6 +1,6 @@
 # Gnomeward
 
-A cozy, original 3D tower defense game made for a parent-and-child playtest. Protect five little gardens from colorful skeletons with six plush gnomes. Built in Three.js with original Blender-created models and portraits.
+A cozy, original 3D tower defense game made for a parent-and-child playtest. Protect six little gardens from colorful skeletons with eight plush gnomes, including two hidden friends. Built in Three.js with original Blender-created models and portraits.
 
 **Play:** http://gnomeward.thekents.org/
 
@@ -26,27 +26,44 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 | Gnome | Ability | Paths | Unlock |
 | --- | --- | --- | --- |
 | Sprout | Weak pebble attacks grow dramatically with upgrades; Growing Spirit scales with kills | Power, speed, range, growth; choose two | Starting crew |
-| Morel | Places trail mushrooms that poison passing skeletons over time | Venom, duration, planting speed, range; choose two | Starting crew |
+| Morel | Places poison mushrooms; Wild Garden upgrades let poisoned skeletons infect neighbors | Venom, duration, planting speed, range/spread; choose two | Starting crew |
 | Bramble | Enemies it defeats explode and can cause chain reactions | Power, blast, speed, range; choose two | Starting crew |
 | Poppy | Pink gun slows enemies by 50% for 2 seconds; repeated hits refresh without stacking | Slow duration, speed, power, range; choose two | Defeat wave 10 boss |
 | Tumble | Attacks multiple enemies; its single path raises damage, frequency, and targets | One path | Clear wave 15 |
 | Aster | Low initial damage and full-map targeting | Damage and shooting speed | Defeat wave 20 boss; usable in replays |
+| Orbit | Pulls skeletons backward with temporary black holes; Event Horizon tier 3 captures them and deals 65 damage/second | Power, duration, radius, recovery; choose two | Three hidden moonstones in Mossy Meadow |
+| Prism | Raises breakable path barriers; Shattering Light adds explosions when enemies destroy them | Durability, blast, speed, range; choose two | Three special crystals in Crystal Quarry; first summon is free |
 
-The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 75% of the purchase gold. Shooting gnomes can target First (farthest along the trail), Last, Strong (highest maximum health), or Close (nearest). Tap the targeting button in their upgrade popup to cycle modes. Morel plants mushrooms instead of targeting enemies. Bosses that escape do not grant boss-defeat unlocks. Map changes start a fresh run while retaining unlocked characters.
+The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 75% of the purchase gold; the free summoned Prism sells for zero. Shooting gnomes can target First (closest to the exit), Last (farthest from the exit), Strong (highest maximum health), or Close (nearest). Tap the targeting button in their upgrade popup to cycle modes. Morel plants mushrooms, Orbit opens wells, and Prism raises barriers automatically. Bosses that escape do not grant boss-defeat unlocks. Map changes start a fresh run while retaining unlocked characters.
 
-**Controls:** Click/tap to select and place; Escape or right-click cancels; Space or the green play button starts the next wave, resumes a paused wave, or cycles speed during combat; P pauses; 1–6 select gnomes. Speed cycles 1× / 2× / 3×. Auto rounds optionally starts the next wave after a three-second building break. Pause and open menus freeze that countdown. The first wave always waits for you. Open **☰ → Music**, or the **♪** button on desktop, to choose **Rock**, **Chill**, or **Jazz**. Each is an original 8-bar instrumental loop, with an independent volume slider and Off option. Music stays at its normal tempo at every game speed and pauses when the tab is hidden. Your genre, volume, and effects preference are saved in this browser; saved music resumes after your first interaction. Sound effects have their own Effects switch. No sign-in or server is needed.
+**Controls:** Click/tap to select and place; Escape or right-click cancels; Space or the green play button starts the next wave, resumes a paused wave, or cycles speed during combat; P pauses; 1–8 select gnomes. Speed cycles 1× / 2× / 3×. Auto rounds optionally starts the next wave after a three-second building break. Pause and open menus freeze that countdown. The first wave always waits for you. Open **☰ → Music**, or the **♪** button on desktop, to choose **Rock**, **Chill**, or **Jazz**. Each is an original 8-bar instrumental loop, with an independent volume slider and Off option. Music stays at its normal tempo at every game speed and pauses when the tab is hidden. Your genre, volume, and effects preference are saved in this browser; saved music resumes after your first interaction. Sound effects have their own Effects switch. No sign-in or server is needed.
 
-## Five gardens
+Morel’s **Wild Garden** path unlocks contagious poison at tier 1. A directly poisoned skeleton can infect 1 / 2 / 3 nearby skeletons at tiers 1 / 2 / 3, one per second, over a wider radius each tier. Spread poison deals 65% of the original damage and inherits its remaining duration. Secondary infections cannot spread again or refresh an existing infection. Small green spores show each transmission.
+
+## Hidden garden friends
+
+Tap three distinct unusual details in one run of Mossy Meadow or Crystal Quarry to meet a hidden gnome. Repeated taps on the same detail do not count. The resulting character unlock is saved in this browser and stays available on every map. Completing the Quarry discovery summons one Prism on nearby clear grass for free; this reward can only be claimed once per saved profile.
+
+Orbit matches the original plush reference: grey hat, red plaid body, white beard and red pompom. Its wells tug enemies backward along the path. Lesser wells release an enemy once it reaches their center; Event Horizon tier 3 holds it briefly while dealing heavy damage over time. Stronger and longer-lasting wells have longer cooldowns, with at least five seconds of recovery after a well closes. Overlapping wells do not stack pull or damage; bosses resist the pull. Holes vanish when their owner is sold or the round ends.
+
+Prism raises up to two crystal barriers ahead of enemies. Skeletons stop to attack them; tougher skeletons break them faster. Upgrading Shattering Light adds area damage when enemies destroy a barrier. Expiration, selling and round cleanup do not trigger an explosion.
+
+The secret models and portraits are generated in Blender with `art/generate_secret_assets.py`; `art/secrets.blend` is the editable scene. Exact discovery locations are intentionally left out of this guide.
+
+## Six gardens
 
 - Mossy Meadow — a forgiving introductory trail.
-- Amber Orchard — a long winding route for overlapping coverage.
-- Moonlit Creek — a turning riverside path.
+- Amber Orchard — a figure-eight route that revisits its junctions.
+- Moonlit Creek — two riverbank entrances merge into one winding trail.
 - Crystal Quarry — shorter attack windows and angular corners.
-- Pumpkin Hollow — a compact spiral with a final straight.
+- Pumpkin Hollow — an outer circuit curls into an inner spiral.
+- Twinbrook Crossing — two opposite entrances meet before a final zigzag.
+
+Green arrows mark every entrance. Enemies alternate between the two entrances on Creek and Twinbrook. Shared trail mushrooms, gravity wells, and crystal barriers affect enemies from either entrance. Loops are finite routes; skeletons eventually head for the cottage.
 
 ## Art and development
 
-`art/generate_assets.py` creates every world mesh, character, prop, projectile, range ring, and rendered portrait in Blender. `art/gnomeward.blend` is the editable source scene. See [the art notes](art/README.md) for regeneration. The browser arranges those exported meshes into maps and animates them; interface typography and controls use HTML/CSS.
+`art/generate_assets.py` creates the original characters, enemies, effects, and portraits. `art/generate_environment.py` creates the matching rounded toy scenery: soft foliage, pebbles, curved-roof cottage, garden props, and pillowy path stones. `art/environment.blend` and `art/gnomeward.blend` are editable source scenes. `art/generate_entry_arrow.py` creates the entrance markers. See [the art notes](art/README.md) for regeneration. The browser arranges those exported meshes into maps and animates them; interface typography and controls use HTML/CSS.
 
 - `src/data.js`: maps, characters, enemy colors, and tuning.
 - `src/game.js`: deterministic simulation, upgrades, damage, unlocks.
@@ -69,9 +86,12 @@ With the development server running in another terminal:
 npx playwright install chromium
 npm run test:browser
 npm run test:music
+npm run test:secrets
+npm run test:maps
+npm run test:poison
 ```
 
-The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all five maps, and checks the phone layout and console errors. The music browser check exercises all three decoded loops, output levels, independent effects/volume, tab suspension, saved preferences and phone settings. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
+The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all six maps, and checks the phone layout and console errors. The music browser check exercises all three decoded loops, output levels, independent effects/volume, tab suspension, saved preferences and phone settings. Additional browser checks verify hidden unlocks and combat effects, all six maps and entrance markers, and Morel’s spread upgrades and animated spores. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
 
 ## Publishing
 

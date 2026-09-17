@@ -7,9 +7,9 @@ const openGame = () => new Game('meadow', { unlocks: ['stun', 'multi', 'sniper']
 const run = (g, duration) => { for (let i = 0; i < duration * 20; i++) g.update(0.05); };
 const setEnemy = (g, type, progress) => { const e = g._spawn(type); e.progress = progress; Object.assign(e, g.pointAt(progress)); return e; };
 
-test('five maps contain complete paths and every specified unit has its upgrade paths', () => {
-  assert.equal(MAPS.length, 5);
-  assert.equal(new Set(MAPS.map(m => m.id)).size, 5);
+test('six maps contain complete paths and every specified unit has its upgrade paths', () => {
+  assert.equal(MAPS.length, 6);
+  assert.equal(new Set(MAPS.map(m => m.id)).size, 6);
   for (const m of MAPS) {
     const g = new Game(m.id);
     assert.ok(g.pathLength > 40);
@@ -17,7 +17,7 @@ test('five maps contain complete paths and every specified unit has its upgrade 
     assert.equal(m.path.at(-1)[0], 12);
     assert.deepEqual(g.pointAt(g.pathLength), { x: 12, z: m.path.at(-1)[1] });
   }
-  assert.deepEqual(Object.values(TOWERS).map(t => t.paths.length), [4, 4, 4, 4, 1, 2]);
+  assert.deepEqual(Object.values(TOWERS).map(t => t.paths.length), [4, 4, 4, 4, 1, 2, 4, 4]);
   assert.ok(ENEMIES.bone.hp < ENEMIES.green.hp && ENEMIES.green.hp < ENEMIES.blue.hp);
 });
 
@@ -319,7 +319,7 @@ test('simulation is deterministic and a starter defense can clear wave one', () 
   assert.deepEqual([a.gold, a.points, a.kills, a.towers.map(t => t.kills)], [b.gold, b.points, b.kills, b.towers.map(t => t.kills)]);
 });
 
-test('a budget-respecting mixed defense can complete the campaign on all five maps', () => {
+test('a budget-respecting mixed defense can complete the campaign on all six maps', () => {
   for (const map of MAPS) {
     const g = new Game(map.id);
     const place = (type) => {
@@ -328,9 +328,11 @@ test('a budget-respecting mixed defense can complete the campaign on all five ma
         for (let z = -6.5; z <= 6.5; z += 1.5) {
           if (!g.canPlace(type, x, z)) continue;
           let coverage = 0;
-          for (let progress = 0; progress < g.pathLength; progress += 0.4) {
-            const p = g.pointAt(progress);
-            if (Math.hypot(p.x - x, p.z - z) < 3.5) coverage++;
+          for (let route = 0; route < g.routes.length; route++) {
+            for (let progress = 0; progress < g.routeLength(route); progress += 0.4) {
+              const p = g.pointAt(progress, route);
+              if (Math.hypot(p.x - x, p.z - z) < 3.5) coverage++;
+            }
           }
           if (!best || coverage > best.coverage) best = { x, z, coverage };
         }
@@ -340,12 +342,13 @@ test('a budget-respecting mixed defense can complete the campaign on all five ma
     for (const type of ['boom', 'spore', 'sprout', 'sprout']) assert.ok(place(type));
     for (let wave = 1; wave <= 20; wave++) {
       if (wave > 1) {
+        if (g.isUnlocked('stun') && !g.towers.some(t => t.type === 'stun') && g.gold >= TOWERS.stun.cost) assert.ok(place('stun'));
         while (g.gold >= 210 && g.towers.length < 12) {
           if (!place(g.towers.length % 3 === 0 ? 'spore' : 'boom')) break;
         }
         for (let level = 0; level < 3; level++) {
           for (const tower of g.towers) {
-            for (const path of [0, 1]) {
+            for (const path of tower.type === 'boom' ? [0, 2] : [0, 1]) {
               if (tower.levels[path] === level) g.upgradeTower(tower.id, path);
             }
           }
@@ -358,7 +361,7 @@ test('a budget-respecting mixed defense can complete the campaign on all five ma
       assert.ok(g.gold >= 0 && g.points >= 0);
     }
     assert.equal(g.status, 'won');
-    assert.deepEqual(g.profile.unlocks, ['stun', 'multi', 'sniper']);
+    assert.deepEqual(g.profile.unlocks, ['stun', 'multi', 'sniper'], map.id);
   }
 });
 

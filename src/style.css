@@ -55,3 +55,15 @@
 .music-status{margin-top:11px;font-size:12px;font-weight:800;color:#7d5e36;line-height:1.4}.music-status[data-status=playing]{color:#558132}.music-status[data-status=error]{color:#aa4932}.music-hint{font-size:11px;line-height:1.5;color:#a28051;margin-top:6px}
 #sound-button[data-music-active=true]{background:linear-gradient(#ded0ee,#b797d0);border-color:#85619e;color:#673b85}
 @media(max-width:700px){.music-settings{padding:12px;margin-bottom:19px}.music-heading{gap:7px;align-items:flex-start}.music-heading h3{font-size:19px}.music-heading>span{font-size:10px;text-align:right;max-width:124px}.music-choices{grid-template-columns:1fr 1fr;gap:8px}.music-choice{min-height:65px;padding:10px}.music-choice>strong{font-size:15px}.music-choice>span{font-size:11px}.music-volume-row{gap:9px;margin-top:13px}.music-volume-row>label{font-size:11px}.music-volume-row>output{font-size:12px;min-width:34px}.music-status{font-size:12px}.music-hint{font-size:11px}}
+
+/* Secret guardians keep their identity until the garden reveals them. */
+.secret-locked .portrait{filter:brightness(0) drop-shadow(0 2px 1px #f5dfb644);opacity:.48}
+.secret-locked .tower-info>strong{letter-spacing:2px;font-size:16px;color:#6f583e}.secret-locked .tower-cost{font-size:10px;color:#746143}
+.unit-summary.terrain-summary{display:grid;grid-template-columns:1fr 1fr;gap:5px 8px;padding:7px 3px}.terrain-summary>span{font-size:11px}.terrain-summary b{font-size:12px}
+.secret-rumors{background:#e4d2e6;border-color:#b59aba}.secret-rumors>strong{color:#815587}.secret-rumors p{color:#88668b}
+
+.map-facts{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:8px}
+.map-topology,.map-entrances{display:inline-block;padding:4px 6px;border:1px solid #96a45d;border-radius:5px;background:#e6ecc6;color:#657b33;font-size:10px;font-weight:900;line-height:1.15}
+.map-entrances{background:#f3e5b2;border-color:#b9a05c;color:#8d6b2f}.map-card.current .map-topology{background:#f8e8ac;border-color:#c3a351;color:#92732d}
+
+.poison-spread-note{padding:7px 8px;margin:2px 0 8px;background:#e4ecc1;border:1px solid #a0b77a;border-radius:6px;color:#5e783a;text-align:left;font-size:11px;line-height:1.45}

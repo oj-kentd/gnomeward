@@ -13,6 +13,20 @@ const icons = {
 const targetingNames = { first: 'First', last: 'Last', strong: 'Strong', close: 'Close' };
 const targetingHints = { first: 'Closest to the exit', last: 'Closest to the entrance', strong: 'Highest maximum health', close: 'Nearest to this gnome' };
 
+function mapRouteInfo(map) {
+  const paths = map?.paths?.length ? map.paths : [map?.path];
+  const entrances = Math.max(1, new Set(paths.filter((path) => path?.length).map((path) => JSON.stringify(path[0]))).size);
+  const raw = String(map?.topology || (entrances > 1 ? 'Two entrances' : 'Winding')).replace(/[-_]/g, ' ');
+  const topology = raw.charAt(0).toUpperCase() + raw.slice(1);
+  return { topology, entrances };
+}
+
+function mapFacts(map) {
+  const { topology, entrances } = mapRouteInfo(map);
+  const countAlreadyShown = /(?:two|2)\s+entrances/i.test(topology) && entrances === 2;
+  return `<div class="map-facts"><span class="map-topology">${esc(topology)}</span>${entrances > 1 && !countAlreadyShown ? `<span class="map-entrances">${entrances} entrances</span>` : ''}</div>`;
+}
+
 function upgradeBenefit(game, tower, index, stats) {
   const levels = [...tower.levels];
   levels[index]++;
@@ -21,11 +35,20 @@ function upgradeBenefit(game, tower, index, stats) {
     ['damage', 'Damage'], ['shots', 'Targets'], ['attackSpeed', 'Attacks/s'],
     ['poisonDps', 'Poison/s'], ['poisonDuration', 'Poison seconds'], ['slowDuration', 'Slow seconds'],
     ['explosionDamage', 'Blast damage'], ['explosionRadius', 'Blast radius'], ['range', 'Range'],
-    ['charges', 'Mushroom hits'], ['trapRadius', 'Spore radius'],
+    ['charges', 'Mushroom hits'], ['trapRadius', 'Mushroom radius'],
+    ['poisonSpreadRadius', 'Spread radius'], ['poisonSpreadTargets', 'Spread targets'],
+    ['gravityDps', 'Gravity/s'], ['pullSpeed', 'Pull speed'], ['holeDuration', 'Hole seconds'], ['holeRadius', 'Hole radius'],
+    ['barrierHp', 'Barrier HP'], ['barrierLifetime', 'Barrier seconds'], ['barrierLimit', 'Max barriers'],
   ];
-  return labels.filter(([key]) => Number.isFinite(next[key]) && next[key] > (stats[key] || 0) + .001)
-    .map(([key, label]) => `${label} ${precise(stats[key] || 0)} → ${precise(next[key])}`).join(' · ')
-    || TOWERS[tower.type].paths[index].description;
+  const terrain = ['gravity', 'crystal'].includes(tower.type);
+  const benefits = labels.filter(([key]) => !(terrain && key === 'attackSpeed') && Number.isFinite(next[key]) && next[key] > (stats[key] || 0) + .001)
+    .map(([key, label]) => `${label} ${precise(stats[key] || 0)} → ${precise(next[key])}`);
+  if (terrain && Number.isFinite(next.interval) && Math.abs(next.interval - stats.interval) > .001) {
+    benefits.push(`Cooldown ${precise(stats.interval)}s → ${precise(next.interval)}s`);
+  }
+  if (next.poisonSpreadRadius > 0 && !(stats.poisonSpreadRadius > 0)) benefits.unshift('Poison spreads to nearby skeletons');
+  if (next.capture && !stats.capture) benefits.push('Captures enemies in the hole');
+  return benefits.join(' · ') || TOWERS[tower.type].paths[index].description;
 }
 
 export class UI {
@@ -159,6 +182,8 @@ export class UI {
     set('hud-lives', n(game.lives)); set('hud-gold', n(game.gold)); set('hud-points', n(game.points));
     document.getElementById('hud-wave').innerHTML = `${displayedRound}<span>/${game.maxWaves || 20}</span>`;
     set('map-name', map?.name || MAPS[0].name);
+    const routeInfo = mapRouteInfo(map);
+    document.getElementById('map-button').title = `${map?.name || MAPS[0].name} · ${routeInfo.topology} · ${routeInfo.entrances} ${routeInfo.entrances === 1 ? 'entrance' : 'entrances'} · Choose a map`;
     const start = document.getElementById('start-button');
     start.disabled = finished;
     start.classList.toggle('fast-forward', inWave);
@@ -194,7 +219,10 @@ export class UI {
       document.getElementById('roster').innerHTML = Object.entries(TOWERS).map(([id, tower]) => {
         const unlocked = game.isUnlocked(id);
         const affordable = game.gold >= tower.cost;
-        return `<button class="tower-card ${!unlocked ? 'locked' : !affordable ? 'unaffordable' : 'affordable'} ${state.placingType === id ? 'chosen' : ''}" data-tower="${id}" ${!unlocked || !affordable ? 'disabled' : ''} aria-pressed="${state.placingType === id}" title="${esc(tower.description)}${!unlocked ? ` Beat round ${tower.unlockWave} to unlock.` : !affordable ? ' Not enough gold.' : ''}"><div class="tower-art" style="--tower-color:${tower.color}">${portrait(id)}${!unlocked ? `<span class="lock-badge">${icons.lock}</span>` : ''}</div><span class="tower-info"><strong>${esc(tower.name)}</strong><span class="tower-cost">${unlocked ? `${icons.coin}${n(tower.cost)}` : `Round ${tower.unlockWave}`}</span></span>${!affordable && unlocked ? '<span class="card-shortage">Need gold</span>' : ''}</button>`;
+        const secret = !unlocked && !!tower.unlockSecret;
+        const secretGarden = MAPS.find((garden) => garden.id === tower.unlockSecret)?.name || 'a hidden garden';
+        const hint = secret ? `Three discoveries in ${secretGarden} may reveal a hidden guardian.` : `${tower.description}${!unlocked ? ` Beat round ${tower.unlockWave} to unlock.` : !affordable ? ' Not enough gold.' : ''}`;
+        return `<button class="tower-card ${!unlocked ? 'locked' : !affordable ? 'unaffordable' : 'affordable'} ${secret ? 'secret-locked' : ''} ${state.placingType === id ? 'chosen' : ''}" data-tower="${id}" ${!unlocked || !affordable ? 'disabled' : ''} aria-pressed="${state.placingType === id}" title="${esc(hint)}" ${secret ? `aria-label="Map secret. ${esc(hint)}"` : ''}><div class="tower-art" style="--tower-color:${tower.color}">${portrait(id)}${!unlocked ? `<span class="lock-badge">${icons.lock}</span>` : ''}</div><span class="tower-info"><strong>${secret ? '???' : esc(tower.name)}</strong><span class="tower-cost">${unlocked ? `${icons.coin}${n(tower.cost)}` : secret ? 'Map secret' : `Round ${tower.unlockWave}`}</span></span>${!affordable && unlocked ? '<span class="card-shortage">Need gold</span>' : ''}</button>`;
       }).join('');
     }
     const selected = game.towers.find((tower) => tower.id === state.selectedTowerId);
@@ -266,9 +294,18 @@ export class UI {
     const used = levels.filter((level) => level > 0).length;
     const limit = Math.min(2, def.paths.length);
     const targeting = tower.targeting || 'first';
-    container.innerHTML = `<div class="selected-heading">${portrait(tower.type)}<div><h3>${esc(def.name)}</h3><span>${n(tower.kills)} defeated</span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
-      <div class="unit-summary"><span><b>${precise(tower.type === 'spore' ? stats.poisonDps : stats.damage)}</b> ${tower.type === 'spore' ? 'poison/s' : 'damage'}</span><span><b>${precise(stats.attackSpeed)}</b> attacks/s</span><span><b>${stats.range >= 40 ? '∞' : precise(stats.range)}</b> range</span></div>
-      ${tower.type !== 'spore' ? `<button class="targeting-button" data-targeting title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : '<div class="targeting-note">Mushrooms poison passing enemies</div>'}
+    const terrain = ['gravity', 'crystal'].includes(tower.type);
+    const automatic = tower.type === 'spore' || terrain;
+    const range = stats.range >= 40 ? '∞' : precise(stats.range);
+    const summary = tower.type === 'gravity'
+      ? `<span><b>${precise(stats.gravityDps)}</b> gravity/s</span><span><b>${precise(stats.holeDuration)}s</b> hole duration</span><span><b>${precise(stats.interval)}s</b> cooldown</span><span><b>${range}</b> range</span>`
+      : tower.type === 'crystal'
+        ? `<span><b>${n(stats.barrierHp)}</b> barrier HP</span><span><b>${n(stats.barrierLimit)}</b> max barriers</span><span><b>${precise(stats.interval)}s</b> cooldown</span><span><b>${range}</b> range</span>`
+        : `<span><b>${precise(tower.type === 'spore' ? stats.poisonDps : stats.damage)}</b> ${tower.type === 'spore' ? 'poison/s' : 'damage'}</span><span><b>${precise(stats.attackSpeed)}</b> attacks/s</span><span><b>${range}</b> range</span>`;
+    const automaticNote = tower.type === 'gravity' ? `Creates holes automatically · ${stats.capture ? 'captures enemies in the hole' : 'pulls nearby enemies inward'}` : tower.type === 'crystal' ? `Places barriers automatically · ${stats.explosionDamage > 0 ? `destroyed barriers deal ${n(stats.explosionDamage)} blast damage` : 'upgrade the blast path for on-destruction explosions'}` : stats.poisonSpreadRadius > 0 ? `Wild Garden: each mushroom infection can spread to ${n(stats.poisonSpreadTargets)} nearby ${stats.poisonSpreadTargets === 1 ? 'enemy' : 'enemies'} within ${precise(stats.poisonSpreadRadius)} range, one every ${precise(stats.poisonSpreadInterval)}s, at ${n(stats.poisonSpreadMultiplier * 100)}% damage. Spread poison cannot spread again.` : 'Mushrooms poison passing enemies · Wild Garden unlocks poison spread';
+    container.innerHTML = `<div class="selected-heading">${portrait(tower.type)}<div><h3>${esc(def.name)}</h3><span>${tower.purchaseCost === 0 ? 'Summoned guardian · ' : ''}${n(tower.kills)} defeated</span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
+      <div class="unit-summary ${terrain ? 'terrain-summary' : ''}">${summary}</div>
+      ${!automatic ? `<button class="targeting-button" data-targeting title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : `<div class="targeting-note ${tower.type === 'spore' && stats.poisonSpreadRadius > 0 ? 'poison-spread-note' : ''}">${automaticNote}</div>`}
       ${tower.type === 'stun' ? `<div class="targeting-note">50% slower for ${precise(stats.slowDuration)}s · does not stack</div>` : ''}
       <div class="upgrade-heading"><strong>UPGRADES</strong><span>${icons.leaf}${n(game.points)} points</span></div>
       <p class="path-rule">${limit === 1 ? '1 special path · 3 powerful tiers' : `Choose ${limit} paths · ${used}/${limit} chosen`}</p>
@@ -282,7 +319,7 @@ export class UI {
         const reason = locked ? 'Only 2 paths per gnome' : maxed ? 'Fully upgraded' : !affordable ? `Need ${n(cost - game.points)} more points` : `Upgrade ${path.name} to tier ${level + 1}`;
         return `<div class="upgrade-path ${locked ? 'path-locked' : ''} ${level ? 'invested' : ''}"><div class="upgrade-copy"><strong>${esc(path.name)}</strong><span class="tier-chips" aria-label="Tier ${level} of ${path.costs.length}">${path.costs.map((_, tier) => `<i class="${tier < level ? 'filled' : ''}">${tier + 1}</i>`).join('')}</span><small>${locked ? 'Choose a different gnome for this path.' : esc(benefit)}</small></div><button class="upgrade-buy ${maxed ? 'maxed' : ''}" data-upgrade="${index}" ${!affordable ? 'disabled' : ''} title="${esc(reason)}">${locked ? `${icons.lock}<span>Locked</span>` : maxed ? '<b>✓</b><span>MAX</span>' : `<b>${icons.leaf}${n(cost)}</b><span>${affordable ? 'UPGRADE' : `Need ${n(cost - game.points)}`}</span>`}</button></div>`;
       }).join('')}</div>
-      <div class="selection-footer"><span>Points come from<br>defeats & cleared rounds</span><button class="sell-button" data-sell>SELL ${icons.coin}${n(Math.floor(def.cost * .75))}</button></div>`;
+      <div class="selection-footer"><span>Points come from<br>defeats & cleared rounds</span><button class="sell-button" data-sell>SELL ${icons.coin}${n(Math.floor((tower.purchaseCost ?? def.cost) * .75))}</button></div>`;
   }
 
   openModal(type, html) {
@@ -294,11 +331,11 @@ export class UI {
   showMaps() {
     const current = this.last?.game.map;
     const currentId = typeof current === 'string' ? current : current?.id;
-    this.openModal('maps', `<div class="modal-heading"><div><span class="eyebrow">PICK YOUR BATTLEFIELD</span><h2>Choose a garden</h2></div><button class="modal-close" data-close aria-label="Close map selection">×</button></div><p class="modal-intro">Changing gardens starts a new run. Your unlocked gnomes stay with you!</p><div class="map-grid">${MAPS.map((map, index) => `<button class="map-card ${map.id === currentId ? 'current' : ''}" data-map="${map.id}"><span class="map-number">${index + 1}</span><span class="map-difficulty">${esc(map.difficulty)}</span><h3>${esc(map.name)}</h3><p>${esc(map.description)}</p><span class="map-card-foot">${map.id === currentId ? 'RESTART GARDEN' : 'PLAY GARDEN'} <b>▶</b></span></button>`).join('')}</div>`);
+    this.openModal('maps', `<div class="modal-heading"><div><span class="eyebrow">PICK YOUR BATTLEFIELD</span><h2>Choose a garden</h2></div><button class="modal-close" data-close aria-label="Close map selection">×</button></div><p class="modal-intro">Choose winding trails, loops, spirals, or two-entrance routes. Changing gardens starts a new run; your unlocked gnomes stay with you!</p><div class="map-grid">${MAPS.map((map, index) => `<button class="map-card ${map.id === currentId ? 'current' : ''}" data-map="${map.id}"><span class="map-number">${index + 1}</span><span class="map-difficulty">${esc(map.difficulty)}</span><h3>${esc(map.name)}</h3>${mapFacts(map)}<p>${esc(map.description)}</p><span class="map-card-foot">${map.id === currentId ? 'RESTART GARDEN' : 'PLAY GARDEN'} <b>▶</b></span></button>`).join('')}</div>`);
   }
   showHelp(focusSection = null) {
     const state = this.last?.state || {};
-    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Effects: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><section class="music-settings" id="music-settings" aria-labelledby="music-heading" tabindex="-1"><div class="music-heading"><h3 id="music-heading">♪ Music</h3><span>Original garden soundtracks</span></div><div class="music-choices" role="group" aria-label="Music style"><button class="music-choice" data-music="rock" aria-pressed="false"><strong>Rock</strong><span>Upbeat & energetic</span></button><button class="music-choice" data-music="chill" aria-pressed="false"><strong>Chill</strong><span>Relaxed & mellow</span></button><button class="music-choice" data-music="jazz" aria-pressed="false"><strong>Jazz</strong><span>Easygoing swing</span></button><button class="music-choice music-off" data-music="off" aria-pressed="true"><strong>Off</strong><span>No background music</span></button></div><div class="music-volume-row"><label for="music-volume">Music volume</label><input id="music-volume" type="range" min="0" max="100" step="1" value="35" aria-valuetext="35%"><output id="music-volume-value" for="music-volume">35%</output></div><p class="music-status" id="music-status" role="status" aria-live="polite">Music is off.</p><p class="music-hint">Choose a style to preview its loop. Music and game effects have separate controls.</p></section><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
+    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Effects: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><section class="music-settings" id="music-settings" aria-labelledby="music-heading" tabindex="-1"><div class="music-heading"><h3 id="music-heading">♪ Music</h3><span>Original garden soundtracks</span></div><div class="music-choices" role="group" aria-label="Music style"><button class="music-choice" data-music="rock" aria-pressed="false"><strong>Rock</strong><span>Upbeat & energetic</span></button><button class="music-choice" data-music="chill" aria-pressed="false"><strong>Chill</strong><span>Relaxed & mellow</span></button><button class="music-choice" data-music="jazz" aria-pressed="false"><strong>Jazz</strong><span>Easygoing swing</span></button><button class="music-choice music-off" data-music="off" aria-pressed="true"><strong>Off</strong><span>No background music</span></button></div><div class="music-volume-row"><label for="music-volume">Music volume</label><input id="music-volume" type="range" min="0" max="100" step="1" value="35" aria-valuetext="35%"><output id="music-volume-value" for="music-volume">35%</output></div><p class="music-status" id="music-status" role="status" aria-live="polite">Music is off.</p><p class="music-hint">Choose a style to preview its loop. Music and game effects have separate controls.</p></section><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes. Some gardens have two entrances—defend both routes. Loops and spirals bring enemies past your defenses again.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note secret-rumors"><strong>Garden rumors</strong><p>Three discoveries in Mossy Meadow and three in Crystal Quarry may reveal hidden guardians. Look closely at the scenery! One guardian’s final power upgrade makes its holes capture enemies. Another grows barriers that can explode when enemies destroy them.</p></div><div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Morel’s Wild Garden upgrade spreads poison to nearby skeletons at 65% damage. Spread poison cannot spread again. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
     this.syncAudioSettings(state);
     if (focusSection === 'music') {
       const section = document.getElementById('music-settings');

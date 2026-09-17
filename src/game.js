@@ -1,4 +1,4 @@
-import { MAPS, TOWERS, ENEMIES } from './data.js';
+import { MAPS, TOWERS, ENEMIES, SECRETS } from './data.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
@@ -30,6 +30,10 @@ export class Game {
     this.towers = [];
     this.enemies = [];
     this.traps = [];
+    this.holes = [];
+    this.barriers = [];
+    this.secretDiscoveries = [];
+    this._pendingSummon = null;
     this.effects = [];
     this.projectiles = [];
     this.events = [];
@@ -39,14 +43,22 @@ export class Game {
     this._id = 0;
     this._queue = [];
     this._spawnTimer = 0;
-    this._segments = [];
-    this.pathLength = 0;
-    for (let i = 1; i < this.map.path.length; i++) {
-      const [ax, az] = this.map.path[i - 1], [bx, bz] = this.map.path[i];
-      const length = Math.hypot(bx - ax, bz - az);
-      this._segments.push({ ax, az, bx, bz, length, start: this.pathLength });
-      this.pathLength += length;
-    }
+    this._spawnCount = 0;
+    this.routes = (this.map.paths || [this.map.path]).map(path => {
+      const segments = [];
+      let length = 0;
+      for (let i = 1; i < path.length; i++) {
+        const [ax, az] = path[i - 1], [bx, bz] = path[i];
+        const segmentLength = Math.hypot(bx - ax, bz - az);
+        if (segmentLength <= 0) continue;
+        segments.push({ ax, az, bx, bz, length: segmentLength, start: length });
+        length += segmentLength;
+      }
+      return { path, segments, length };
+    });
+    // Preserve the original single-route API for callers and map previews.
+    this._segments = this.routes[0].segments;
+    this.pathLength = this.routes[0].length;
   }
 
   _event(type, message, extra = {}) {
@@ -54,38 +66,116 @@ export class Game {
     if (this.events.length > 100) this.events.shift();
   }
 
-  pointAt(progress) {
-    const p = clamp(progress, 0, this.pathLength);
-    const s = this._segments.find(segment => p <= segment.start + segment.length) || this._segments.at(-1);
+  routeLength(routeIndex = 0) {
+    return (this.routes[routeIndex] || this.routes[0]).length;
+  }
+
+  pointAt(progress, routeIndex = 0) {
+    const route = this.routes[routeIndex] || this.routes[0];
+    const p = clamp(progress, 0, route.length);
+    const s = route.segments.find(segment => p <= segment.start + segment.length) || route.segments.at(-1);
     const t = clamp((p - s.start) / s.length, 0, 1);
     return { x: s.ax + (s.bx - s.ax) * t, z: s.az + (s.bz - s.az) * t };
   }
 
   pathDistance(x, z) {
-    return Math.min(...this._segments.map(s => {
+    return Math.min(...this.routes.flatMap(route => route.segments.map(s => {
       const t = clamp(((x - s.ax) * (s.bx - s.ax) + (z - s.az) * (s.bz - s.az)) / s.length ** 2, 0, 1);
       return Math.hypot(x - s.ax - t * (s.bx - s.ax), z - s.az - t * (s.bz - s.az));
-    }));
+    })));
+  }
+
+  remainingDistance(enemy) {
+    return Math.max(0, this.routeLength(enemy.routeIndex) - enemy.progress);
+  }
+
+  _anchorMap(anchor) {
+    const origin = this.routes[anchor.routeIndex ?? 0] || this.routes[0];
+    const tangents = origin.segments.filter(s => anchor.progress >= s.start - 1e-7 && anchor.progress <= s.start + s.length + 1e-7);
+    return this.routes.map(route => {
+      const occurrences = [];
+      for (const s of route.segments) {
+        // A road crossing is not a shared road: only parallel overlapping segments count.
+        if (!tangents.some(t => Math.abs((t.bx - t.ax) * (s.bz - s.az) - (t.bz - t.az) * (s.bx - s.ax)) < 1e-7 * s.length * t.length)) continue;
+        const t = ((anchor.x - s.ax) * (s.bx - s.ax) + (anchor.z - s.az) * (s.bz - s.az)) / s.length ** 2;
+        if (t < -1e-7 || t > 1 + 1e-7) continue;
+        const projected = { x: s.ax + t * (s.bx - s.ax), z: s.az + t * (s.bz - s.az) };
+        if (distance(anchor, projected) > 1e-6) continue;
+        const progress = s.start + clamp(t, 0, 1) * s.length;
+        if (!occurrences.some(p => Math.abs(p - progress) < 1e-6)) occurrences.push(progress);
+      }
+      return occurrences.sort((a, b) => a - b);
+    });
+  }
+
+  _anchorProgresses(anchor, routeIndex = 0) {
+    anchor.routeProgressMap ??= this._anchorMap(anchor);
+    return anchor.routeProgressMap[routeIndex] || [];
   }
 
   isUnlocked(type) {
-    return !!TOWERS[type] && (!TOWERS[type].unlockWave || this.profile.unlocks.includes(type));
+    const tower = TOWERS[type];
+    return !!tower && ((!tower.unlockWave && !tower.unlockSecret) || this.profile.unlocks.includes(type));
+  }
+
+  _validTowerSpot(x, z) {
+    return Number.isFinite(x) && Number.isFinite(z) &&
+      Math.abs(x) <= 11.35 && Math.abs(z) <= 7 && this.pathDistance(x, z) >= 1.3 &&
+      (SECRETS[this.map.id]?.spots || []).every(spot => Math.hypot(spot.x - x, spot.z - z) >= 0.65) &&
+      this.towers.every(t => Math.hypot(t.x - x, t.z - z) >= 1.4);
   }
 
   canPlace(type, x, z) {
-    return Number.isFinite(x) && Number.isFinite(z) && this.isUnlocked(type) &&
-      ['planning', 'wave'].includes(this.status) && this.gold >= TOWERS[type].cost &&
-      Math.abs(x) <= 11.35 && Math.abs(z) <= 7 && this.pathDistance(x, z) >= 1.3 &&
-      this.towers.every(t => Math.hypot(t.x - x, t.z - z) >= 1.4);
+    return this.isUnlocked(type) && ['planning', 'wave'].includes(this.status) &&
+      this.gold >= TOWERS[type].cost && this._validTowerSpot(x, z);
+  }
+
+  _makeTower(type, x, z, purchaseCost) {
+    const tower = { id: ++this._id, type, x, z, levels: TOWERS[type].paths.map(() => 0), kills: 0, damageDone: 0, cooldown: 0, planted: 0, targeting: 'first', purchaseCost };
+    this.towers.push(tower);
+    return tower;
   }
 
   placeTower(type, x, z) {
     if (!this.canPlace(type, x, z)) return null;
-    const tower = { id: ++this._id, type, x, z, levels: TOWERS[type].paths.map(() => 0), kills: 0, damageDone: 0, cooldown: 0, planted: 0, targeting: 'first' };
-    this.towers.push(tower);
-    this.gold -= TOWERS[type].cost;
+    const tower = this._makeTower(type, x, z, TOWERS[type].cost);
+    this.gold -= tower.purchaseCost;
     this._event('placed', `${TOWERS[type].name} joined the garden.`, { towerId: tower.id });
     return tower;
+  }
+
+  discoverSecret(id) {
+    const secret = SECRETS[this.map.id];
+    if (!['planning', 'wave'].includes(this.status) || !secret?.spots.some(spot => spot.id === id) || this.secretDiscoveries.includes(id)) return false;
+    this.secretDiscoveries.push(id);
+    const count = this.secretDiscoveries.length;
+    this._event('secret-found', `Hidden treasure found! ${count} / ${secret.spots.length}`, { id, count, total: secret.spots.length, unit: secret.unit });
+    if (count === secret.spots.length && !this.isUnlocked(secret.unit)) {
+      this._unlock(secret.unit);
+      if (secret.summon) {
+        this._pendingSummon = { type: secret.unit, ...secret.summon };
+        this._trySummon();
+      }
+    }
+    return true;
+  }
+
+  _trySummon() {
+    if (!this._pendingSummon || !['planning', 'wave'].includes(this.status)) return;
+    const { type, x, z } = this._pendingSummon;
+    let spot = this._validTowerSpot(x, z) ? { x, z } : null;
+    // Search outward from the altar, with normal path, boundary, and overlap rules.
+    for (let radius = 0.5; !spot && radius <= 25; radius += 0.5) {
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 16) {
+        const candidate = { x: x + Math.cos(angle) * radius, z: z + Math.sin(angle) * radius };
+        if (this._validTowerSpot(candidate.x, candidate.z)) { spot = candidate; break; }
+      }
+    }
+    if (!spot) return;
+    const tower = this._makeTower(type, spot.x, spot.z, 0);
+    tower.summoned = true;
+    this._pendingSummon = null;
+    this._event('summoned', `${TOWERS[type].name} appeared! Your first crystal guardian is free.`, { towerId: tower.id, unit: type });
   }
 
   upgradeTower(id, pathIndex) {
@@ -105,17 +195,18 @@ export class Game {
   setTargeting(id, mode) {
     if (!['planning', 'wave'].includes(this.status) || !['first', 'last', 'strong', 'close'].includes(mode)) return false;
     const tower = this.towers.find(t => t.id === id);
-    if (!tower || tower.type === 'spore') return false;
+    if (!tower || ['spore', 'gravity', 'crystal'].includes(tower.type)) return false;
     tower.targeting = mode;
     return true;
   }
 
   _targetPriority(tower, a, b) {
+    const first = this.remainingDistance(a) - this.remainingDistance(b);
     switch (tower.targeting) {
-      case 'last': return a.progress - b.progress;
-      case 'strong': return b.maxHp - a.maxHp || b.progress - a.progress;
-      case 'close': return distance(tower, a) - distance(tower, b) || b.progress - a.progress;
-      default: return b.progress - a.progress;
+      case 'last': return -first;
+      case 'strong': return b.maxHp - a.maxHp || first;
+      case 'close': return distance(tower, a) - distance(tower, b) || first;
+      default: return first;
     }
   }
 
@@ -124,8 +215,12 @@ export class Game {
     const index = this.towers.findIndex(t => t.id === id);
     if (index < 0) return false;
     const [tower] = this.towers.splice(index, 1);
-    this.gold += Math.floor(TOWERS[tower.type].cost * 0.75);
+    this.gold += Math.floor((tower.purchaseCost ?? TOWERS[tower.type].cost) * 0.75);
     this.traps = this.traps.filter(trap => trap.sourceId !== id);
+    this.holes = this.holes.filter(hole => hole.sourceId !== id);
+    for (const enemy of this.enemies) if (enemy.capturedBy != null && !this.holes.some(h => h.id === enemy.capturedBy)) enemy.capturedBy = null;
+    this.barriers = this.barriers.filter(barrier => barrier.sourceId !== id);
+    this._trySummon();
     this._event('sold', `${TOWERS[tower.type].name} returned home. Upgrade points stay spent.`);
     return true;
   }
@@ -135,14 +230,20 @@ export class Game {
     let stats;
     switch (tower.type) {
       case 'sprout': stats = { damage: [5, 11, 22, 42][a] + d * (3 + Math.min(35, tower.kills || 0) * 0.7), interval: 0.95 * 0.73 ** b, range: 3.4 + c * 1.0 }; break;
-      case 'spore': stats = { damage: 0, interval: 2.5 * 0.68 ** c, range: 3.9 + d * 1.1, poisonDps: [6, 11, 19, 32][a], poisonDuration: 4 + b * 2, charges: 1 + b, trapRadius: 0.62 + d * 0.32 }; break;
+      case 'spore': stats = { damage: 0, interval: 2.5 * 0.68 ** c, range: 3.9 + d * 1.1, poisonDps: [6, 11, 19, 32][a], poisonDuration: 4 + b * 2, charges: 1 + b, trapRadius: 0.62 + d * 0.32, poisonSpreadRadius: d > 0 ? 0.7 + d * 0.6 : 0, poisonSpreadInterval: 1, poisonSpreadTargets: d, poisonSpreadMultiplier: 0.65 }; break;
       case 'boom': stats = { damage: [13, 24, 42, 70][a], interval: 1.4 * 0.73 ** c, range: 3.7 + d * 1.0, explosionDamage: [18, 30, 48, 75][b], explosionRadius: 1.5 + b * 0.5 }; break;
       case 'stun': stats = { damage: [3, 10, 22, 40][c], interval: 1.7 * 0.73 ** b, range: 3.8 + d * 1.0, slowDuration: 2 + a * 0.8, slowMultiplier: 0.5 }; break;
       case 'multi': stats = { damage: [8, 15, 26, 42][a], interval: 1.3 * 0.72 ** a, range: 4, shots: 3 + a }; break;
       case 'sniper': stats = { damage: [5, 25, 65, 130][a], interval: 1.25 * 0.48 ** b, range: 100 }; break;
+      case 'gravity': {
+        const holeDuration = 3 + b * 1.1;
+        stats = { damage: 0, range: 4.2 + c * 0.7, gravityDps: [3, 6, 12, 65][a], pullSpeed: [2.2, 3.2, 4.5, 7][a], holeDuration, holeRadius: 2.2 + c * 0.8, capture: a === 3, interval: holeDuration + Math.max(5, 7 + a * 2 + b * 1.2 - d * 1.5) };
+        break;
+      }
+      case 'crystal': stats = { damage: 0, range: 4 + d, interval: Math.max(8, 12 - c * 1.4), barrierHp: [70, 120, 200, 320][a], barrierLifetime: 20 + a * 2, barrierLimit: 2, explosionDamage: [0, 28, 55, 95][b], explosionRadius: 1.5 + b * 0.4 }; break;
       default: stats = { damage: 0, interval: 1, range: 0 };
     }
-    return { shots: 1, poisonDps: 0, poisonDuration: 0, slowDuration: 0, slowMultiplier: 1, explosionDamage: 0, explosionRadius: 0, ...stats, attackSpeed: 1 / stats.interval };
+    return { shots: 1, poisonDps: 0, poisonDuration: 0, poisonSpreadRadius: 0, poisonSpreadInterval: 0, poisonSpreadTargets: 0, poisonSpreadMultiplier: 0, slowDuration: 0, slowMultiplier: 1, explosionDamage: 0, explosionRadius: 0, ...stats, attackSpeed: 1 / stats.interval };
   }
 
   nextWaveInfo() {
@@ -165,10 +266,11 @@ export class Game {
     return true;
   }
 
-  _spawn(type) {
+  _spawn(type, routeIndex = this._spawnCount++ % this.routes.length) {
+    if (!Number.isInteger(routeIndex) || !this.routes[routeIndex]) routeIndex = 0;
     const spec = ENEMIES[type];
     const hp = spec.hp * (spec.boss ? 1 : 1 + Math.max(0, this.wave - 5) * 0.075);
-    const enemy = { id: ++this._id, type, ...this.pointAt(0), hp, maxHp: hp, progress: 0, slowRemaining: 0, slowMultiplier: 1, poison: null, speed: spec.speed, boss: !!spec.boss, isBoss: !!spec.boss, color: spec.color };
+    const enemy = { id: ++this._id, type, routeIndex, ...this.pointAt(0, routeIndex), hp, maxHp: hp, progress: 0, slowRemaining: 0, slowMultiplier: 1, capturedBy: null, poison: null, speed: spec.speed, boss: !!spec.boss, isBoss: !!spec.boss, color: spec.color };
     this.enemies.push(enemy);
     return enemy;
   }
@@ -244,23 +346,128 @@ export class Game {
   _plant(tower, stats) {
     if (this.traps.filter(t => t.sourceId === tower.id).length >= 16) return;
     const candidates = [];
-    for (let p = 0.4; p < this.pathLength; p += 0.8) {
-      const point = this.pointAt(p);
-      if (distance(tower, point) <= stats.range) candidates.push({ ...point, progress: p });
+    for (let routeIndex = 0; routeIndex < this.routes.length; routeIndex++) {
+      for (let p = 0.4; p < this.routeLength(routeIndex); p += 0.8) {
+        const point = this.pointAt(p, routeIndex);
+        if (distance(tower, point) <= stats.range) candidates.push({ ...point, progress: p, routeIndex });
+      }
     }
     if (!candidates.length) return;
-    const approaching = this.enemies.filter(e => e.hp > 0 && candidates.some(p => p.progress >= e.progress && p.progress - e.progress < 8)).sort((a, b) => b.progress - a.progress)[0];
-    const ahead = approaching && candidates.filter(p => p.progress >= approaching.progress + 0.5);
+    const approaching = this.enemies.filter(e => e.hp > 0 && candidates.some(p => p.routeIndex === (e.routeIndex ?? 0) && p.progress >= e.progress && p.progress - e.progress < 8)).sort((a, b) => this.remainingDistance(a) - this.remainingDistance(b))[0];
+    const ahead = approaching && candidates.filter(p => p.routeIndex === (approaching.routeIndex ?? 0) && p.progress >= approaching.progress + 0.5);
     const available = ahead?.length ? ahead : candidates;
     const point = available[(tower.planted++) % Math.min(available.length, 5)];
-    this.traps.push({ id: ++this._id, ...point, sourceId: tower.id, ttl: 28, charges: stats.charges, poisonDps: stats.poisonDps, poisonDuration: stats.poisonDuration, radius: stats.trapRadius });
+    this.traps.push({ id: ++this._id, ...point, sourceId: tower.id, ttl: 28, charges: stats.charges, poisonDps: stats.poisonDps, poisonDuration: stats.poisonDuration, radius: stats.trapRadius, spreadRadius: stats.poisonSpreadRadius, spreadInterval: stats.poisonSpreadInterval, spreadTargets: stats.poisonSpreadTargets, spreadMultiplier: stats.poisonSpreadMultiplier });
+  }
+
+  _spreadPoison(enemy, dt) {
+    const poison = enemy.poison;
+    if (enemy.hp <= 0 || !poison || poison.remaining <= 0 || !(poison.spreadTargetsLeft > 0)) return;
+    poison.spreadCooldown -= dt;
+    if (poison.spreadCooldown > 1e-8) return;
+    poison.spreadCooldown += poison.spreadInterval;
+    const target = this.enemies.filter(other => other.id !== enemy.id && other.hp > 0 && !other.poison && distance(enemy, other) <= poison.spreadRadius).sort((a, b) => distance(enemy, a) - distance(enemy, b) || a.id - b.id)[0];
+    if (!target) return;
+    target.poison = { dps: poison.dps * poison.spreadMultiplier, remaining: poison.remaining, sourceId: poison.sourceId, spreadTargetsLeft: 0, secondary: true };
+    poison.spreadTargetsLeft--;
+    this._effect('poison-spread', enemy, target, '#a6e675', 0.3);
+    this.effects.at(-1).targetId = target.id;
+  }
+
+  _openHole(tower, stats, target) {
+    if (!target || target.progress < 0.35 || this.holes.some(h => h.sourceId === tower.id && h.ttl > 0)) return false;
+    const progress = Math.max(0, target.progress - 1.2);
+    const routeIndex = target.routeIndex ?? 0;
+    const point = this.pointAt(progress, routeIndex);
+    if (distance(tower, point) > stats.range) return false;
+    this.holes.push({ id: ++this._id, sourceId: tower.id, ...point, progress, routeIndex, ttl: stats.holeDuration, maxTtl: stats.holeDuration, radius: stats.holeRadius, dps: stats.gravityDps, pullSpeed: stats.pullSpeed, capture: stats.capture, released: [] });
+    return true;
+  }
+
+  _gravityMovement(enemy, forward, dt) {
+    enemy.capturedBy = null;
+    const candidates = [];
+    for (const hole of this.holes) {
+      if (hole.ttl <= 0 || hole.released?.includes(enemy.id)) continue;
+      const progress = this._anchorProgresses(hole, enemy.routeIndex ?? 0).filter(p => enemy.progress >= p - 1e-8 && enemy.progress - p <= hole.radius).at(-1);
+      if (progress !== undefined) candidates.push({ hole, progress });
+    }
+    candidates.sort((a, b) => b.hole.dps - a.hole.dps || b.hole.pullSpeed - a.hole.pullSpeed || a.hole.id - b.hole.id);
+    if (!candidates.length) return enemy.progress + forward;
+    const { hole, progress: anchorProgress } = candidates[0];
+    const activeTime = Math.min(dt, hole.ttl);
+    this._damage(enemy, hole.dps * activeTime, hole.sourceId);
+    if (enemy.hp <= 0) return enemy.progress;
+    const resistance = enemy.boss ? 0.35 : 1;
+    const pull = hole.pullSpeed * resistance * activeTime;
+    let progress = Math.max(anchorProgress, enemy.progress + forward - pull);
+    if (progress <= anchorProgress + 1e-8) {
+      if (hole.capture) {
+        // A captured skeleton stays at the center only while the well remains alive.
+        progress = anchorProgress + forward * (1 - activeTime / dt);
+        if (hole.ttl > dt + 1e-8) enemy.capturedBy = hole.id;
+      } else {
+        // Lesser wells tug each visitor through once; they cannot hold it forever.
+        hole.released ??= [];
+        hole.released.push(enemy.id);
+      }
+    }
+    return Math.max(0, progress);
+  }
+
+  _raiseBarrier(tower, stats, target) {
+    if (!target || this.barriers.filter(b => b.sourceId === tower.id && b.hp > 0 && b.ttl > 0).length >= stats.barrierLimit) return false;
+    const progress = target.progress + 0.9;
+    const routeIndex = target.routeIndex ?? 0;
+    if (progress >= this.routeLength(routeIndex) - 0.35) return false;
+    const point = this.pointAt(progress, routeIndex);
+    if (distance(tower, point) > stats.range || this.enemies.some(e => e.hp > 0 && distance(e, point) < 0.65) || this.barriers.some(b => b.hp > 0 && distance(b, point) < 1.2)) return false;
+    this.barriers.push({ id: ++this._id, sourceId: tower.id, ...point, progress, routeIndex, hp: stats.barrierHp, maxHp: stats.barrierHp, ttl: stats.barrierLifetime, explosionDamage: stats.explosionDamage, explosionRadius: stats.explosionRadius });
+    return true;
+  }
+
+  _destroyBarrier(barrier) {
+    if (barrier.destroyed) return;
+    barrier.destroyed = true;
+    barrier.hp = 0;
+    if (barrier.explosionDamage <= 0) return;
+    this._effect('explosion', barrier, barrier, TOWERS.crystal.color, 0.48);
+    this.effects.at(-1).radius = barrier.explosionRadius;
+    for (const enemy of this.enemies) {
+      if (enemy.hp > 0 && distance(enemy, barrier) <= barrier.explosionRadius) this._damage(enemy, barrier.explosionDamage, barrier.sourceId);
+    }
+  }
+
+  _moveAgainstBarriers(enemy, nextProgress, dt) {
+    const oldProgress = enemy.progress;
+    const contacts = [];
+    if (nextProgress >= oldProgress) {
+      for (const barrier of this.barriers) {
+        if (barrier.hp <= 0 || barrier.ttl <= 0) continue;
+        for (const p of this._anchorProgresses(barrier, enemy.routeIndex ?? 0)) {
+          const contact = p - 0.35;
+          if (contact >= oldProgress - 1e-8 && contact <= nextProgress + 1e-8) contacts.push({ barrier, contact });
+        }
+      }
+    }
+    contacts.sort((a, b) => a.contact - b.contact);
+    if (!contacts.length) { enemy.progress = nextProgress; return; }
+    const { barrier, contact } = contacts[0];
+    enemy.progress = Math.max(oldProgress, contact);
+    Object.assign(enemy, this.pointAt(enemy.progress, enemy.routeIndex));
+    // Count only the part of this step spent touching the crystal.
+    const travel = nextProgress - oldProgress;
+    const contactTime = travel > 1e-8 ? dt * clamp((nextProgress - contact) / travel, 0, 1) : dt;
+    barrier.hp -= ENEMIES[enemy.type].attackDamage * Math.min(contactTime, barrier.ttl);
+    if (barrier.hp <= 0) this._destroyBarrier(barrier);
   }
 
   _step(dt) {
     this.time += dt;
     for (const effect of this.effects) effect.ttl -= dt;
     this.effects = this.effects.filter(e => e.ttl > 0);
-    if (this.status !== 'wave') { this.projectiles = []; return; }
+    this._trySummon();
+    if (this.status !== 'wave') { this.projectiles = []; this.holes = []; this.barriers = []; for (const enemy of this.enemies) enemy.capturedBy = null; return; }
     this._spawnTimer -= dt;
     if (this._queue.length && this._spawnTimer <= 0) {
       this._spawn(this._queue.shift());
@@ -275,6 +482,7 @@ export class Game {
         if (enemy.poison.remaining <= 0) enemy.poison = null;
       }
     }
+    for (const enemy of this.enemies) this._spreadPoison(enemy, dt);
     this._advanceProjectiles(dt);
     for (const tower of this.towers) {
       tower.cooldown = Math.max(0, tower.cooldown - dt);
@@ -283,6 +491,12 @@ export class Game {
       if (tower.type === 'spore') {
         this._plant(tower, stats);
         tower.cooldown = stats.interval;
+        continue;
+      }
+      if (tower.type === 'gravity' || tower.type === 'crystal') {
+        const candidates = this.enemies.filter(e => e.hp > 0 && distance(tower, e) <= stats.range).sort((a, b) => this.remainingDistance(a) - this.remainingDistance(b));
+        const planted = tower.type === 'gravity' ? this._openHole(tower, stats, candidates[0]) : this._raiseBarrier(tower, stats, candidates[0]);
+        if (planted) tower.cooldown = stats.interval;
         continue;
       }
       const targets = this.enemies.filter(e => e.hp > 0 && distance(tower, e) <= stats.range).sort((a, b) => this._targetPriority(tower, a, b)).slice(0, stats.shots);
@@ -296,16 +510,24 @@ export class Game {
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0) continue;
       const slowedTime = Math.min(dt, enemy.slowRemaining);
-      enemy.progress += enemy.speed * (slowedTime * enemy.slowMultiplier + dt - slowedTime);
+      const forward = enemy.speed * (slowedTime * enemy.slowMultiplier + dt - slowedTime);
       enemy.slowRemaining = Math.max(0, enemy.slowRemaining - dt);
       if (enemy.slowRemaining === 0) enemy.slowMultiplier = 1;
-      Object.assign(enemy, this.pointAt(enemy.progress));
-      if (enemy.progress >= this.pathLength) {
+      const nextProgress = this._gravityMovement(enemy, forward, dt);
+      if (enemy.hp <= 0) continue;
+      this._moveAgainstBarriers(enemy, nextProgress, dt);
+      Object.assign(enemy, this.pointAt(enemy.progress, enemy.routeIndex));
+      if (enemy.progress >= this.routeLength(enemy.routeIndex)) {
         this.lives = Math.max(0, this.lives - ENEMIES[enemy.type].leak);
         enemy.hp = 0;
         this._event('leak', `${ENEMIES[enemy.type].name} reached the gate.`, { amount: ENEMIES[enemy.type].leak });
       }
     }
+    for (const hole of this.holes) hole.ttl -= dt;
+    this.holes = this.holes.filter(hole => hole.ttl > 1e-8);
+    for (const enemy of this.enemies) if (enemy.capturedBy != null && !this.holes.some(h => h.id === enemy.capturedBy)) enemy.capturedBy = null;
+    for (const barrier of this.barriers) barrier.ttl -= dt;
+    this.barriers = this.barriers.filter(barrier => barrier.hp > 0 && barrier.ttl > 1e-8);
     for (const trap of this.traps) {
       trap.ttl -= dt;
       if (trap.ttl <= 0) continue;
@@ -314,7 +536,7 @@ export class Game {
       const touched = this.enemies.filter(e => e.hp > 0 && distance(trap, e) <= trap.radius);
       if (!touched.length) continue;
       for (const enemy of touched) {
-        if (!enemy.poison || trap.poisonDps >= enemy.poison.dps) enemy.poison = { dps: trap.poisonDps, remaining: trap.poisonDuration, sourceId: trap.sourceId };
+        if (!enemy.poison || trap.poisonDps >= enemy.poison.dps) enemy.poison = { dps: trap.poisonDps, remaining: trap.poisonDuration, sourceId: trap.sourceId, spreadRadius: trap.spreadRadius || 0, spreadInterval: trap.spreadInterval || 1, spreadCooldown: trap.spreadInterval || 1, spreadTargetsLeft: trap.spreadTargets || 0, spreadMultiplier: trap.spreadMultiplier || 0.65 };
         else enemy.poison.remaining = Math.max(enemy.poison.remaining, trap.poisonDuration);
       }
       this._effect('poison', trap, trap, '#9fda62', 0.45);
@@ -327,11 +549,16 @@ export class Game {
     if (this.lives <= 0) {
       this.status = 'lost';
       this.projectiles = [];
+      this.holes = [];
+      this.barriers = [];
+      for (const enemy of this.enemies) enemy.capturedBy = null;
       this._event('defeat', 'The garden needs another try. Your character unlocks are saved.');
       return;
     }
     if (!this._queue.length && !this.enemies.length) {
       this.projectiles = [];
+      this.holes = [];
+      this.barriers = [];
       this.gold += 65 + this.wave * 5;
       this.points += 6 + Math.floor(this.wave / 2);
       if (this.wave === 15) this._unlock('multi');

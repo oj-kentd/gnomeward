@@ -36,7 +36,7 @@ let audio;
 function beep(pitch=440,duration=.08){if(!state.sound)return;try{audio??=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();const osc=audio.createOscillator(),gain=audio.createGain();osc.type='sine';osc.frequency.setValueAtTime(pitch,audio.currentTime);osc.frequency.exponentialRampToValueAtTime(pitch*.6,audio.currentTime+duration);gain.gain.setValueAtTime(.045,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);osc.connect(gain).connect(audio.destination);osc.start();osc.stop(audio.currentTime+duration);}catch{}}
 function save(){try{localStorage.setItem('gnomeward-profile',JSON.stringify(game.profile));}catch{}}
 function cancel(){state.placingType=null;state.selectedTowerId=null;world?.setGhost(null);refreshUI();}
-function choose(type){if(!ready)return;if(!game.isUnlocked(type)){ui.toast('This gnome joins your team after its milestone.');return;}state.placingType=state.placingType===type?null:type;state.selectedTowerId=null;refreshUI();beep(600);}
+function choose(type){if(!ready)return;if(!game.isUnlocked(type)){ui.toast(TOWERS[type].unlockSecret ? `A hidden friend awaits in ${MAPS.find(map=>map.id===TOWERS[type].unlockSecret).name}.` : 'This gnome joins your team after its milestone.');return;}state.placingType=state.placingType===type?null:type;state.selectedTowerId=null;refreshUI();beep(600);}
 function cycleSpeed(){state.speed=state.speed===1?2:state.speed===2?3:1;}
 function start(){
   if(!ready)return;
@@ -71,9 +71,13 @@ refreshUI();ui.setLoading?.('Growing your garden…');
 try {
   world=new GardenRenderer(document.getElementById('scene'),{
     onHover:(x,z)=>{if(!ready||!state.placingType)return;const type=state.placingType;world.setGhost(type,x,z,game.canPlace(type,x,z),game.getStats({type,levels:TOWERS[type].paths.map(()=>0)}).range);},
-    onClick:(x,z,hitTowerId)=>{
+    onClick:(x,z,hitTowerId,secretId)=>{
       if(!ready||['won','lost'].includes(game.status))return;
-      if(state.placingType){const t=game.placeTower(state.placingType,x,z);if(t){state.placingType=null;state.selectedTowerId=t.id;beep(520,.12);}else ui.toast(game.gold<TOWERS[state.placingType].cost?'You need more gold for this gnome.':'Place your gnome on the grass, away from the path and other gnomes.');}
+      if(secretId&&!state.placingType){
+        if(game.discoverSecret(secretId)){save();state.selectedTowerId=null;beep(1100,.2);refreshUI();}
+        return;
+      }
+      if(state.placingType){const t=game.placeTower(state.placingType,x,z);if(t){state.placingType=null;state.selectedTowerId=t.id;beep(520,.12);}else ui.toast(game.gold<TOWERS[state.placingType].cost?'You need more gold for this gnome.':'Place your gnome on the grass, away from the path, hidden relics, and other gnomes.');}
       else {const nearest=game.towers.find(t=>t.id===hitTowerId)||game.towers.find(t=>Math.hypot(t.x-x,t.z-z)<.85);state.selectedTowerId=nearest?.id??null;}
       refreshUI();
     },onCancel:cancel
@@ -81,7 +85,7 @@ try {
   await world.load(progress=>ui.setLoading?.('Growing your garden… '+Math.round(progress*100)+'%'));
   world.setMap(game.map,0);ready=true;ui.setLoading?.(null);
 }catch(error){console.error(error);ui.setLoading?.('The garden could not load. Please reload in a browser with WebGL 2 enabled.');}
-window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;if(e.code==='Escape')cancel();else if(e.code==='Space'){if(e.target.closest('button,a'))return;e.preventDefault();start();}else if(e.code==='KeyP'){state.paused=!state.paused;refreshUI();}else if(/^Digit[1-6]$/.test(e.code))choose(Object.keys(TOWERS)[Number(e.code.slice(-1))-1]);});
+window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;if(e.code==='Escape')cancel();else if(e.code==='Space'){if(e.target.closest('button,a'))return;e.preventDefault();start();}else if(e.code==='KeyP'){state.paused=!state.paused;refreshUI();}else if(/^Digit[1-8]$/.test(e.code))choose(Object.keys(TOWERS)[Number(e.code.slice(-1))-1]);});
 let last=performance.now(),uiElapsed=0;
 // Returning to the tab must not count time spent away toward an automatic round.
 document.addEventListener('visibilitychange',()=>{last=performance.now();music.setHidden(document.hidden);});
@@ -109,6 +113,8 @@ function frame(now){
   if(announcement)ui.announce?.(announcement.message,announcement.type);
   for(const event of events){
     if(event.message&&!['leak','placed','wave-start','wave-complete','unlock'].includes(event.type))ui.toast(event.message);
+    if(event.type==='summoned'){state.selectedTowerId=event.towerId;state.placingType=null;refreshUI();}
+    if(event.type==='secret-found'||event.type==='summoned')save();
     if(['unlock','wave-complete','victory'].includes(event.type)){save();beep(920,.2);}
     else if(event.type==='defeat')beep(140,.4);
   }
@@ -117,4 +123,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},version:'0.1.6'};
+window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},version:'0.1.7'};

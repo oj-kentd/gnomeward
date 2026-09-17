@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises';
 await mkdir('playtest-results', { recursive: true });
 const browser = await chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined,headless:true,args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const page=await browser.newPage({viewport:{width:1440,height:960}});
+page.setDefaultTimeout(45000);
 const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text()+' '+m.location().url)});
 await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173');await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden);await page.waitForFunction(()=>gnomeward.renderer.renderer.info.render.frame>4);await page.screenshot({path:'playtest-results/initial.png'});
 const immersiveLayout = await page.evaluate(() => {
@@ -60,23 +61,27 @@ await page.waitForFunction(()=>gnomeward.state.autoCountdown!==null);
 const countdown=await page.evaluate(()=>gnomeward.state.autoCountdown);
 await page.waitForTimeout(350);
 if(await page.evaluate(()=>gnomeward.state.autoCountdown)!==countdown)throw Error('Paused auto countdown must freeze');
-await page.locator('#pause-button').click();
-await page.waitForFunction(()=>gnomeward.state.autoCountdown<2.7);
+// Open the menu while paused so slow software-rendered clicks cannot outrun
+// the three-second countdown. Then test the menu's own pause independently.
 await page.locator('#map-button').click();
+await page.evaluate(()=>{gnomeward.state.paused=false;});
 const menuCountdown=await page.evaluate(()=>gnomeward.state.autoCountdown);
 await page.waitForTimeout(350);
 if(await page.evaluate(()=>gnomeward.state.autoCountdown)!==menuCountdown)throw Error('Open menus must freeze auto countdown');
+await page.evaluate(()=>{gnomeward.state.paused=true;});
 await page.keyboard.press('Escape');
 await page.locator('#auto-button').click();
 if(await page.evaluate(()=>gnomeward.state.autoCountdown)!==null)throw Error('Disabling auto must cancel countdown');
-const autoWave=await page.evaluate(()=>gnomeward.game.wave);
+await page.locator('#pause-button').click();
+const autoWave=await page.evaluate(()=>{if(gnomeward.game.status!=='planning')throw Error('Auto-round fixture must still be planning');return gnomeward.game.wave;});
 await page.waitForTimeout(500);
 if(await page.evaluate(()=>gnomeward.game.wave)!==autoWave)throw Error('Disabled auto must not start a round');
 await page.locator('#auto-button').click();
-await page.waitForFunction(w=>gnomeward.game.wave===w+1,autoWave,{timeout:7000});
+// Software WebGL in headless CI can spend several seconds producing a frame.
+await page.waitForFunction(w=>gnomeward.game.wave===w+1,autoWave,{timeout:30000}).catch(async error=>{console.error('Auto-round state:',await page.evaluate(()=>({wave:gnomeward.game.wave,status:gnomeward.game.status,paused:gnomeward.state.paused,autoStart:gnomeward.state.autoStart,countdown:gnomeward.state.autoCountdown,dialog:!!document.querySelector('dialog[open]')})));throw error;});
 await page.locator('#auto-button').click();
 const autoRounds=true;
-for(const id of ['orchard','creek','quarry','hollow','meadow']){await page.locator('#map-button').click();await page.locator(`[data-map="${id}"]`).click();if(await page.evaluate(()=>gnomeward.game.map.id)!==id)throw Error('map failed '+id)}
+for(const id of ['orchard','creek','quarry','hollow','crossroads','meadow']){await page.locator('#map-button').click();await page.locator(`[data-map="${id}"]`).click();if(await page.evaluate(()=>gnomeward.game.map.id)!==id)throw Error('map failed '+id)}
 await page.locator('#auto-button').click();
 await page.waitForTimeout(400);
 if(await page.evaluate(()=>gnomeward.state.autoCountdown)!==null||await page.evaluate(()=>gnomeward.game.wave)!==0)throw Error('Auto rounds must wait for first manual start in a new garden');
