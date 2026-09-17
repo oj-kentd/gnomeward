@@ -16,7 +16,24 @@ export const MAPS = [
   { id: 'crossroads', name: 'Twinbrook Crossing', subtitle: 'Guard both sides of the brook', topology: 'Two entrances', difficulty: 'Hard', description: 'Enemies arrive from opposite sides on unequal trails. Guard the meeting point and the final zigzag.', color: '#669c91', path: crossingPaths[0], paths: crossingPaths },
 ];
 
+/** Shared cottage and door coordinates for models and reborn-gnome departures. */
+export function cottagePosition(map, routeIndex = 0) {
+  const path = (map.paths || [map.path])[routeIndex] || map.path;
+  const [x, z] = path.at(-1);
+  return { x: Math.max(-11.3, Math.min(11.3, x)), z: Math.max(-7, Math.min(7, z + 1.4)) };
+}
+export function cottageDoorPosition(map, routeIndex = 0) {
+  const house = cottagePosition(map, routeIndex);
+  return { x: house.x, z: house.z + 0.65 };
+}
+
 export const SECRETS = {
+  hollow: { unit: 'necro', order: ['hollow-moon', 'hollow-star', 'hollow-leaf', 'hollow-flame'], spots: [
+    { id: 'hollow-moon', symbol: 'moon', x: -11, z: -2, color: '#d6b86d' },
+    { id: 'hollow-star', symbol: 'star', x: 6.5, z: 1.5, color: '#dbc781' },
+    { id: 'hollow-leaf', symbol: 'leaf', x: -6.6, z: 6.9, color: '#a2b878' },
+    { id: 'hollow-flame', symbol: 'flame', x: 11, z: -3, color: '#cb8662' },
+  ] },
   meadow: { unit: 'gravity', spots: [
     { id: 'meadow-moon', x: -4, z: -1, color: '#ad8cff' },
     { id: 'meadow-star', x: 2, z: -1, color: '#d7b6ff' },
@@ -39,6 +56,8 @@ export const TOWERS = {
   sniper: { id: 'sniper', name: 'Aster', role: 'Watchful sharpshooter', description: 'Sees the entire map. Starts with low damage; build for power, speed, or a little of both. Defeat the final boss to unlock.', cost: 300, color: '#7d98d1', unlockWave: 20, paths: [path('power','Meteor Shots','Greatly increase damage per shot.',[15,35,65]),path('speed','Starlight Stream','Greatly increase shooting speed.',[15,35,65])] },
   gravity: { id: 'gravity', name: 'Orbit', role: 'Gravity gardener', description: 'Opens a short-lived gravity well behind skeletons, tugging them back along the trail. Find three hidden moonstones in Mossy Meadow.', cost: 320, color: '#9a7be7', unlockWave: 0, unlockSecret: 'meadow', paths: [path('horizon','Event Horizon','Stronger pull and damage. Tier 3 captures skeletons at the center until the well closes.',[18,36,75]),path('duration','Lingering Gravity','Wells last longer, followed by a longer recovery.'),path('radius','Wide Orbit','Pull from farther along the trail and reach farther.'),path('recharge','Cosmic Rhythm','Recover sooner between wells. Always at least five seconds between active wells.')] },
   crystal: { id: 'crystal', name: 'Prism', role: 'Crystal architect', description: 'Raises crystals ahead of skeletons. They must break through to continue. Find three hidden gems in Crystal Quarry to summon your first Prism for free.', cost: 280, color: '#6ad7de', unlockWave: 0, unlockSecret: 'quarry', paths: [path('durability','Diamond Walls','Raise stronger, longer-lasting crystal barriers.'),path('volatile','Shattering Light','Crystals explode when enemies destroy them. Expired crystals fade safely.'),path('speed','Crystal Bloom','Raise replacement crystals sooner.'),path('range','Prismatic Reach','Raise crystals farther away.')] },
+
+  necro: { id: 'necro', name: 'Morrow', role: 'Necromancer', description: 'Spell defeats call reborn gnomes from the cottage to march against the skeletons. Follow the cottage clue in Pumpkin Hollow to find this secret guardian.', cost: 300, color: '#9ba3d8', unlockWave: 0, unlockSecret: 'hollow', paths: [path('champions','Reborn Champions','Reborn gnomes gain more health and stronger melee attacks.'),path('procession','Soul Procession','Dispatch gnomes sooner, support a larger group, and march faster.'),path('gravecraft','Gravecraft','Cast stronger spells more often and reach farther.')] },
 
 };
 

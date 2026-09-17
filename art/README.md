@@ -45,3 +45,11 @@ blender --background --python art/generate_entry_arrow.py
 `art/entry-arrow.blend` contains the rounded green-and-cream entrance marker. `entry-arrow.glb` points +Z in Three.js, stands at Y=0, and has an approximately 0.64 × 0.995 footprint. Orient it to the first segment of each entrance route.
 
 For a full art rebuild, run the original asset generator first, then the environment, secret, and entrance-arrow generators. All sources and render outputs are original Blender work; none of these art generators touches music files.
+
+## Necromancer and reborn helpers
+
+```sh
+blender --background --python art/generate_necromancer.py
+```
+
+This exports Morrow’s `gnome-necro.glb` and `necro.png` portrait, the 1.05-unit-tall `reborn-gnome.glb`, a compact `soul-puff.glb`, four subtly marked pumpkin models, and the cottage’s `necro-clue.glb` plaque. All characters face +Z with their bases at Y=0. `art/necromancer.blend` is the editable collection; `art/necromancer-preview.png` shows the new family of assets. The pumpkin material named `pumpkin-rune` has no initial emission; the renderer lights it only after a correct discovery. Existing characters and garden assets are preserved.

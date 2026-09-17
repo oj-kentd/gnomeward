@@ -5,7 +5,7 @@ import { ENEMIES, SECRETS, TOWERS } from '../src/data.js';
 
 const near = (actual, expected, epsilon = 1e-8) => assert.ok(Math.abs(actual - expected) < epsilon, `${actual} ≈ ${expected}`);
 const gameWithSecrets = (map = 'meadow') => {
-  const g = new Game(map, { unlocks: ['gravity', 'crystal'] });
+  const g = new Game(map, { unlocks: ['gravity', 'crystal', 'necro'] });
   g.gold = 2000;
   g.points = 1000;
   return g;
@@ -52,21 +52,21 @@ test('three unique discoveries on the correct map unlock only its secret guardia
   assert.equal(next.discoverSecret(SECRETS.quarry.spots[0].id), false);
 });
 
-test('secret spots reserve grass and secret guardians have four paths with the two-path restriction', () => {
+test('secret spots reserve grass and secret guardians retain the two-path restriction', () => {
   for (const [map, secret] of Object.entries(SECRETS)) {
     const g = gameWithSecrets(map);
     for (const spot of secret.spots) {
       assert.ok(g.pathDistance(spot.x, spot.z) >= 1.3);
       assert.equal(g.canPlace('sprout', spot.x, spot.z), false);
     }
-    assert.equal(TOWERS[secret.unit].paths.length, 4);
+    assert.equal(TOWERS[secret.unit].paths.length, secret.unit === 'necro' ? 3 : 4);
     assert.ok(TOWERS[secret.unit].paths.every(path => path.costs.length === 3));
-    const tower = g.placeTower(secret.unit, -10, 1.5);
+    const tower = g.placeTower(secret.unit, ...(map === 'hollow' ? [-7, 0] : [-10, 1.5]));
     assert.ok(tower);
     assert.ok(g.upgradeTower(tower.id, 0));
     assert.ok(g.upgradeTower(tower.id, 1));
     assert.equal(g.upgradeTower(tower.id, 2), false);
-    assert.equal(g.setTargeting(tower.id, 'strong'), false);
+    assert.equal(g.setTargeting(tower.id, 'strong'), secret.unit === 'necro');
   }
 });
 

@@ -1,4 +1,4 @@
-import { MAPS, TOWERS, ENEMIES, SECRETS } from './data.js';
+import { MAPS, TOWERS, ENEMIES, SECRETS, cottagePosition, cottageDoorPosition } from './data.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
@@ -32,6 +32,7 @@ export class Game {
     this.traps = [];
     this.holes = [];
     this.barriers = [];
+    this.allies = [];
     this.secretDiscoveries = [];
     this._pendingSummon = null;
     this.effects = [];
@@ -131,7 +132,7 @@ export class Game {
   }
 
   _makeTower(type, x, z, purchaseCost) {
-    const tower = { id: ++this._id, type, x, z, levels: TOWERS[type].paths.map(() => 0), kills: 0, damageDone: 0, cooldown: 0, planted: 0, targeting: 'first', purchaseCost };
+    const tower = { id: ++this._id, type, x, z, levels: TOWERS[type].paths.map(() => 0), kills: 0, damageDone: 0, cooldown: 0, planted: 0, targeting: 'first', purchaseCost, soulQueue: [], summonCooldown: 0 };
     this.towers.push(tower);
     return tower;
   }
@@ -146,10 +147,18 @@ export class Game {
 
   discoverSecret(id) {
     const secret = SECRETS[this.map.id];
-    if (!['planning', 'wave'].includes(this.status) || !secret?.spots.some(spot => spot.id === id) || this.secretDiscoveries.includes(id)) return false;
+    if (!['planning', 'wave'].includes(this.status) || !secret?.spots.some(spot => spot.id === id)) return false;
+    if (secret.order) {
+      if (this.secretDiscoveries.length === secret.order.length || this.secretDiscoveries.at(-1) === id) return false;
+      if (id !== secret.order[this.secretDiscoveries.length]) {
+        this.secretDiscoveries = [];
+        this._event('secret-reset', 'The little lights fade. The cottage may hold a clue.', { unit: secret.unit, count: 0 });
+        return false;
+      }
+    } else if (this.secretDiscoveries.includes(id)) return false;
     this.secretDiscoveries.push(id);
     const count = this.secretDiscoveries.length;
-    this._event('secret-found', `Hidden treasure found! ${count} / ${secret.spots.length}`, { id, count, total: secret.spots.length, unit: secret.unit });
+    this._event('secret-found', secret.order ? 'A little pumpkin light wakes.' : `Hidden treasure found! ${count} / ${secret.spots.length}`, { id, count, total: secret.spots.length, unit: secret.unit });
     if (count === secret.spots.length && !this.isUnlocked(secret.unit)) {
       this._unlock(secret.unit);
       if (secret.summon) {
@@ -220,6 +229,9 @@ export class Game {
     this.holes = this.holes.filter(hole => hole.sourceId !== id);
     for (const enemy of this.enemies) if (enemy.capturedBy != null && !this.holes.some(h => h.id === enemy.capturedBy)) enemy.capturedBy = null;
     this.barriers = this.barriers.filter(barrier => barrier.sourceId !== id);
+    this.allies = this.allies.filter(ally => ally.sourceId !== id);
+    for (const enemy of this.enemies) if (enemy.allyTargetId != null && !this.allies.some(ally => ally.id === enemy.allyTargetId)) enemy.allyTargetId = null;
+    tower.soulQueue = [];
     this._trySummon();
     this._event('sold', `${TOWERS[tower.type].name} returned home. Upgrade points stay spent.`);
     return true;
@@ -241,6 +253,7 @@ export class Game {
         break;
       }
       case 'crystal': stats = { damage: 0, range: 4 + d, interval: Math.max(8, 12 - c * 1.4), barrierHp: [70, 120, 200, 320][a], barrierLifetime: 20 + a * 2, barrierLimit: 2, explosionDamage: [0, 28, 55, 95][b], explosionRadius: 1.5 + b * 0.4 }; break;
+      case 'necro': stats = { damage: [12, 20, 32, 48][c], interval: 1.5 * 0.82 ** c, range: 4 + c * 0.6, allyHp: [50, 90, 150, 240][a], allyDamage: [8, 14, 24, 38][a], allyInterval: 0.8, allySpeed: 3.5 + b * 0.5, allyLifetime: 55, allyLimit: 3 + b * 2, summonInterval: [2.4, 1.8, 1.2, 0.7][b] }; break;
       default: stats = { damage: 0, interval: 1, range: 0 };
     }
     return { shots: 1, poisonDps: 0, poisonDuration: 0, poisonSpreadRadius: 0, poisonSpreadInterval: 0, poisonSpreadTargets: 0, poisonSpreadMultiplier: 0, slowDuration: 0, slowMultiplier: 1, explosionDamage: 0, explosionRadius: 0, ...stats, attackSpeed: 1 / stats.interval };
@@ -287,7 +300,7 @@ export class Game {
       unitType: tower.type, sourceId: tower.id, targetId: target.id,
       x: tower.x, z: tower.z, tx: target.x, tz: target.z,
       ttl: duration, maxTtl: duration, color: TOWERS[tower.type].color,
-      damage: stats.damage, slowDuration: stats.slowDuration, slowMultiplier: stats.slowMultiplier,
+      damage: stats.damage, slowDuration: stats.slowDuration, slowMultiplier: stats.slowMultiplier, summonOnKill: tower.type === 'necro',
     });
   }
 
@@ -304,7 +317,7 @@ export class Game {
         this.projectiles.push(shot);
         continue;
       }
-      this._damage(target, shot.damage, shot.sourceId);
+      this._damage(target, shot.damage, shot.sourceId, { summon: shot.summonOnKill === true });
       if (target.hp > 0 && shot.slowDuration > 0) {
         target.slowRemaining = Math.max(target.slowRemaining, shot.slowDuration);
         target.slowMultiplier = shot.slowMultiplier;
@@ -319,7 +332,7 @@ export class Game {
     this._event('unlock', `${TOWERS[type].name} unlocked! Available in every garden.`, { tower: type, typeId: type });
   }
 
-  _damage(enemy, amount, sourceId) {
+  _damage(enemy, amount, sourceId, { summon = false } = {}) {
     if (enemy.hp <= 0 || amount <= 0) return;
     const tower = this.towers.find(t => t.id === sourceId);
     const dealt = Math.min(enemy.hp, amount);
@@ -331,6 +344,10 @@ export class Game {
     this.gold += ENEMIES[enemy.type].reward;
     this.points += enemy.boss ? 20 : 1;
     if (tower) tower.kills++;
+    if (tower?.type === 'necro' && summon) {
+      tower.soulQueue.push({ routeIndex: enemy.routeIndex ?? 0 });
+      this._effect('soul-reap', enemy, enemy, TOWERS.necro.color, 0.4);
+    }
     if (enemy.type === 'boss') this._unlock('stun');
     if (enemy.type === 'king') this._unlock('sniper');
     if (tower?.type === 'boom') {
@@ -438,10 +455,113 @@ export class Game {
     }
   }
 
+  _clearReborn() {
+    for (const ally of this.allies) this._effect('reborn-fade', ally, ally, TOWERS.necro.color, 0.25);
+    this.allies = [];
+    for (const tower of this.towers) { tower.soulQueue = []; tower.summonCooldown = 0; }
+    for (const enemy of this.enemies) enemy.allyTargetId = null;
+  }
+
+  _spawnReborn(tower, routeIndex) {
+    const stats = this.getStats(tower);
+    const house = cottagePosition(this.map, routeIndex);
+    const door = cottageDoorPosition(this.map, routeIndex);
+    const end = this.pointAt(this.routeLength(routeIndex), routeIndex);
+    const side = house.x + (end.x >= house.x ? 1.05 : -1.05);
+    const ally = {
+      id: ++this._id, sourceId: tower.id, routeIndex, ...door,
+      progress: this.routeLength(routeIndex), hp: stats.allyHp, maxHp: stats.allyHp,
+      damage: stats.allyDamage, interval: stats.allyInterval, cooldown: 0,
+      speed: stats.allySpeed, ttl: stats.allyLifetime, maxTtl: stats.allyLifetime,
+      phase: 'joining', targetId: null, spawnedAt: this.time,
+      joining: [{ x: side, z: door.z }, { x: side, z: end.z }, end], waypointIndex: 0,
+    };
+    this.allies.push(ally);
+    this._effect('reborn-spawn', ally, ally, TOWERS.necro.color, 0.4);
+    return ally;
+  }
+
+  _dispatchReborn(dt) {
+    for (const tower of this.towers) {
+      if (tower.type !== 'necro') continue;
+      tower.summonCooldown = Math.max(0, tower.summonCooldown - dt);
+      const stats = this.getStats(tower);
+      if (tower.summonCooldown > 1e-8 || !tower.soulQueue.length || this.allies.filter(ally => ally.sourceId === tower.id && ally.hp > 0 && ally.ttl > 0).length >= stats.allyLimit) continue;
+      const soul = tower.soulQueue.shift();
+      this._spawnReborn(tower, soul.routeIndex);
+      tower.summonCooldown = stats.summonInterval;
+    }
+  }
+
+  _actorProgresses(actor, routeIndex) {
+    // A moving actor on the same loop must stay on its actual lap, not another
+    // occurrence of the same junction. Other routes interact only on shared road.
+    if ((actor.routeIndex ?? 0) === routeIndex) return [actor.progress];
+    return this._anchorMap(actor)[routeIndex] || [];
+  }
+
+  _moveReborn(dt) {
+    for (const ally of this.allies) {
+      if (ally.hp <= 0 || ally.ttl <= 0 || ally.spawnedAt === this.time) continue;
+      ally.ttl -= dt;
+      ally.cooldown = Math.max(0, ally.cooldown - dt);
+      ally.targetId = null;
+      if (ally.ttl <= 0) continue;
+      let travel = ally.speed * dt;
+      if (ally.phase === 'joining') {
+        while (travel > 1e-8 && ally.waypointIndex < ally.joining.length) {
+          const waypoint = ally.joining[ally.waypointIndex];
+          const length = distance(ally, waypoint);
+          if (length <= travel + 1e-8) {
+            ally.x = waypoint.x; ally.z = waypoint.z;
+            travel = Math.max(0, travel - length);
+            ally.waypointIndex++;
+          } else {
+            ally.x += (waypoint.x - ally.x) * travel / length;
+            ally.z += (waypoint.z - ally.z) * travel / length;
+            travel = 0;
+          }
+        }
+        if (ally.waypointIndex < ally.joining.length) continue;
+        ally.phase = 'marching';
+      }
+      const old = ally.progress;
+      let next = Math.max(0, old - travel);
+      const encounters = [];
+      for (const enemy of this.enemies) {
+        if (enemy.hp <= 0) continue;
+        for (const progress of this._actorProgresses(enemy, ally.routeIndex)) {
+          if (progress <= old + 0.65 && progress + 0.65 >= next) encounters.push({ enemy, progress });
+        }
+      }
+      encounters.sort((a, b) => Math.abs(a.progress - old) - Math.abs(b.progress - old) || a.enemy.id - b.enemy.id);
+      if (encounters.length) next = Math.max(next, Math.min(old, encounters[0].progress + 0.65));
+      ally.progress = next;
+      ally.phase = 'marching';
+      Object.assign(ally, this.pointAt(ally.progress, ally.routeIndex));
+    }
+  }
+
+  _fightReborn() {
+    for (const ally of this.allies) {
+      if (ally.hp <= 0 || ally.ttl <= 0 || ally.phase === 'joining' || ally.progress <= 0) continue;
+      const targets = this.enemies.filter(enemy => enemy.hp > 0 && this._actorProgresses(enemy, ally.routeIndex).some(progress => Math.abs(progress - ally.progress) <= 0.650001)).sort((a, b) => distance(ally, a) - distance(ally, b) || a.id - b.id);
+      const target = targets[0];
+      ally.targetId = target?.id ?? null;
+      ally.phase = target ? 'fighting' : 'marching';
+      if (!target || ally.cooldown > 1e-8) continue;
+      ally.cooldown = ally.interval;
+      this._damage(target, ally.damage, ally.sourceId, { summon: false });
+      this._effect('reborn-hit', target, target, TOWERS.necro.color, 0.18);
+    }
+  }
+
   _moveAgainstBarriers(enemy, nextProgress, dt) {
     const oldProgress = enemy.progress;
+    const forward = nextProgress >= oldProgress;
     const contacts = [];
-    if (nextProgress >= oldProgress) {
+    enemy.allyTargetId = null;
+    if (forward) {
       for (const barrier of this.barriers) {
         if (barrier.hp <= 0 || barrier.ttl <= 0) continue;
         for (const p of this._anchorProgresses(barrier, enemy.routeIndex ?? 0)) {
@@ -450,16 +570,28 @@ export class Game {
         }
       }
     }
-    contacts.sort((a, b) => a.contact - b.contact);
+    for (const ally of this.allies) {
+      if (ally.hp <= 0 || ally.ttl <= 0 || ally.phase === 'joining' || ally.progress <= 0) continue;
+      for (const p of this._actorProgresses(ally, enemy.routeIndex ?? 0)) {
+        if (Math.abs(p - oldProgress) <= 0.650001 && (forward ? p >= oldProgress - 1e-8 : p <= oldProgress + 1e-8)) { contacts.push({ ally, contact: oldProgress }); continue; }
+        const contact = p + (forward ? -0.65 : 0.65);
+        if (forward ? contact >= oldProgress - 1e-8 && contact <= nextProgress + 1e-8 : contact <= oldProgress + 1e-8 && contact >= nextProgress - 1e-8) contacts.push({ ally, contact });
+      }
+    }
+    contacts.sort((a, b) => (forward ? a.contact - b.contact : b.contact - a.contact) || Number(!!b.ally) - Number(!!a.ally));
     if (!contacts.length) { enemy.progress = nextProgress; return; }
-    const { barrier, contact } = contacts[0];
-    enemy.progress = Math.max(oldProgress, contact);
+    const { barrier, ally, contact } = contacts[0];
+    enemy.progress = forward ? Math.max(oldProgress, contact) : Math.min(oldProgress, contact);
     Object.assign(enemy, this.pointAt(enemy.progress, enemy.routeIndex));
-    // Count only the part of this step spent touching the crystal.
-    const travel = nextProgress - oldProgress;
-    const contactTime = travel > 1e-8 ? dt * clamp((nextProgress - contact) / travel, 0, 1) : dt;
-    barrier.hp -= ENEMIES[enemy.type].attackDamage * Math.min(contactTime, barrier.ttl);
-    if (barrier.hp <= 0) this._destroyBarrier(barrier);
+    const travel = Math.abs(nextProgress - oldProgress);
+    const contactTime = travel > 1e-8 ? dt * clamp(Math.abs(nextProgress - contact) / travel, 0, 1) : dt;
+    if (ally) {
+      enemy.allyTargetId = ally.id;
+      ally.hp = Math.max(0, ally.hp - ENEMIES[enemy.type].attackDamage * contactTime);
+    } else {
+      barrier.hp -= ENEMIES[enemy.type].attackDamage * Math.min(contactTime, barrier.ttl);
+      if (barrier.hp <= 0) this._destroyBarrier(barrier);
+    }
   }
 
   _step(dt) {
@@ -467,7 +599,7 @@ export class Game {
     for (const effect of this.effects) effect.ttl -= dt;
     this.effects = this.effects.filter(e => e.ttl > 0);
     this._trySummon();
-    if (this.status !== 'wave') { this.projectiles = []; this.holes = []; this.barriers = []; for (const enemy of this.enemies) enemy.capturedBy = null; return; }
+    if (this.status !== 'wave') { this._clearReborn(); this.projectiles = []; this.holes = []; this.barriers = []; for (const enemy of this.enemies) enemy.capturedBy = null; return; }
     this._spawnTimer -= dt;
     if (this._queue.length && this._spawnTimer <= 0) {
       this._spawn(this._queue.shift());
@@ -484,6 +616,8 @@ export class Game {
     }
     for (const enemy of this.enemies) this._spreadPoison(enemy, dt);
     this._advanceProjectiles(dt);
+    this._dispatchReborn(dt);
+    this._moveReborn(dt);
     for (const tower of this.towers) {
       tower.cooldown = Math.max(0, tower.cooldown - dt);
       if (tower.cooldown > 0) continue;
@@ -523,6 +657,13 @@ export class Game {
         this._event('leak', `${ENEMIES[enemy.type].name} reached the gate.`, { amount: ENEMIES[enemy.type].leak });
       }
     }
+    this._fightReborn();
+    this.allies = this.allies.filter(ally => {
+      const alive = ally.hp > 0 && ally.ttl > 0 && (ally.phase === 'joining' || ally.progress > 0);
+      if (!alive) this._effect('reborn-fade', ally, ally, TOWERS.necro.color, 0.25);
+      return alive;
+    });
+    for (const enemy of this.enemies) if (enemy.allyTargetId != null && !this.allies.some(ally => ally.id === enemy.allyTargetId)) enemy.allyTargetId = null;
     for (const hole of this.holes) hole.ttl -= dt;
     this.holes = this.holes.filter(hole => hole.ttl > 1e-8);
     for (const enemy of this.enemies) if (enemy.capturedBy != null && !this.holes.some(h => h.id === enemy.capturedBy)) enemy.capturedBy = null;
@@ -548,6 +689,7 @@ export class Game {
     this.enemies = this.enemies.filter(e => e.hp > 0);
     if (this.lives <= 0) {
       this.status = 'lost';
+      this._clearReborn();
       this.projectiles = [];
       this.holes = [];
       this.barriers = [];
@@ -556,6 +698,7 @@ export class Game {
       return;
     }
     if (!this._queue.length && !this.enemies.length) {
+      this._clearReborn();
       this.projectiles = [];
       this.holes = [];
       this.barriers = [];

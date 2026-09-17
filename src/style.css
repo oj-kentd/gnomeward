@@ -67,3 +67,9 @@
 .map-entrances{background:#f3e5b2;border-color:#b9a05c;color:#8d6b2f}.map-card.current .map-topology{background:#f8e8ac;border-color:#c3a351;color:#92732d}
 
 .poison-spread-note{padding:7px 8px;margin:2px 0 8px;background:#e4ecc1;border:1px solid #a0b77a;border-radius:6px;color:#5e783a;text-align:left;font-size:11px;line-height:1.45}
+
+.necro-ability{padding:8px;margin:2px 0 9px;border:1px solid #aaa782;border-radius:7px;background:#e5e5c8;color:#63745a}
+.necro-ability>p{font-size:11px;line-height:1.4}.helper-stats{display:grid;grid-template-columns:1fr 1fr;gap:5px 8px;margin-top:7px;font-size:11px}.helper-stats b{color:#4a6445;font-size:12px}
+.helper-counts{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #b3bda055;padding-top:6px;margin-top:6px;font-size:11px}.helper-counts b{color:#4b7444;font-size:13px}
+
+.cottage-clue{padding:22px 15px;margin:20px 0;background:#ecd6a8;border:1px solid #c6a370;border-radius:10px;text-align:center}.cottage-clue>p{max-width:470px;margin:auto;font-size:20px;line-height:1.7;color:#806035}.cottage-clue>small{display:block;margin-top:15px;color:#aa8250;font-size:12px;font-style:italic}

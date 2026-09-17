@@ -232,7 +232,7 @@ test('a perpendicular road crossing does not act like a shared segment for cryst
   near(crossing.hp, crossing.maxHp);
 });
 
-test('the two secret gardens retain their original roads and clear discovery locations', () => {
+test('the original secret roads stay unchanged and all discovery locations remain clear', () => {
   assert.deepEqual(MAPS.find(map => map.id === 'meadow').path, [[-12,4],[-7,4],[-7,-4],[-1,-4],[-1,3],[5,3],[5,-3],[12,-3]]);
   assert.deepEqual(MAPS.find(map => map.id === 'quarry').path, [[-12,-4],[-5,-4],[-5,3],[2,3],[2,-3],[7,-3],[7,2],[12,2]]);
   for (const [map, secret] of Object.entries(SECRETS)) {
