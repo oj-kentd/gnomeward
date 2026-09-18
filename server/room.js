@@ -1,15 +1,16 @@
 import { Room } from '@colyseus/core';
 import { Match, validateIdentity } from './match.js';
+import { NECRO_PATH_SECRET } from '../src/data.js';
 
 /** Configuration is closed over by the server, never merged with browser options. */
-export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () => {}, onRoomClose = () => {}, getUnlockedRewards = () => [], onRewardUnlocked = () => {}, reconnectSeconds = 60, lobbyIdleMs = 300_000, roomIdleMs = 1_800_000 } = {}) {
+export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () => {}, onRoomClose = () => {}, getUnlockedRewards = () => [], onRewardUnlocked = () => {}, getUnlockedPaths = () => [], onPathUnlocked = () => {}, reconnectSeconds = 60, lobbyIdleMs = 300_000, roomIdleMs = 1_800_000 } = {}) {
   return class GnomewardRoom extends Room {
     maxClients = 2;
     autoDispose = true;
 
     async onCreate(options) {
       validateIdentity(options);
-      this.match = new Match({ ...options, unlockedRewards: getUnlockedRewards() });
+      this.match = new Match({ ...options, unlockedRewards: getUnlockedRewards(), unlockedPaths: getUnlockedPaths() });
       await onRoomOpen(this);
       this.registered = true;
       this.budgets = new Map();
@@ -25,6 +26,7 @@ export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () =
           this.lastActivity = Date.now();
         }
         catch (error) { client.send('command-error', { message: error.message }); }
+        this.savePathUnlocks();
         this.saveResult();
       });
       this.onMessage('snapshot', client => {
@@ -38,6 +40,7 @@ export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () =
           this.accumulator -= 50;
         }
         this.saveEncounterReward();
+        this.savePathUnlocks();
         this.saveResult();
         if (!this.match.result && !this.match.paused && [...this.match.boards.values()].some(board => board.status === 'wave')) this.lastActivity = Date.now();
       }, 50);
@@ -158,6 +161,19 @@ export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () =
         this.rewardRetryAt = Date.now() + 5000;
         console.error('Could not save Strawberry reward:', error.message);
       } finally { this.rewardPending = false; }
+    }
+
+    async savePathUnlocks() {
+      if (this.pathSaved || this.pathPending || Date.now() < (this.pathRetryAt || 0) ||
+          ![...this.match.boards.values()].some(board => board.profile.pathUnlocks?.includes(NECRO_PATH_SECRET.id))) return;
+      this.pathPending = true;
+      try {
+        await onPathUnlocked(NECRO_PATH_SECRET.id);
+        this.pathSaved = true;
+      } catch (error) {
+        this.pathRetryAt = Date.now() + 5000;
+        console.error('Could not save Soul Echoes path:', error.message);
+      } finally { this.pathPending = false; }
     }
 
     saveResult() {

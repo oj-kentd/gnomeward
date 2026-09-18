@@ -2,15 +2,17 @@
 
 The Three.js game now uses this service for public two-player co-op: lobby browsing, shared rendering, owned defenders, and synchronized ready controls. The service’s `/` connection-check page remains available for deployment checks. PvP game rendering is not yet exposed in the main game.
 
+Release **0.2.3** keeps protocol version **1**. Its browser motion smoothing works with server **0.2.2**. The new Soul Echoes rules and shared path reward require server **0.2.3**; older snapshots may omit `profile.pathUnlocks`, `necroSpellKills`, and `pathSecretDiscoveries`, which clients treat as empty/zero.
+
 ## Scope and rules
 
 - Two players per room. Create with `client.create('gnomeward', options)`. Other players discover waiting hosts through `GET /lobbies` and use `client.joinById(roomId, options)` when they click Join. No codes, accounts, or passwords are needed.
 - Co-op uses one board and shared lives. Each player starts with **325 gold**, owns their gnomes, and receives half of earned gold and upgrade points. Half points are retained; they are not rounded away. Sell refunds go to the owner. Only an owner may upgrade, sell, or retarget their units. Gold gifting is deferred.
-- Co-op discoveries/unlocks are shared for that match. The player completing the crystal secret owns its free guardian. Existing browser saves and unlock lists are never accepted from clients. Strawberry Fields starts with one free host-owned mortar gnome; clearing round 20 saves the Strawberry reward for all later co-op rooms on this server.
+- Co-op discoveries/unlocks are shared for that match. The player completing the crystal secret owns its free guardian. Existing browser saves and unlock lists are never accepted from clients. Strawberry Fields starts with one free host-owned mortar gnome; clearing round 20 saves the Strawberry reward for all later co-op rooms on this server. Discovering Soul Echoes similarly persists the trusted `necro-echoes` path reward for later rooms. Morrow’s character unlock and the run’s unfinished ritual progress remain separate from this persistent path reward.
 - PvP is a **defense race**: separate boards, identical map and wave schedules, 650 starting gold each. Both must ready before the next round. First board to lose ends the match; a loss on both boards during the same server tick is a draw. After both clear round 20, boards automatically enter endless mode. Sending skeletons to opponents is not implemented.
-- Co-op requires two `endless` votes after campaign victory, then both ready to start round 21. Leaving at the campaign victory screen records `campaign-cleared`; later defeat records completed rounds. Unlocks and current boards exist only for the lifetime of the room.
+- Co-op requires two `endless` votes after campaign victory, then both ready to start round 21. Leaving at the campaign victory screen records `campaign-cleared`; later defeat records completed rounds. Current boards and ordinary character unlocks exist only for the lifetime of the room; the Strawberry and Soul Echoes rewards persist separately.
 - Either co-op player may pause/resume; PvP has no manual pause. Only the creator can set speed (1, 2, 3). Both modes pause automatically on disconnect. The room holds a disconnected seat for **60 seconds**; reconnect retains the same player ID, board, ownership, and wallet. A consented leave or expired reconnect ends the match (PvP forfeit, co-op abandoned). Rooms cannot replace players once both seats have been occupied. A one-player lobby expires after five minutes without a valid command; occupied rooms expire after 30 minutes idle (paused, between rounds, or finished). Active rounds refresh this timer; snapshot polling does not.
-- There are no ranked scores, accounts, automatic matchmaking, active-match restoration after server restart, or per-account unlock storage. The Strawberry reward is the shared persistent encounter unlock. The server records match outcomes locally; records are not a trusted public leaderboard.
+- There are no ranked scores, accounts, automatic matchmaking, active-match restoration after server restart, or per-account unlock storage. Strawberry and Soul Echoes are shared persistent party rewards. The server records match outcomes locally; records are not a trusted public leaderboard.
 
 ## Connection and identity
 
@@ -56,7 +58,7 @@ Send `room.send('command', { action, ...fields })`. Player identity comes only f
 | Action | Additional fields | Behavior |
 | --- | --- | --- |
 | `place` | `type`, finite `x`, finite `z` | Validates unlock, location, overlap, wallet; 100-tower limit per board |
-| `upgrade` | integer `towerId`, integer `path` | Owner only; zero-based path index, existing two-path/three-tier rules |
+| `upgrade` | integer `towerId`, integer `path` | Owner only; zero-based path index, existing two-path/three-tier rules; locked secret paths are rejected before spending points |
 | `sell` | integer `towerId` | Owner only; normal gold refund |
 | `target` | integer `towerId`, `mode` | Owner only; `first`, `last`, `strong`, `close` where supported |
 | `discover` | `id` | Validates secret ID against room map; existing puzzle sequence rules |
@@ -67,9 +69,15 @@ Send `room.send('command', { action, ...fields })`. Player identity comes only f
 
 Errors arrive on `command-error` as `{ message }`. An incorrect ordered-secret click is accepted as a puzzle attempt and may reset discovery progress. Successful actions are confirmed by the next snapshot, with no separate command ACK. Each connected player has a shared command/snapshot-request budget of 30 messages/second with a burst of 60; excess messages are dropped. Unknown message types are not commands. Do not replay stale purchases after reconnect; use the latest authoritative snapshot.
 
+### Soul Echoes discovery
+
+The existing Hollow `discover` command also handles Morrow’s fourth path. After Morrow is unlocked, ten **direct necromancer spell kills in the current Pumpkin Hollow run** enable a second ritual. Submit the existing rune IDs in reverse order: `hollow-flame`, `hollow-leaf`, `hollow-star`, `hollow-moon`. A wrong step resets only `pathSecretDiscoveries`; repeating the most recent correct step is ignored. Other maps, finished boards, and insufficient kills cannot unlock the path. Kills by reborn helpers never advance this counter.
+
+Success adds `necro-echoes` to `profile.pathUnlocks` and emits `path-unlock` with `pathId: 'necro-echoes'`. Progress uses `path-secret-found` and `path-secret-reset`; one-time clue hints use `path-secret-hint` and `path-secret-ready`. Path index **3** has tiers costing **18 / 36 / 65** points. Its `summonCount` becomes **2 / 3 / 4**, queued as separate `{ routeIndex }` entries. Existing dispatch cooldowns and the two-path limit still apply; `allyLimit` is at least the batch size. Reborn kills do not recursively summon more helpers. Server-owned discovery is persisted in `/data/results.json`; client-supplied path unlock lists are ignored.
+
 ## Snapshots
 
-The service simulates fixed 50 ms steps (20 Hz) and broadcasts complete, plain-data snapshots at 5 Hz. Faster game speed advances the rules further each step. Clients may interpolate visuals between snapshots but must not award rewards or advance authoritative enemy health themselves.
+The service simulates fixed 50 ms steps (20 Hz) and broadcasts complete, plain-data snapshots at 5 Hz. Faster game speed advances the rules further each step. Client 0.2.3 buffers snapshots and interpolates displayed movement between them instead of repeatedly easing toward a stationary last-known position. This avoids first-round stop/start motion without increasing server message frequency. Visual interpolation and animation clocks must not award rewards or advance authoritative enemy health; purchases, targeting previews, ownership, and wallets continue to use the latest server state. Pause, disconnect, map changes, and reconnect must reset or freeze interpolation appropriately.
 
 ```js
 {
@@ -82,8 +90,9 @@ The service simulates fixed 50 ms steps (20 Hz) and broadcasts complete, plain-d
     state: {
       wave, completedWaves, maxWaves, endless, lives, gold, points,
       status, kills, time, towers, enemies, traps, holes, barriers,
-      allies, secretDiscoveries, effects, projectiles,
-      profile: { unlocks, bestRounds }, bestRound,
+      allies, secretDiscoveries, pathSecretDiscoveries, necroSpellKills,
+      effects, projectiles,
+      profile: { unlocks, pathUnlocks, bestRounds }, bestRound,
       events // most recent 12 Game events, each with a stable eventId for client deduplication
     }
   }]
@@ -92,8 +101,8 @@ The service simulates fixed 50 ms steps (20 Hz) and broadcasts complete, plain-d
 
 Tower records additionally contain `ownerId`. Co-op board `gold`/`points` are combined wallet totals for reporting; use `players[i].gold`/`points` to display available personal spending. Array IDs are board-local; identify PvP entities with **both board playerId and entity id**. Event history repeats between snapshots; do not replay all events each time. `tick` advances during simulation; snapshots also update while paused/between rounds. Secret solution coordinates and engine internals such as spawn queues are not exported as snapshot fields.
 
-A final `result` is `{ mode, mapId, reason, winnerId, players: [{ id, name, completedWaves, lives }] }`. `winnerId` is null for draws/co-op. Reasons: `defeat`, `last-standing`, `draw`, `forfeit`, `campaign-cleared`, `abandoned`, `server-closed`, `idle-timeout`. The stored result adds `roomId` and ISO `endedAt`. Commands are rejected after a result; create a new room for a rematch.
+A final `result` is `{ mode, mapId, reason, winnerId, earnedPathUnlocks, players: [{ id, name, completedWaves, lives }] }`. `earnedPathUnlocks` lists trusted path discoveries newly earned in that room; older results may omit it. `winnerId` is null for draws/co-op. Reasons: `defeat`, `last-standing`, `draw`, `forfeit`, `campaign-cleared`, `abandoned`, `server-closed`, `idle-timeout`. The stored result adds `roomId` and ISO `endedAt`. Commands are rejected after a result; create a new room for a rematch.
 
 ## Server configuration boundary
 
-`createGnomewardRoom({ recordResult, onRoomOpen, onRoomClose, reconnectSeconds })` closes over server-owned callbacks. Never pass operational configuration through browser-controlled room creation options. `onRoomOpen` may reject creation when the process has reached its room capacity. The result recorder is called once per room outcome and errors are logged. This is one process with in-memory active rooms; it intentionally needs no Redis or database server. Horizontal scaling requires shared Colyseus presence/matchmaking and routing changes before adding replicas.
+`createGnomewardRoom({ recordResult, onRoomOpen, onRoomClose, getUnlockedRewards, onRewardUnlocked, getUnlockedPaths, onPathUnlocked, reconnectSeconds })` closes over server-owned callbacks. Never pass operational configuration through browser-controlled room creation options. `onRoomOpen` may reject creation when the process has reached its room capacity. The result recorder is called once per room outcome and errors are logged. Reward callbacks retry failed persistence with a delay; successful unlocks are retained independently of the rolling results list. This is one process with in-memory active rooms; it intentionally needs no Redis or database server. Horizontal scaling requires shared Colyseus presence/matchmaking and routing changes before adding replicas.

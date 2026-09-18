@@ -2,8 +2,9 @@ import { Game } from './game.js';
 
 export const MULTIPLAYER_URL = import.meta.env?.VITE_MULTIPLAYER_URL || 'https://multiplayer.lightsoutphotos.com';
 const SESSION_KEY = 'gnomeward-coop-session';
+let snapshotSequence = 0;
 
-export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0) {
+export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0, receivedAt = performance.now() / 1000) {
   if (snapshot.protocol !== 1 || snapshot.mode !== 'coop') throw new Error('This room is not a compatible co-op game.');
   const board = snapshot.boards.find(board => board.playerId === null)?.state;
   const player = snapshot.players.find(player => player.id === sessionId);
@@ -20,6 +21,7 @@ export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0) {
   game.events = events.filter(event => event.eventId > lastEventId);
   const eventId = Math.max(lastEventId, ...events.map(event => event.eventId || 0));
   return { game, eventId, multiplayer: {
+    snapshotTick: snapshot.tick, snapshotReceivedAt: receivedAt, snapshotSequence: ++snapshotSequence,
     roomId: snapshot.roomId, sessionId, hostId: snapshot.hostId, players: snapshot.players,
     connected: true, reconnecting: false, ready: player.ready, endlessReady: player.endlessReady,
     paused: snapshot.paused, manualPause: snapshot.manualPause, started: snapshot.started,

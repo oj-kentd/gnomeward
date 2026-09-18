@@ -36,11 +36,12 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 | Aster | Low initial damage and full-map targeting | Damage and shooting speed | Defeat wave 20 boss; usable in endless mode and replays |
 | Orbit | Pulls skeletons backward with temporary black holes; Event Horizon tier 3 captures them and deals 65 damage/second | Power, duration, radius, recovery; choose two | Three hidden moonstones in Mossy Meadow |
 | Prism | Raises breakable path barriers; Shattering Light adds explosions when enemies destroy them | Durability, blast, speed, range; choose two | Three special crystals in Crystal Quarry; first summon is free |
-| Morrow | Spell kills summon reborn gnomes from the cottage to march up the trail and battle skeletons | Reborn Champions, Soul Procession, Gravecraft; choose two of three | A hidden puzzle in Pumpkin Hollow |
+| Morrow | Spell kills summon reborn gnomes from the cottage to march up the trail and battle skeletons | Reborn Champions, Soul Procession, Gravecraft, and the hidden Soul Echoes path; choose two | A hidden puzzle in Pumpkin Hollow; the fourth path has its own discovery |
+| Strawberry | Full-map mortar fruit scatters damaging black seed shrapnel on landing | Juicy Payload, Seed Storm, Quick Harvest; choose two | Clear Strawberry Fields round 20; one free guardian starts that encounter |
 
 The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 75% of the purchase gold; the free summoned Prism sells for zero. Shooting gnomes can target First (closest to the exit), Last (farthest from the exit), Strong (highest maximum health), or Close (nearest). Tap the targeting button in their upgrade popup to cycle modes. Morel plants mushrooms, Orbit opens wells, and Prism raises barriers automatically. Bosses that escape do not grant boss-defeat unlocks. Map changes start a fresh run while retaining unlocked characters.
 
-**Controls:** Click/tap to select and place; Escape or right-click cancels; Space or the green play button starts the next wave, resumes a paused wave, or cycles speed during combat; P pauses; 1–9 select gnomes. Speed cycles 1× / 2× / 3×. Auto rounds optionally starts the next wave after a three-second building break. Pause and open menus freeze that countdown. The first wave always waits for you. Open **☰ → Music**, or the **♪** button on desktop, to choose **Rock**, **Chill**, or **Jazz**. Each is an original 8-bar instrumental loop, with an independent volume slider and Off option. Music stays at its normal tempo at every game speed and pauses when the tab is hidden. Your genre, volume, and effects preference are saved in this browser; saved music resumes after your first interaction. Sound effects have their own Effects switch. No sign-in or server is needed.
+**Controls:** Click/tap to select and place; Escape or right-click cancels; Space or the green play button starts the next wave, resumes a paused wave, or cycles speed during combat; P pauses; 1–9 select gnomes. Speed cycles 1× / 2× / 3×. Auto rounds optionally starts the next wave after a three-second building break. Pause and open menus freeze that countdown. The first wave always waits for you. Open **☰ → Music**, or the **♪** button on desktop, to choose **Rock**, **Chill**, or **Jazz**. Each is an original 8-bar instrumental loop, with an independent volume slider and Off option. Music stays at its normal tempo at every game speed and pauses when the tab is hidden. Your genre, volume, and effects preference are saved in this browser; saved music resumes after your first interaction. Sound effects have their own Effects switch. Solo play needs no sign-in or game server.
 
 Morel’s **Wild Garden** path unlocks contagious poison at tier 1. A directly poisoned skeleton can infect 1 / 2 / 3 nearby skeletons at tiers 1 / 2 / 3, one per second, over a wider radius each tier. Spread poison deals 65% of the original damage and inherits its remaining duration. Secondary infections cannot spread again or refresh an existing infection. Small green spores show each transmission.
 
@@ -58,13 +59,15 @@ Prism raises up to two crystal barriers ahead of enemies. Skeletons stop to atta
 
 Pumpkin Hollow hides a more involved puzzle for Morrow. Its cottage holds a clue. The unlock persists like the other hidden guardians; partial puzzle progress resets when changing gardens. Morrow costs 300 gold after unlocking.
 
-Morrow’s spell kills gather souls at the cottage. Reborn helpers emerge from the door, walk around the cottage, and follow the trail backward to meet skeletons. They fight in melee and can be defeated. On maps with two entrances, each helper follows the route of the skeleton that supplied its soul, and shared trails let helpers intercept either group. Reborn Champions improves helper health and damage; Soul Procession improves marching speed, dispatch rate, and the active-helper limit; Gravecraft strengthens Morrow’s own attacks. Choose two of the three paths, each with three tiers. Souls wait if the active-helper limit is full. Helper kills earn normal rewards and credit Morrow but cannot summon more helpers. Helpers and waiting souls clear when their owner is sold or the round ends.
+Morrow’s spell kills gather souls at the cottage. Reborn helpers emerge from the door, walk around the cottage, and follow the trail backward to meet skeletons. They fight in melee and can be defeated. On maps with two entrances, each helper follows the route of the skeleton that supplied its soul, and shared trails let helpers intercept either group. Reborn Champions improves helper health and damage; Soul Procession improves marching speed, dispatch rate, and the active-helper limit; Gravecraft strengthens Morrow’s own attacks. A fourth path remains a mystery until another discovery in Pumpkin Hollow. Each Morrow still chooses only two paths, each with three tiers. Souls wait if the active-helper limit is full. Helper kills earn normal rewards and credit Morrow but cannot summon more helpers. Helpers and waiting souls clear when their owner is sold or the round ends.
+
+**Soul Echoes** is the hidden fourth path. Revisit the Hollow cottage after Morrow’s own spells defeat ten skeletons in that run, then follow the new clue. Discovering the path is separate from finding Morrow. Once unlocked, its three tiers cost 18 / 36 / 65 points and queue 2 / 3 / 4 reborn gnomes per direct spell defeat. They still leave the cottage one at a time; helper kills never produce another generation. The final tier allows at least four active helpers. The discovery persists in the solo browser profile and, when earned in co-op, in the server’s shared party collection. Kill counts and unfinished ritual progress reset for a new garden.
 
 Morrow, the reborn helper, and the Hollow puzzle props are generated by `art/generate_necromancer.py`, with editable source in `art/necromancer.blend`. The puzzle solution is intentionally not included here.
 
 The other secret models and portraits are generated in Blender with `art/generate_secret_assets.py`; `art/secrets.blend` is the editable scene. Exact discovery locations are intentionally left out of this guide.
 
-## Six gardens
+## Seven gardens
 
 - Mossy Meadow — a forgiving introductory trail.
 - Amber Orchard — a figure-eight route that revisits its junctions.
@@ -72,14 +75,17 @@ The other secret models and portraits are generated in Blender with `art/generat
 - Crystal Quarry — shorter attack windows and angular corners.
 - Pumpkin Hollow — an outer circuit curls into an inner spiral.
 - Twinbrook Crossing — two opposite entrances meet before a final zigzag.
+- Strawberry Fields — two berry-patch trails and a free mortar guardian; clear the encounter to recruit him elsewhere.
 
-Green arrows mark every entrance. Enemies alternate between the two entrances on Creek and Twinbrook. Shared trail mushrooms, gravity wells, and crystal barriers affect enemies from either entrance. Loops are finite routes; skeletons eventually head for the cottage.
+Green arrows mark every entrance. Enemies alternate between the two entrances on Creek, Twinbrook, and Strawberry Fields. Shared trail mushrooms, gravity wells, and crystal barriers affect enemies from either entrance. Loops are finite routes; skeletons eventually head for the cottage.
 
 ## Multiplayer server for Unraid
 
-The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and press Ready together for each round. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.1 or newer. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
+The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and press Ready together for each round. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.3 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
 
 Run it locally with `npm run server`, then open `http://localhost:2567/`. Match results are stored in `server-data/results.json` by default. `npm test` includes authoritative multiplayer and real WebSocket integration tests; with the server running, `npm run test:server-browser` checks the desktop/phone connection page. See the [server protocol](server/PROTOCOL.md) for client integration and current rules.
+
+Client **0.2.3** smooths co-op movement between network snapshots, including the first round. This is a browser update and works with an existing **0.2.2** server; refresh the game after deployment. Install server **0.2.3** to enable Soul Echoes discovery, upgrades, and shared persistence in co-op. Motion smoothing changes only presentation: the server still owns movement, damage, purchases, and rewards, and sends five snapshots per second.
 
 ## Art and development
 
@@ -110,10 +116,11 @@ npm run test:secrets
 npm run test:maps
 npm run test:poison
 npm run test:necro
+npm run test:echoes
 npm run test:endless
 ```
 
-The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all seven maps, and checks the phone layout and console errors. The music browser check exercises all three decoded loops, output levels, independent effects/volume, tab suspension, saved preferences and phone settings. Additional browser checks verify hidden unlocks and combat effects, all seven maps and entrance markers, Morel’s spread upgrades and animated spores, and Morrow’s hidden unlock, cottage departures, and melee helpers. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
+The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all seven maps, and checks the phone layout and console errors. The music browser check exercises all three decoded loops, output levels, independent effects/volume, tab suspension, saved preferences and phone settings. Additional browser checks verify hidden unlocks and combat effects, all seven maps and entrance markers, Morel’s spread upgrades and animated spores, and Morrow’s hidden unlock, cottage departures, melee helpers, and the separate Soul Echoes discovery and upgrades. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
 
 ## Publishing
 
@@ -127,12 +134,12 @@ Useful feedback: map, wave, gnome combination, whether the game felt too easy or
 
 ## Saved future work
 
-The co-op design and implementation status are saved in [docs/COOP_PLAN.md](docs/COOP_PLAN.md). The backend is ready for Unraid setup; the multiplayer game lobby/client and PvP enemy sending remain future work.
+The co-op design and implementation status are saved in [docs/COOP_PLAN.md](docs/COOP_PLAN.md). Public lobbies and the main co-op game are implemented. Main-game PvP and sending enemies to opponents remain future work.
 
 ### Strawberry Fields
 
 Strawberry Fields has two entrances and one free Strawberry Gnome at the center. His mortar lobs fruit across the map; landing explosions scatter damaging seed projectiles. Choose two of three upgrade paths: **Juicy Payload** (blast damage/radius), **Seed Storm** (seed count, damage, and piercing), and **Quick Harvest** (reload and flight time). Clear all 20 rounds to unlock purchases in other gardens; the free starting gnome gives no sell refund.
 
-In co-op the host owns the free gnome. Clearing the encounter awards Strawberry Gnome to both players’ local solo collections and the server’s shared party collection for future co-op rooms. The party reward persists in `/data/results.json` without accounts. Other co-op unlocks remain scoped to the current run.
+In co-op the host owns the free gnome. Clearing the encounter awards Strawberry Gnome to both players’ local solo collections and the server’s shared party collection for future co-op rooms. Strawberry and the discovered Soul Echoes path persist in `/data/results.json` without accounts. Other co-op character unlocks remain scoped to the current run.
 
 Run `npm run test:coop` with a running game and multiplayer server to exercise the complete two-browser co-op flow. Set `VITE_MULTIPLAYER_URL` before starting Vite or building to target another backend.

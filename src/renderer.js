@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { CoopMotionBuffer } from './coop-motion.js';
 import { TOWERS, ENEMIES, SECRETS, cottagePosition } from './data.js';
 
 const ASSETS = ['strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
@@ -14,7 +15,8 @@ const palettes = [
 ];
 export class GardenRenderer {
   constructor(container, handlers) {
-    this.container=container; this.handlers=handlers; this.models={}; this.entities=new Map(); this.traps=new Map(); this.fx=new Map(); this.holes=new Map(); this.barriers=new Map(); this.secrets=new Map(); this.clues=new Map(); this.allies=new Map(); this.tintMaterials=new Map();
+    this.motion = new CoopMotionBuffer();
+    this.container=container; this.handlers=handlers; this.models={}; this.entities=new Map(); this.traps=new Map(); this.fx=new Map(); this.holes=new Map(); this.barriers=new Map(); this.secrets=new Map(); this.clues=new Map(); this.allies=new Map(); this.tintMaterials=new Map(); this.cluePlaque=null;
     this.scene=new THREE.Scene(); this.scene.background=new THREE.Color(0x183c35);
     this.camera=new THREE.OrthographicCamera(-16,16,12,-12,.1,150); this.camera.position.set(0,26,21); this.camera.lookAt(0,0,0);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
@@ -57,6 +59,9 @@ export class GardenRenderer {
   }
   add(name,x,y,z,sx=1,sy=sx,sz=sx,color,rotation=0) {const obj=this.clone(name,color);obj.position.set(x,y,z);obj.scale.set(sx,sy,sz);obj.rotation.y=rotation;this.world.add(obj);return obj;}
   setMap(map,index) {
+    this.motion.reset();
+    if (this.cluePlaque) this.cluePlaque.traverse(child => { if (child.isMesh) for (const material of Array.isArray(child.material) ? child.material : [child.material]) material.dispose(); });
+    this.cluePlaque = null;
     for(const object of this.secrets.values())object.traverse(child=>{if(child.isMesh)for(const material of Array.isArray(child.material)?child.material:[child.material])material.dispose();});
     this.world.clear();this.actors.clear();this.entities.clear();this.traps.clear();this.fx.clear();this.holes.clear();this.barriers.clear();this.secrets.clear();this.clues.clear();this.allies.clear();if(this.ghost){this.scene.remove(this.ghost);this.ghost=null;this.ghostType=null;}
     const p=palettes[index%palettes.length];this.scene.background.set(p.bg);this.range.visible=false;
@@ -123,6 +128,16 @@ export class GardenRenderer {
         if (map.id === 'hollow') {
           house.userData.clueId = 'hollow-cottage';
           const plaque = this.clone('necro-clue');
+          plaque.traverse(child => {
+            if (!child.isMesh) return;
+            const copies = (Array.isArray(child.material) ? child.material : [child.material]).map(material => {
+              const copy = material.clone();
+              if (copy.name === 'pumpkin-rune') { copy.emissive.set(0x9fd8a7); copy.emissiveIntensity = 0; }
+              return copy;
+            });
+            child.material = Array.isArray(child.material) ? copies : copies[0];
+          });
+          this.cluePlaque = plaque;
           plaque.position.set(0, .85, .755);
           house.add(plaque);
           this.clues.set('hollow-cottage', house);
@@ -155,7 +170,6 @@ export class GardenRenderer {
       this.world.add(object);
       this.secrets.set(spot.id, object);
     }
-    this.lastRenderTime = undefined;
     this.resize();
   }
   resize() {
@@ -182,19 +196,6 @@ export class GardenRenderer {
     this.ghost.position.set(x,.05,z);this.ghost.visible=true;this.showRange(x,z,range,valid);
   }
   showRange(x,z,range,valid=true){this.range.position.set(x,.13,z);this.range.scale.set(Math.min(range,35),1,Math.min(range,35));this.range.visible=true;this.range.traverse(o=>{if(o.isMesh)o.material.color.set(valid?0xd5f395:0xf3817e)})}
-  // Smooth only the displayed location between server snapshots. Keep the authoritative
-  // game entities untouched, and snap new actors or large discontinuities immediately.
-  actorPosition(object, x, y, z, smoothing) {
-    const previous = object.userData.displayPosition;
-    if (!previous || smoothing === null || Math.hypot(x - previous.x, z - previous.z) > 3) {
-      object.userData.displayPosition = { x, z };
-    } else {
-      previous.x += (x - previous.x) * smoothing;
-      previous.z += (z - previous.z) * smoothing;
-    }
-    const position = object.userData.displayPosition;
-    object.position.set(position.x, y, position.z);
-  }
   ownershipRing(object, tower, multiplayer) {
     let ring = object.getObjectByName('owner-ring');
     if (!multiplayer || !tower.ownerId) { if (ring) ring.visible = false; return; }
@@ -211,12 +212,21 @@ export class GardenRenderer {
     ring.visible = true;
   }
   render(game,state,time) {
-    const elapsed = this.lastRenderTime === undefined ? 1 / 60 : Math.max(0, Math.min(.1, time - this.lastRenderTime));
-    this.lastRenderTime = time;
-    const smoothing = state.multiplayer ? 1 - Math.exp(-elapsed * 18) : null;
+    if (state.multiplayer) {
+      this.motion.capture(game, state.multiplayer);
+      const presentation = this.motion.sample(time, (progress, routeIndex) => game.pointAt(progress, routeIndex));
+      if (presentation) {
+        // Inherit placement/stat helpers while substituting only visual actors.
+        // The authoritative Game and all of its network records stay untouched.
+        game = Object.assign(Object.create(game), presentation);
+        time = presentation.time;
+      }
+    } else if (this.motion.frames.length) {
+      this.motion.reset();
+    }
     const seen=new Set();
     for(const t of game.towers){const key='t'+t.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone('gnome-'+t.type);o.userData.towerId=t.id;this.actors.add(o);this.entities.set(key,o)}o.position.set(t.x,.07,t.z);this.ownershipRing(o,t,state.multiplayer);const nearest=game.enemies.reduce((best,e)=>!best||Math.hypot(e.x-t.x,e.z-t.z)<Math.hypot(best.x-t.x,best.z-t.z)?e:best,null);if(nearest)o.rotation.y=Math.atan2(nearest.x-t.x,nearest.z-t.z);o.scale.setScalar(1+Math.min(t.levels.reduce((a,b)=>a+b,0),6)*.035);}
-    for(const e of game.enemies){const key='e'+e.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone(e.boss||e.isBoss?'skeleton-boss':'skeleton');const color=e.color||ENEMIES[e.type]?.color; if(color)o.traverse(m=>{if(!m.isMesh)return;const tint=mat=>{if(!/cream|purple|bone|skull|rib/i.test(mat.name))return mat;const k=mat.uuid+color;if(!this.tintMaterials.has(k)){const copy=mat.clone();copy.color.set(color);this.tintMaterials.set(k,copy)}return this.tintMaterials.get(k)};m.material=Array.isArray(m.material)?m.material.map(tint):tint(m.material)});this.actors.add(o);this.entities.set(key,o);const hp=this.clone('path',0xd5f395);hp.name='health';hp.scale.set(.8,.055,.065);hp.position.set(0,1.65,0);o.add(hp);}this.actorPosition(o,e.x,.1+Math.sin(time*10+e.id)*.035,e.z,smoothing);if(o.userData.lastX!==undefined){const dx=e.x-o.userData.lastX,dz=e.z-o.userData.lastZ;if(Math.abs(dx)+Math.abs(dz)>.001)o.rotation.y=Math.atan2(dx,dz)}o.userData.lastX=e.x;o.userData.lastZ=e.z;const hp=o.getObjectByName('health');if(hp){hp.scale.x=.8*Math.max(.01,e.hp/e.maxHp);hp.visible=e.hp<e.maxHp;}if(e.slowRemaining>0)o.rotation.z=Math.sin(time*5)*.025;else o.rotation.z=0;
+    for(const e of game.enemies){const key='e'+e.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone(e.boss||e.isBoss?'skeleton-boss':'skeleton');const color=e.color||ENEMIES[e.type]?.color; if(color)o.traverse(m=>{if(!m.isMesh)return;const tint=mat=>{if(!/cream|purple|bone|skull|rib/i.test(mat.name))return mat;const k=mat.uuid+color;if(!this.tintMaterials.has(k)){const copy=mat.clone();copy.color.set(color);this.tintMaterials.set(k,copy)}return this.tintMaterials.get(k)};m.material=Array.isArray(m.material)?m.material.map(tint):tint(m.material)});this.actors.add(o);this.entities.set(key,o);const hp=this.clone('path',0xd5f395);hp.name='health';hp.scale.set(.8,.055,.065);hp.position.set(0,1.65,0);o.add(hp);}o.position.set(e.x,.1+Math.sin(time*10+e.id)*.035,e.z);if(o.userData.lastX!==undefined){const dx=e.x-o.userData.lastX,dz=e.z-o.userData.lastZ;if(Math.abs(dx)+Math.abs(dz)>.001)o.rotation.y=Math.atan2(dx,dz)}o.userData.lastX=e.x;o.userData.lastZ=e.z;const hp=o.getObjectByName('health');if(hp){hp.scale.x=.8*Math.max(.01,e.hp/e.maxHp);hp.visible=e.hp<e.maxHp;}if(e.slowRemaining>0)o.rotation.z=Math.sin(time*5)*.025;else o.rotation.z=0;
       if(!e.capturedBy&&game.barriers.some(b=>b.hp>0&&Math.hypot(e.x-b.x,e.z-b.z)<.4)){o.rotation.z=Math.sin(time*12+e.id)*.1;o.position.y+=Math.abs(Math.sin(time*12+e.id))*.04;}
       if(e.allyTargetId&&!e.capturedBy){const ally=game.allies.find(a=>a.id===e.allyTargetId);if(ally)o.rotation.y=Math.atan2(ally.x-e.x,ally.z-e.z);o.rotation.z=Math.sin(game.time*12+e.id)*.1;}
       if(e.capturedBy){o.position.y=-.06;o.position.x+=Math.sin(time*5+e.id)*.16;o.position.z+=Math.cos(time*5+e.id)*.16;o.rotation.y=time*5+e.id;o.rotation.z=.25;}o.scale.setScalar(THREE.MathUtils.lerp(o.scale.x,e.capturedBy?.52:1,.25));}
@@ -234,7 +244,7 @@ export class GardenRenderer {
       }
       const target = ally.phase === 'fighting' && game.enemies.find(enemy => enemy.id === ally.targetId && enemy.hp > 0);
       const dx = ally.x - (object.userData.lastX ?? ally.x), dz = ally.z - (object.userData.lastZ ?? ally.z);
-      this.actorPosition(object, ally.x, .12, ally.z, smoothing);
+      object.position.set(ally.x, .12, ally.z);
       if (target) {
         object.rotation.y = Math.atan2(target.x - ally.x, target.z - ally.z);
         const swing = Math.sin(game.time * 12 + ally.id);
@@ -283,9 +293,16 @@ export class GardenRenderer {
       object.getObjectByName('barrier-health').scale.x = .9 * Math.max(.02, barrier.hp / barrier.maxHp);
     }
     for (const [id, object] of this.barriers) if (!barrierIds.has(id)) { this.actors.remove(object); this.barriers.delete(id); }
+    const pathPuzzleReady = !!game.canDiscoverNecroPath?.();
+    if (this.cluePlaque) this.cluePlaque.traverse(child => {
+      if (!child.isMesh) return;
+      for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
+        if (material.name === 'pumpkin-rune') material.emissiveIntensity = pathPuzzleReady ? .8 + Math.sin(time * 2) * .25 : 0;
+      }
+    });
     for (const [id, object] of this.secrets) {
-      const found = game.secretDiscoveries.includes(id) || game.isUnlocked(SECRETS[game.map.id].unit);
       const pumpkin = id.startsWith('hollow-');
+      const found = pumpkin && pathPuzzleReady ? !!game.pathSecretDiscoveries?.includes(id) : game.secretDiscoveries.includes(id) || game.isUnlocked(SECRETS[game.map.id].unit);
       object.scale.setScalar(found ? 1.03 + Math.sin(time * 3) * .03 : 1);
       if (found && !pumpkin) object.rotation.y = time * .35;
       object.traverse(child => { if (!child.isMesh) return; for (const material of Array.isArray(child.material) ? child.material : [child.material]) material.emissiveIntensity = pumpkin ? (material.name === 'pumpkin-rune' && found ? 1.6 : 0) : found ? 1.5 : .65; });

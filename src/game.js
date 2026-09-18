@@ -1,4 +1,4 @@
-import { MAPS, TOWERS, ENEMIES, SECRETS, cottagePosition, cottageDoorPosition } from './data.js';
+import { MAPS, TOWERS, ENEMIES, SECRETS, NECRO_PATH_SECRET, cottagePosition, cottageDoorPosition } from './data.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
@@ -31,6 +31,7 @@ export class Game {
     this.map = MAPS.find(m => m.id === mapId) || MAPS[0];
     this.profile = profile && typeof profile === 'object' ? profile : {};
     if (!Array.isArray(this.profile.unlocks)) this.profile.unlocks = [];
+    this.profile.pathUnlocks = [...new Set((Array.isArray(this.profile.pathUnlocks) ? this.profile.pathUnlocks : []).filter(id => id === NECRO_PATH_SECRET.id))];
     const records = this.profile.bestRounds;
     this.profile.bestRounds = Object.fromEntries(MAPS.map(map => [map.id,
       Number.isSafeInteger(records?.[map.id]) && records[map.id] > 0 ? records[map.id] : 0]));
@@ -48,6 +49,9 @@ export class Game {
     this.barriers = [];
     this.allies = [];
     this.secretDiscoveries = [];
+    this.necroSpellKills = 0;
+    this.pathSecretDiscoveries = [];
+    this._necroPathHinted = false;
     this._pendingSummon = null;
     this.effects = [];
     this.projectiles = [];
@@ -137,6 +141,16 @@ export class Game {
     return !!tower && ((!tower.unlockWave && !tower.unlockSecret && !tower.unlockMap) || this.profile.unlocks.includes(type));
   }
 
+  isPathUnlocked(type, index) {
+    const path = Number.isInteger(index) ? TOWERS[type]?.paths[index] : null;
+    return !!path && (!path.unlockSecret || (this.profile.pathUnlocks || []).includes(path.unlockSecret));
+  }
+
+  canDiscoverNecroPath() {
+    return ['planning', 'wave'].includes(this.status) && this.map.id === NECRO_PATH_SECRET.mapId &&
+      this.isUnlocked('necro') && this.necroSpellKills >= NECRO_PATH_SECRET.requiredKills && !this.isPathUnlocked('necro', 3);
+  }
+
   _validTowerSpot(x, z) {
     return Number.isFinite(x) && Number.isFinite(z) &&
       Math.abs(x) <= 11.35 && Math.abs(z) <= 7 && this.pathDistance(x, z) >= 1.3 &&
@@ -166,6 +180,7 @@ export class Game {
   discoverSecret(id) {
     const secret = SECRETS[this.map.id];
     if (!['planning', 'wave'].includes(this.status) || !secret?.spots.some(spot => spot.id === id)) return false;
+    if (this.map.id === NECRO_PATH_SECRET.mapId && this.isUnlocked('necro')) return this._discoverNecroPath(id);
     if (secret.order) {
       if (this.secretDiscoveries.length === secret.order.length || this.secretDiscoveries.at(-1) === id) return false;
       if (id !== secret.order[this.secretDiscoveries.length]) {
@@ -183,6 +198,32 @@ export class Game {
         this._pendingSummon = { type: secret.unit, ...secret.summon };
         this._trySummon();
       }
+    }
+    return true;
+  }
+
+  _discoverNecroPath(id) {
+    if (this.isPathUnlocked('necro', 3)) return false;
+    if (!this.canDiscoverNecroPath()) {
+      if (!this._necroPathHinted) {
+        this._necroPathHinted = true;
+        this._event('path-secret-hint', 'The lanterns are quiet. Let Morrow’s own spells gather ten souls in this garden.');
+      }
+      return false;
+    }
+    const { order } = NECRO_PATH_SECRET;
+    if (this.pathSecretDiscoveries.at(-1) === id) return false;
+    if (id !== order[this.pathSecretDiscoveries.length]) {
+      this.pathSecretDiscoveries = [];
+      this._event('path-secret-reset', 'The echoes fade. Trace the cottage rhyme back toward its beginning.', { unit: 'necro', path: 'echoes', count: 0 });
+      return false;
+    }
+    this.pathSecretDiscoveries.push(id);
+    const count = this.pathSecretDiscoveries.length;
+    this._event('path-secret-found', 'A lantern answers with an echo.', { id, unit: 'necro', path: 'echoes', count, total: order.length });
+    if (count === order.length) {
+      this.profile.pathUnlocks.push(NECRO_PATH_SECRET.id);
+      this._event('path-unlock', 'Soul Echoes unlocked! Morrow can now learn to summon more reborn gnomes per spell defeat.', { unit: 'necro', path: 'echoes', pathId: NECRO_PATH_SECRET.id });
     }
     return true;
   }
@@ -208,13 +249,13 @@ export class Game {
   upgradeTower(id, pathIndex) {
     if (!['planning', 'wave'].includes(this.status)) return false;
     const tower = this.towers.find(t => t.id === id);
-    if (!tower || !Number.isInteger(pathIndex) || !TOWERS[tower.type].paths[pathIndex]) return false;
-    const level = tower.levels[pathIndex];
+    if (!tower || !Number.isInteger(pathIndex) || !TOWERS[tower.type].paths[pathIndex] || !this.isPathUnlocked(tower.type, pathIndex)) return false;
+    const level = tower.levels[pathIndex] ?? 0;
     if (level >= 3 || (level === 0 && tower.levels.filter(n => n > 0).length >= 2)) return false;
     const cost = TOWERS[tower.type].paths[pathIndex].costs[level];
     if (this.points < cost) return false;
     this.points -= cost;
-    tower.levels[pathIndex]++;
+    tower.levels[pathIndex] = level + 1;
     this._event('upgrade', `${TOWERS[tower.type].name}: ${TOWERS[tower.type].paths[pathIndex].name} ${level + 1}.`, { towerId: id });
     return true;
   }
@@ -271,7 +312,12 @@ export class Game {
         break;
       }
       case 'crystal': stats = { damage: 0, range: 4 + d, interval: Math.max(8, 12 - c * 1.4), barrierHp: [70, 120, 200, 320][a], barrierLifetime: 20 + a * 2, barrierLimit: 2, explosionDamage: [0, 28, 55, 95][b], explosionRadius: 1.5 + b * 0.4 }; break;
-      case 'necro': stats = { damage: [12, 20, 32, 48][c], interval: 1.5 * 0.82 ** c, range: 4 + c * 0.6, allyHp: [50, 90, 150, 240][a], allyDamage: [8, 14, 24, 38][a], allyInterval: 0.8, allySpeed: 3.5 + b * 0.5, allyLifetime: 55, allyLimit: 3 + b * 2, summonInterval: [2.4, 1.8, 1.2, 0.7][b] }; break;
+      case 'necro': {
+        const echoLevel = this.isPathUnlocked('necro', 3) && Number.isInteger(d) ? clamp(d, 0, 3) : 0;
+        const summonCount = [1, 2, 3, 4][echoLevel];
+        stats = { damage: [12, 20, 32, 48][c], interval: 1.5 * 0.82 ** c, range: 4 + c * 0.6, allyHp: [50, 90, 150, 240][a], allyDamage: [8, 14, 24, 38][a], allyInterval: 0.8, allySpeed: 3.5 + b * 0.5, allyLifetime: 55, allyLimit: Math.max(3 + b * 2, summonCount), summonInterval: [2.4, 1.8, 1.2, 0.7][b], summonCount };
+        break;
+      }
       case 'strawberry': stats = { damage: [18,34,60,96][a], interval: 4 * 0.76 ** c, range: 40, explosionRadius: [2.1,2.45,2.8,3.2][a], seedCount: [8,12,16,20][b], seedDamage: [4,6,9,13][b], seedPierce: [1,1,2,3][b], seedRange: 3 + b * 0.25, flightDuration: [1.5,1.25,1,0.8][c] }; break;
       default: stats = { damage: 0, interval: 1, range: 0 };
     }
@@ -432,8 +478,11 @@ export class Game {
     this.points += enemy.boss ? 20 : 1;
     if (tower) tower.kills++;
     if (tower?.type === 'necro' && summon) {
-      tower.soulQueue.push({ routeIndex: enemy.routeIndex ?? 0 });
+      this.necroSpellKills++;
+      const count = this.getStats(tower).summonCount;
+      for (let i = 0; i < count; i++) tower.soulQueue.push({ routeIndex: enemy.routeIndex ?? 0 });
       this._effect('soul-reap', enemy, enemy, TOWERS.necro.color, 0.4);
+      if (this.necroSpellKills === NECRO_PATH_SECRET.requiredKills && this.canDiscoverNecroPath()) this._event('path-secret-ready', 'Ten souls stir the Hollow lanterns. The cottage rhyme may have an echo…');
     }
     if (enemy.type === 'boss') this._unlock('stun');
     if (enemy.type === 'king') this._unlock('sniper');

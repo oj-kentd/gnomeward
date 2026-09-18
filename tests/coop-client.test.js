@@ -4,6 +4,28 @@ import { applyCoopSnapshot } from '../src/multiplayer.js';
 import { Match } from '../server/match.js';
 
 function match() { const m = new Match({mode:'coop',mapId:'meadow'});m.addPlayer('host','Parent');m.addPlayer('guest','Child');return m; }
+test('snapshot presentation metadata distinguishes repeated ticks without changing authoritative time', () => {
+  const m = match();
+  const first = applyCoopSnapshot(null, m.snapshot('garden'), 'host', 0, 100);
+  const repeated = applyCoopSnapshot(first.game, m.snapshot('garden'), 'host', first.eventId, 100.2);
+  assert.equal(first.multiplayer.snapshotTick, m.tick);
+  assert.equal(repeated.multiplayer.snapshotTick, m.tick);
+  assert.equal(repeated.multiplayer.snapshotReceivedAt, 100.2);
+  assert.ok(repeated.multiplayer.snapshotSequence > first.multiplayer.snapshotSequence);
+  assert.equal(repeated.game.time, m.board().time);
+});
+test('the updated browser still accepts 0.2.2 snapshots before an Unraid upgrade', () => {
+  const m = match(), snapshot = m.snapshot('old-server');
+  const board = snapshot.boards[0].state;
+  delete board.necroSpellKills;
+  delete board.pathSecretDiscoveries;
+  delete board.profile.pathUnlocks;
+  const client = applyCoopSnapshot(null, snapshot, 'host', 0, 10);
+  assert.equal(client.game.isPathUnlocked('necro', 3), false);
+  assert.equal(client.game.canDiscoverNecroPath(), false);
+  assert.equal(client.multiplayer.snapshotTick, snapshot.tick);
+  assert.equal(client.multiplayer.snapshotReceivedAt, 10);
+});
 test('co-op rendering uses personal wallets and cannot change server state or solo profile', () => {
   const m = match();
   m.command('host',{action:'place',type:'sprout',x:-4,z:0});
@@ -51,4 +73,24 @@ test('a server-earned Strawberry reward is usable in later co-op gardens', () =>
   assert.equal(locked.board().isUnlocked('strawberry'),false);
   const unlocked=new Match({mode:'coop',mapId:'meadow',unlockedRewards:['strawberry']});
   assert.equal(unlocked.board().isUnlocked('strawberry'),true);
+});
+
+test('co-op snapshots hydrate secret path unlocks, progress and direct-spell kills', () => {
+  const m = new Match({ mode: 'coop', mapId: 'hollow', unlockedPaths: ['necro-echoes'] });
+  m.addPlayer('host', 'Parent'); m.addPlayer('guest', 'Child');
+  m.board().necroSpellKills = 12;
+  m.board().pathSecretDiscoveries = ['hollow-flame', 'hollow-leaf'];
+  const host = applyCoopSnapshot(null, m.snapshot('garden'), 'host');
+  const guest = applyCoopSnapshot(null, m.snapshot('garden'), 'guest');
+  for (const client of [host, guest]) {
+    assert.equal(client.game.isPathUnlocked('necro', 3), true);
+    assert.equal(client.game.isUnlocked('necro'), false);
+    assert.equal(client.game.necroSpellKills, 12);
+    assert.deepEqual(client.game.pathSecretDiscoveries, ['hollow-flame', 'hollow-leaf']);
+  }
+  host.game.profile.pathUnlocks.length = 0;
+  host.game.pathSecretDiscoveries.length = 0;
+  assert.equal(guest.game.isPathUnlocked('necro', 3), true);
+  assert.equal(m.board().isPathUnlocked('necro', 3), true);
+  assert.equal(m.board().pathSecretDiscoveries.length, 2);
 });

@@ -1,4 +1,4 @@
-export const SERVER_VERSION = '0.2.2';
+export const SERVER_VERSION = '0.2.3';
 export const PROTOCOL_VERSION = 1;
 
 function integer(value, fallback, min, max, name) {

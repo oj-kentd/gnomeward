@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { request } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@colyseus/sdk';
 import { startServer } from '../server/index.js';
-import { readConfig, originAllowed } from '../server/config.js';
+import { readConfig, originAllowed, SERVER_VERSION } from '../server/config.js';
 import { openResultStore } from '../server/store.js';
+import { SECRETS, NECRO_PATH_SECRET } from '../src/data.js';
 
 async function until(check, label = 'condition', timeout = 5000) {
   const deadline = Date.now() + timeout;
@@ -74,7 +75,7 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
     await t.test('health, origin rejection, request limits and private routes', async () => {
       const response = await fetch(`${url}/healthz`);
       assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { status: 'ok', service: 'gnomeward-server', version: '0.2.2', protocol: 1 });
+      assert.deepEqual(await response.json(), { status: 'ok', service: 'gnomeward-server', version: SERVER_VERSION, protocol: 1 });
       assert.deepEqual(await lobbies(), []);
       assert.equal((await fetch(`${url}/lobbies`, { headers: { origin: 'https://evil.example' } })).status, 403);
       assert.equal((await fetch(`${url}/readyz`)).status, 200);
@@ -92,7 +93,7 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
       assert.equal(app.rooms.size, 0);
     });
     await t.test('public discovery tracks available seats, host reconnect, ownership and ready synchronization', async () => {
-      const hostReservation = await reserve('create/gnomeward', { protocol: 1, name: 'Alice', mode: 'coop', mapId: 'meadow', maxClients: 100, gold: 9999, unlockedRewards: ['strawberry'] });
+      const hostReservation = await reserve('create/gnomeward', { protocol: 1, name: 'Alice', mode: 'coop', mapId: 'meadow', maxClients: 100, gold: 9999, unlockedRewards: ['strawberry'], unlockedPaths: ['necro-echoes'], pathUnlocks: ['necro-echoes'], profile: { pathUnlocks: ['necro-echoes'] }, necroSpellKills: 10 });
       assert.deepEqual(await lobbies(), [], 'a host reservation without a connected host is not an open lobby');
       let a = await client.consumeSeatReservation(hostReservation);
       connections.push(a); const sa = observe(a);
@@ -122,6 +123,8 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
       assert.deepEqual(await lobbies(), [], 'filled lobbies are hidden');
       assert.equal(sa.snapshot.players[0].gold, 325);
       assert.equal(sa.snapshot.boards[0].state.profile.unlocks.includes('strawberry'), false, 'browser cannot forge encounter rewards');
+      assert.deepEqual(sa.snapshot.boards[0].state.profile.pathUnlocks, [], 'browser cannot forge secret upgrade paths');
+      assert.equal(sa.snapshot.boards[0].state.necroSpellKills, 0, 'browser cannot forge direct spell defeats');
       await assert.rejects(new Client(url).joinById(a.roomId, { protocol: 1, name: 'Third' }));
       await assert.rejects(client.create('gnomeward', { protocol: 1, name: 'Extra', mode: 'coop', mapId: 'meadow' }), /busy/);
       a.send('command', { action: 'place', type: 'sprout', x: -4, z: 0, playerId: b.sessionId, gold: 9999 });
@@ -172,12 +175,53 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
       assert.equal(app.store.count, 2);
       assert.equal((await openResultStore(directory)).count, 2);
     });
+    await t.test('Soul Echoes progress survives reconnect and the earned path persists for the party', async () => {
+      const a = await client.create('gnomeward', { protocol: 1, name: 'Alice', mode: 'coop', mapId: 'hollow' });
+      connections.push(a); const sa = observe(a);
+      const b = await new Client(url).joinById(a.roomId, { protocol: 1, name: 'Bob', unlockedPaths: ['necro-echoes'] });
+      connections.push(b); const sb = observe(b);
+      await until(() => sa.snapshot?.players.length === 2 && sb.snapshot?.players.length === 2);
+      assert.deepEqual(sb.snapshot.boards[0].state.profile.pathUnlocks, []);
+      for (const id of SECRETS.hollow.order) a.send('command', { action: 'discover', id });
+      await until(() => sa.snapshot.boards[0].state.profile.unlocks.includes('necro'), 'Morrow discovery');
+      const board = [...app.rooms][0].match.board();
+      const spot = Array.from({ length: 21 }, (_, index) => index - 10).flatMap(x => Array.from({ length: 13 }, (_, index) => ({ x, z: index - 6 }))).find(point => board.canPlace('necro', point.x, point.z));
+      a.send('command', { action: 'place', type: 'necro', ...spot });
+      await until(() => board.towers.length === 1, 'placed Morrow');
+      // Seed authoritative combat outcomes through the real damage handler;
+      // neither matchmaking options nor commands can write this kill counter.
+      for (let kill = 0; kill < 10; kill++) {
+        const enemy = board._spawn('bone');
+        board._damage(enemy, enemy.hp, board.towers[0].id, { summon: true });
+      }
+      for (const id of NECRO_PATH_SECRET.order.slice(0, 2)) a.send('command', { action: 'discover', id });
+      await until(() => sb.snapshot.boards[0].state.pathSecretDiscoveries.length === 2, 'shared partial secret');
+      assert.equal(sb.snapshot.boards[0].state.necroSpellKills, 10);
+      b.reconnection.enabled = false;
+      const token = b.reconnectionToken;
+      b.connection.close(1000, 'secret progress reconnect');
+      await until(() => sa.snapshot.players.some(player => player.id === b.sessionId && !player.connected));
+      const restored = await new Client(url).reconnect(token);
+      connections.push(restored); const sr = observe(restored);
+      await until(() => sr.snapshot?.boards[0].state.pathSecretDiscoveries.length === 2);
+      for (const id of NECRO_PATH_SECRET.order.slice(2)) restored.send('command', { action: 'discover', id });
+      await until(() => sa.snapshot.boards[0].state.profile.pathUnlocks.includes('necro-echoes') && sr.snapshot.boards[0].state.profile.pathUnlocks.includes('necro-echoes'), 'shared Soul Echoes unlock');
+      await until(() => app.store.pathUnlocks.includes('necro-echoes'), 'durable secret path');
+      await restored.leave(); await a.leave();
+      await until(() => app.rooms.size === 0);
+      await app.store.flush();
+      assert.deepEqual((await openResultStore(directory)).pathUnlocks, ['necro-echoes']);
+      const results = JSON.parse(await readFile(join(directory, 'results.json'), 'utf8')).results;
+      assert.deepEqual(results.at(-1).earnedPathUnlocks, ['necro-echoes']);
+    });
     await t.test('Strawberry victory persists a party reward for later rooms', async () => {
       const a = await client.create('gnomeward', { protocol: 1, name: 'Alice', mode: 'coop', mapId: 'strawberry' });
       connections.push(a); const sa = observe(a);
       const b = await new Client(url).joinById(a.roomId, { protocol: 1, name: 'Bob' });
       connections.push(b); observe(b);
       await until(() => sa.snapshot?.players.length === 2);
+      assert.deepEqual(sa.snapshot.boards[0].state.profile.pathUnlocks, ['necro-echoes'], 'new rooms inherit only trusted earned paths');
+      assert.equal(sa.snapshot.boards[0].state.profile.unlocks.includes('necro'), false, 'a secret path does not grant its character');
       assert.equal(sa.snapshot.boards[0].state.towers[0].ownerId, a.sessionId);
       a.send('command', { action: 'ready' }); b.send('command', { action: 'ready' });
       await until(() => sa.snapshot?.boards[0].state.wave === 1);
@@ -192,7 +236,7 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
       await b.leave(); await a.leave();
       await until(() => app.rooms.size === 0);
       await app.store.flush();
-      assert.equal(app.store.count, 3);
+      assert.equal(app.store.count, 4);
     });
     await t.test('shutdown records an interrupted match without awarding a PvP win', async () => {
       const a = await client.create('gnomeward', { protocol: 1, name: 'Alice', mode: 'pvp', mapId: 'meadow' });
@@ -202,9 +246,19 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
       assert.ok([...app.rooms][0].match.board(a.sessionId).isUnlocked('strawberry'), 'later rooms inherit the earned party reward');
       await app.stop();
       const records = JSON.parse(await readFile(join(directory, 'results.json'), 'utf8')).results;
-      assert.equal(records.length, 4);
+      assert.equal(records.length, 5);
       assert.equal(records.at(-1).reason, 'server-closed');
       assert.equal(records.at(-1).winnerId, null);
+    });
+    await t.test('a server restart restores the durable party path without granting Morrow', async () => {
+      const restarted = await startServer(config, { reconnectSeconds: 1 });
+      try {
+        const room = await new Client(`http://127.0.0.1:${restarted.port}`).create('gnomeward', { protocol: 1, name: 'Returning gardener', mode: 'coop', mapId: 'hollow' });
+        connections.push(room); const state = observe(room);
+        await until(() => state.snapshot?.boards[0].state.profile.pathUnlocks.includes('necro-echoes'));
+        assert.equal(state.snapshot.boards[0].state.profile.unlocks.includes('necro'), false);
+        await room.leave();
+      } finally { await restarted.stop(); }
     });
   } finally {
     for (const room of connections) if (room.connection.isOpen) await room.leave().catch(() => {});
@@ -236,4 +290,39 @@ test('saving a completed encounter also preserves its reward if the room closed 
     assert.deepEqual(store.unlocks,['strawberry']);
     assert.deepEqual((await openResultStore(directory)).unlocks,['strawberry']);
   } finally { await rm(directory,{recursive:true,force:true}); }
+});
+
+test('secret paths serialize with encounter rewards and survive rolling-history eviction', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'gnomeward-path-store-'));
+  try {
+    await writeFile(join(directory, 'results.json'), JSON.stringify({ version: 1, results: Array.from({ length: 1000 }, (_, index) => ({ roomId: `old-${index}`, ...(index === 0 ? { earnedPathUnlocks: ['necro-echoes', 'invented'] } : {}) })) }));
+    const store = await openResultStore(directory);
+    assert.deepEqual(store.pathUnlocks, ['necro-echoes'], 'legacy result records recover a path without the top-level field');
+    await Promise.all([store.grantPathUnlock('necro-echoes'), store.grantUnlock('strawberry'), store.record({ roomId: 'newest', reason: 'abandoned' })]);
+    await store.flush();
+    const restored = await openResultStore(directory);
+    assert.deepEqual(restored.pathUnlocks, ['necro-echoes']);
+    assert.deepEqual(restored.unlocks, ['strawberry']);
+    const records = JSON.parse(await readFile(join(directory, 'results.json'), 'utf8')).results;
+    assert.equal(records.length, 1000);
+    assert.equal(records.some(result => result.roomId === 'old-0'), false);
+    restored.pathUnlocks.push('invented');
+    assert.deepEqual(restored.pathUnlocks, ['necro-echoes']);
+    await assert.rejects(store.grantPathUnlock('necro'), /Unknown/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a result recovers a secret path after its immediate disk write failed', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'gnomeward-path-recovery-'));
+  try {
+    const store = await openResultStore(directory);
+    await mkdir(join(directory, 'results.json.tmp'));
+    await assert.rejects(store.grantPathUnlock('necro-echoes'));
+    assert.equal(store.healthy, false);
+    assert.deepEqual(store.pathUnlocks, []);
+    await rm(join(directory, 'results.json.tmp'), { recursive: true });
+    await store.record({ roomId: 'closed-before-retry', reason: 'server-closed', earnedPathUnlocks: ['necro-echoes', 'invented'] });
+    assert.equal(store.healthy, true);
+    assert.deepEqual((await openResultStore(directory)).pathUnlocks, ['necro-echoes']);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

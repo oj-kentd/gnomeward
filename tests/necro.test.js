@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../src/game.js';
-import { MAPS, SECRETS, TOWERS, cottagePosition, cottageDoorPosition } from '../src/data.js';
+import { MAPS, SECRETS, TOWERS, NECRO_PATH_SECRET, cottagePosition, cottageDoorPosition } from '../src/data.js';
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-7, `${a} ≈ ${b}`);
 const run = (g, seconds) => { for (let i = 0; i < Math.round(seconds * 20); i++) g.update(0.05); };
@@ -27,12 +27,13 @@ function allyAt(g, tower, progress, routeIndex = 0, overrides = {}) {
   return ally;
 }
 
-test('Morrow is a secret three-path guardian with the ordinary two-path limit', () => {
+test('Morrow has three ordinary paths and a secret fourth, with the ordinary two-path limit', () => {
   const locked = new Game();
   assert.equal(locked.isUnlocked('necro'), false);
   assert.equal(locked.canPlace('necro', -10, 1.5), false);
   assert.equal(TOWERS.necro.unlockSecret, 'hollow');
-  assert.equal(TOWERS.necro.paths.length, 3);
+  assert.equal(TOWERS.necro.paths.length, 4);
+  assert.equal(TOWERS.necro.paths[3].unlockSecret, NECRO_PATH_SECRET.id);
   const { g, tower } = setup();
   assert.equal(g.gold, 350);
   g.points = 1000;
@@ -83,6 +84,7 @@ test('solving Hollow permanently unlocks Morrow without free placement, while in
   assert.equal(g.allies.length, 0);
   assert.equal(g.gold, 650);
   assert.equal(g.events.filter(event => event.type === 'unlock').length, 1);
+  assert.equal(g.isPathUnlocked('necro', 3), false, 'finding Morrow does not grant Soul Echoes');
   for (const id of SECRETS.hollow.order) assert.equal(g.discoverSecret(id), false);
   const replay = new Game('creek', JSON.parse(JSON.stringify(g.profile)));
   assert.equal(replay.isUnlocked('necro'), true);
@@ -317,4 +319,179 @@ test('friendly crystals do not obstruct the reborn march and gravity can pull sk
   g.update(0.2);
   assert.ok(other.progress < 6, 'reborn gnomes walk through friendly barriers');
   assert.ok(g.barriers[0].hp > 0);
+});
+
+function spellDefeat(g, tower, routeIndex = 0) {
+  const enemy = enemyAt(g, 2, routeIndex, 'bone');
+  enemy.hp = 1;
+  g._launch(tower, enemy, g.getStats(tower));
+  g._advanceProjectiles(2);
+  assert.equal(enemy.hp, 0);
+  return enemy;
+}
+
+test('Soul Echoes is gated before spending points and forged levels do not grant extra summons', () => {
+  const { g, tower } = setup();
+  g.points = 1000;
+  assert.equal(g.isPathUnlocked('missing', 3), false);
+  assert.equal(g.isPathUnlocked('necro', -1), false);
+  assert.equal(g.isPathUnlocked('necro', 1.5), false);
+  assert.equal(g.isPathUnlocked('necro', 0), true);
+  assert.equal(g.isPathUnlocked('necro', 3), false);
+  assert.equal(g.upgradeTower(tower.id, 3), false);
+  assert.equal(g.points, 1000);
+  tower.levels[3] = 3;
+  assert.equal(g.getStats(tower).summonCount, 1);
+  assert.equal(g.getStats(tower).allyLimit, 3);
+  spellDefeat(g, tower);
+  assert.equal(tower.soulQueue.length, 1);
+});
+
+test('every Soul Echoes tier queues the exact batch once through real projectile impacts on the defeated route', () => {
+  for (let level = 0; level <= 3; level++) {
+    const { g, tower } = setup('creek');
+    g.profile.pathUnlocks = [NECRO_PATH_SECRET.id];
+    tower.levels[3] = level;
+    const enemy = spellDefeat(g, tower, 1);
+    const count = level + 1;
+    assert.equal(g.getStats(tower).summonCount, count);
+    assert.deepEqual(tower.soulQueue, Array.from({ length: count }, () => ({ routeIndex: 1 })));
+    assert.equal(g.necroSpellKills, 1, 'count defeated skeletons, not summoned echoes');
+    g._damage(enemy, 999, tower.id, { summon: true });
+    assert.equal(tower.soulQueue.length, count);
+    assert.equal(g.necroSpellKills, 1);
+    g._dispatchReborn(.05);
+    assert.equal(g.allies.length, 1);
+    assert.equal(g.allies[0].routeIndex, 1);
+    assert.equal(tower.soulQueue.length, count - 1);
+  }
+});
+
+test('Soul Echoes keeps dispatch cadence and queued batches when the active cap is full', () => {
+  const { g, tower } = setup();
+  g.profile.pathUnlocks = [NECRO_PATH_SECRET.id];
+  tower.levels = [0, 0, 0, 3];
+  spellDefeat(g, tower);
+  spellDefeat(g, tower);
+  assert.equal(tower.soulQueue.length, 8);
+  assert.equal(g.getStats(tower).allyLimit, 4, 'the whole final-tier batch can fit without Soul Procession');
+  g._dispatchReborn(.05);
+  g._dispatchReborn(.1);
+  assert.equal(g.allies.length, 1, 'echoes do not bypass dispatch cooldown');
+  for (let i = 0; i < 10; i++) g._dispatchReborn(3);
+  assert.equal(g.allies.length, 4);
+  assert.equal(tower.soulQueue.length, 4, 'excess souls wait instead of disappearing');
+  g.allies[0].hp = 0;
+  g._dispatchReborn(.05);
+  assert.equal(g.allies.filter(ally => ally.hp > 0).length, 4);
+  assert.equal(tower.soulQueue.length, 3);
+  tower.levels[1] = 3;
+  assert.equal(g.getStats(tower).allyLimit, 9, 'Soul Procession retains its larger cap');
+});
+
+test('Echo-enhanced reborn kills still cannot recurse or satisfy direct-spell requirements', () => {
+  const { g, tower } = setup('hollow');
+  g.profile.pathUnlocks = [NECRO_PATH_SECRET.id];
+  tower.levels[3] = 3;
+  allyAt(g, tower, 5);
+  const enemy = enemyAt(g, 4.35, 0, 'bone');
+  enemy.hp = 8;
+  enemyAt(g, 30);
+  g.update(.05);
+  assert.equal(enemy.hp, 0);
+  assert.equal(tower.kills, 1);
+  assert.equal(g.necroSpellKills, 0);
+  assert.equal(tower.soulQueue.length, 0);
+  assert.equal(g.allies.length, 1);
+});
+
+test('the echo ritual requires ten direct spell defeats in this Hollow run before reverse lantern discovery', () => {
+  const { g, tower } = setup('hollow');
+  assert.equal(g.canDiscoverNecroPath(), false);
+  for (const id of NECRO_PATH_SECRET.order) assert.equal(g.discoverSecret(id), false);
+  assert.equal(g.events.filter(event => event.type === 'path-secret-hint').length, 1, 'locked clicks do not spam hints');
+  assert.deepEqual(g.pathSecretDiscoveries, []);
+  for (let i = 0; i < 9; i++) spellDefeat(g, tower);
+  assert.equal(g.necroSpellKills, 9);
+  assert.equal(g.discoverSecret(NECRO_PATH_SECRET.order[0]), false);
+  const indirect = enemyAt(g, 2, 0, 'bone');
+  g._damage(indirect, indirect.hp, tower.id, { summon: false });
+  assert.equal(g.necroSpellKills, 9);
+  spellDefeat(g, tower);
+  assert.equal(g.necroSpellKills, 10);
+  assert.equal(g.canDiscoverNecroPath(), true);
+  assert.equal(g.events.filter(event => event.type === 'path-secret-ready').length, 1);
+  for (const id of NECRO_PATH_SECRET.order) assert.ok(g.discoverSecret(id));
+  assert.equal(g.isPathUnlocked('necro', 3), true);
+  assert.equal(g.canDiscoverNecroPath(), false);
+  assert.equal(g.events.filter(event => event.type === 'path-unlock').length, 1);
+  for (const id of NECRO_PATH_SECRET.order) assert.equal(g.discoverSecret(id), false);
+  const replay = new Game('creek', JSON.parse(JSON.stringify(g.profile)));
+  assert.equal(replay.isPathUnlocked('necro', 3), true);
+  assert.equal(replay.necroSpellKills, 0);
+  assert.deepEqual(replay.pathSecretDiscoveries, []);
+});
+
+test('echo ritual mistakes reset only the second puzzle and repeated latest clicks are ignored', () => {
+  const g = new Game('hollow');
+  for (const id of SECRETS.hollow.order) g.discoverSecret(id);
+  const tower = g.placeTower('necro', -7, 0);
+  g.status = 'wave';
+  for (let i = 0; i < 10; i++) spellDefeat(g, tower);
+  const [flame, leaf, star, moon] = NECRO_PATH_SECRET.order;
+  assert.ok(g.discoverSecret(flame));
+  assert.equal(g.discoverSecret(flame), false);
+  assert.deepEqual(g.pathSecretDiscoveries, [flame]);
+  assert.ok(g.discoverSecret(leaf));
+  assert.equal(g.discoverSecret(flame), false);
+  assert.deepEqual(g.pathSecretDiscoveries, []);
+  assert.deepEqual(g.secretDiscoveries, SECRETS.hollow.order, 'Morrow’s original completed puzzle stays lit');
+  assert.equal(g.necroSpellKills, 10);
+  assert.equal(g.isUnlocked('necro'), true);
+  assert.equal(g.isPathUnlocked('necro', 3), false);
+  assert.equal(g.events.at(-1).type, 'path-secret-reset');
+  assert.ok(g.discoverSecret(flame));
+  assert.equal(g.discoverSecret(SECRETS.meadow.spots[0].id), false);
+  assert.deepEqual(g.pathSecretDiscoveries, [flame]);
+  for (const id of [leaf, star, moon]) assert.ok(g.discoverSecret(id));
+  assert.equal(g.isPathUnlocked('necro', 3), true);
+});
+
+test('echo prerequisites reset between runs, reject other maps and finished games, and sanitize saved path unlocks', () => {
+  const { g, tower } = setup('hollow');
+  for (let i = 0; i < 10; i++) spellDefeat(g, tower);
+  g.discoverSecret(NECRO_PATH_SECRET.order[0]);
+  const restarted = new Game('hollow', JSON.parse(JSON.stringify(g.profile)));
+  assert.equal(restarted.necroSpellKills, 0);
+  assert.equal(restarted.canDiscoverNecroPath(), false);
+  assert.deepEqual(restarted.pathSecretDiscoveries, []);
+  const away = setup('meadow');
+  for (let i = 0; i < 10; i++) spellDefeat(away.g, away.tower);
+  assert.equal(away.g.canDiscoverNecroPath(), false);
+  assert.equal(away.g.discoverSecret(NECRO_PATH_SECRET.order[0]), false);
+  for (const status of ['won', 'lost']) {
+    g.status = status;
+    assert.equal(g.canDiscoverNecroPath(), false);
+    assert.equal(g.discoverSecret(NECRO_PATH_SECRET.order[1]), false);
+  }
+  const cleaned = new Game('hollow', { unlocks: ['necro'], pathUnlocks: [null, 'fake', NECRO_PATH_SECRET.id, NECRO_PATH_SECRET.id] });
+  assert.deepEqual(cleaned.profile.pathUnlocks, [NECRO_PATH_SECRET.id]);
+  assert.deepEqual(new Game('hollow', { unlocks: ['necro'], pathUnlocks: 'necro-echoes' }).profile.pathUnlocks, []);
+});
+
+test('unlocked echoes support old three-level towers while still consuming one of two upgrade paths', () => {
+  const { g, tower } = setup();
+  g.profile.pathUnlocks = [NECRO_PATH_SECRET.id];
+  tower.levels = [0, 0, 0];
+  g.points = 1000;
+  assert.equal(g.getStats(tower).summonCount, 1);
+  for (let tier = 0; tier < 3; tier++) assert.ok(g.upgradeTower(tower.id, 3));
+  assert.deepEqual(tower.levels, [0, 0, 0, 3]);
+  assert.equal(g.points, 1000 - 18 - 36 - 65);
+  assert.ok(g.upgradeTower(tower.id, 0));
+  const points = g.points;
+  assert.equal(g.upgradeTower(tower.id, 1), false);
+  assert.equal(g.upgradeTower(tower.id, 2), false);
+  assert.equal(g.upgradeTower(tower.id, 3), false);
+  assert.equal(g.points, points);
 });

@@ -73,14 +73,17 @@ try {
   assert.deepEqual(unlock, { gold: 650, towers: 0, saved: true }, 'Puzzle unlocks Morrow without a free summon');
   await page.screenshot({ path: 'playtest-results/necro-pumpkins.png' });
 
-  stage = 'purchasing Morrow and choosing two of three paths';
+  stage = 'purchasing Morrow and choosing two paths while the fourth remains a mystery';
   await map('meadow');
   await page.locator('[data-tower="necro"]').click();
   await clickWorld(8, 0, -1);
   await page.waitForFunction(() => gnomeward.game.towers.some((tower) => tower.type === 'necro'));
   await page.evaluate(() => { gnomeward.game.points = 250; });
   await page.waitForFunction(() => !document.querySelector('[data-upgrade="0"]').disabled);
-  assert.equal(await page.locator('[data-upgrade]').count(), 3);
+  assert.equal(await page.locator('[data-upgrade]').count(), 4);
+  assert.equal(await page.locator('[data-upgrade="3"]').isDisabled(), true);
+  assert.match(await page.locator('.secret-path-locked').innerText(), /Mysterious path/);
+  assert.doesNotMatch(await page.locator('.secret-path-locked').innerText(), /Soul Echoes|18|36|65/);
   assert.match(await page.locator('.upgrade-path').first().innerText(), /New helper HP 50 → 90/);
   assert.match(await page.locator('.upgrade-path').nth(1).innerText(), /Dispatch 2.4s → 1.8s/);
   await page.locator('[data-targeting]').click();
@@ -88,7 +91,8 @@ try {
   await page.locator('[data-upgrade="0"]').click();
   await page.locator('[data-upgrade="1"]').click();
   assert.equal(await page.locator('[data-upgrade="2"]').isDisabled(), true);
-  assert.match(await page.locator('#selection-panel').innerText(), /Choose 2 of 3 paths/);
+  assert.match(await page.locator('#selection-panel').innerText(), /Choose 2 of 4 paths/);
+  assert.equal(await page.locator('[data-upgrade="3"]').isDisabled(), true);
   assert.match(await page.locator('.necro-ability').innerText(), /apply to new summons/);
   const stats = await page.evaluate(() => gnomeward.game.getStats(gnomeward.game.towers[0]));
   assert.equal(stats.allyHp, 90); assert.equal(stats.allyDamage, 14);

@@ -59,7 +59,7 @@ test('secret spots reserve grass and secret guardians retain the two-path restri
       assert.ok(g.pathDistance(spot.x, spot.z) >= 1.3);
       assert.equal(g.canPlace('sprout', spot.x, spot.z), false);
     }
-    assert.equal(TOWERS[secret.unit].paths.length, secret.unit === 'necro' ? 3 : 4);
+    assert.equal(TOWERS[secret.unit].paths.length, 4);
     assert.ok(TOWERS[secret.unit].paths.every(path => path.costs.length === 3));
     const tower = g.placeTower(secret.unit, ...(map === 'hollow' ? [-7, 0] : [-10, 1.5]));
     assert.ok(tower);

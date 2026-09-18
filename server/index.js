@@ -58,6 +58,8 @@ export async function startServer(config = readConfig(), roomOptions = {}) {
     recordResult: result => store.record(result),
     getUnlockedRewards: () => store.unlocks,
     onRewardUnlocked: type => store.grantUnlock(type),
+    getUnlockedPaths: () => store.pathUnlocks,
+    onPathUnlocked: id => store.grantPathUnlock(id),
     onRoomOpen: room => {
       if (stopping || !store.healthy) throw new Error('Server is not ready');
       if (rooms.size >= config.maxRooms) throw new Error('All gardens are busy. Try again after a match ends.');

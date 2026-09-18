@@ -69,6 +69,11 @@ const multiplayer=new CoopClient({
       soloRun.game.profile.unlocks.push('strawberry');
       try{localStorage.setItem('gnomeward-profile',JSON.stringify(soloRun.game.profile));}catch{}
     }
+    if(game.profile.pathUnlocks?.includes('necro-echoes')&&soloRun&&!soloRun.game.profile.pathUnlocks?.includes('necro-echoes')){
+      soloRun.game.profile.pathUnlocks??=[];
+      soloRun.game.profile.pathUnlocks.push('necro-echoes');
+      try{localStorage.setItem('gnomeward-profile',JSON.stringify(soloRun.game.profile));}catch{}
+    }
     if(previousStatus==='won'&&game.status==='planning'&&ui.modalType==='result')ui.closeModal();
     if(pendingPlacement){
       const tower=game.towers.find(t=>t.ownerId===sessionId&&t.type===pendingPlacement.type&&Math.hypot(t.x-pendingPlacement.x,t.z-pendingPlacement.z)<.05);
@@ -195,18 +200,14 @@ function frame(now){
     let remaining=dt*state.speed;
     while(remaining>0){const step=Math.min(remaining,1/30);game.update(step);remaining-=step;}
   }
-  if(state.multiplayer&&!state.paused&&!state.multiplayer.reconnecting){
-    for(const list of [game.effects,game.projectiles])for(const effect of list)effect.ttl=Math.max(0,effect.ttl-dt*state.speed);
-    game.effects=game.effects.filter(effect=>effect.ttl>0);game.projectiles=game.projectiles.filter(effect=>effect.ttl>0);
-  }
   const events=game.events.splice(0);
-  const announcement=events.findLast(event=>event.type==='unlock')||events.findLast(event=>['wave-start','wave-complete'].includes(event.type));
-  if(announcement)ui.announce?.(announcement.message,announcement.type);
+  const announcement=events.findLast(event=>['unlock','path-unlock'].includes(event.type))||events.findLast(event=>['wave-start','wave-complete'].includes(event.type));
+  if(announcement)ui.announce?.(announcement.message,announcement.type==='path-unlock'?'unlock':announcement.type);
   for(const event of events){
-    if(event.message&&!['leak','placed','wave-start','wave-complete','unlock'].includes(event.type))ui.toast(event.message);
+    if(event.message&&!['leak','placed','wave-start','wave-complete','unlock','path-unlock'].includes(event.type))ui.toast(event.message);
     if(event.type==='summoned'&&(!state.multiplayer||game.towers.find(t=>t.id===event.towerId)?.ownerId===state.multiplayer.sessionId)){state.selectedTowerId=event.towerId;state.placingType=null;refreshUI();}
     if(event.type==='secret-found'||event.type==='summoned')save();
-    if(['unlock','wave-complete','victory'].includes(event.type)){save();beep(920,.2);}
+    if(['unlock','path-unlock','wave-complete','victory'].includes(event.type)){save();beep(920,.2);}
     else if(event.type==='defeat'){save();beep(140,.4);}
   }
   world.render(game,state,now/1000);
@@ -214,4 +215,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.2'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.3'};

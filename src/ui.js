@@ -1,4 +1,4 @@
-import { MAPS, TOWERS, ENEMIES } from './data.js';
+import { MAPS, TOWERS, ENEMIES, NECRO_PATH_SECRET } from './data.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const n = (value) => Math.round(Number(value) || 0).toLocaleString();
@@ -41,6 +41,7 @@ function upgradeBenefit(game, tower, index, stats) {
     ['gravityDps', 'Gravity/s'], ['pullSpeed', 'Pull speed'], ['holeDuration', 'Hole seconds'], ['holeRadius', 'Hole radius'],
     ['barrierHp', 'Barrier HP'], ['barrierLifetime', 'Barrier seconds'], ['barrierLimit', 'Max barriers'],
     ['allyHp', 'New helper HP'], ['allyDamage', 'New helper damage'], ['allySpeed', 'New march speed'], ['allyLimit', 'Helper limit'],
+    ['summonCount', 'Guardians per spell kill'],
     ['seedCount', 'Seeds'], ['seedDamage', 'Seed damage'], ['seedPierce', 'Targets per seed'], ['seedRange', 'Seed reach'],
   ];
   const terrain = ['gravity', 'crystal'].includes(tower.type);
@@ -56,6 +57,10 @@ function upgradeBenefit(game, tower, index, stats) {
   if (next.capture && !stats.capture) benefits.push('Captures enemies in the hole');
   if (tower.type === 'strawberry' && next.flightDuration < stats.flightDuration) benefits.push(`Flight ${precise(stats.flightDuration)}s → ${precise(next.flightDuration)}s`);
   return benefits.join(' · ') || TOWERS[tower.type].paths[index].description;
+}
+
+function cottageClueSignature(game) {
+  return JSON.stringify([game?.isUnlocked('necro'), game?.necroSpellKills || 0, game?.profile?.pathUnlocks]);
 }
 
 function summonCounts(game, tower) {
@@ -201,6 +206,7 @@ export class UI {
 
   update(game, state = {}) {
     this.last = { game, state };
+    if (this.modalType === 'clue' && this.clueSignature !== cottageClueSignature(game)) this.showCottageClue();
     const multiplayer = state.multiplayer;
     const players = multiplayer?.players || [];
     const me = players.find((player) => player.id === multiplayer?.sessionId);
@@ -314,7 +320,7 @@ export class UI {
         panel.setAttribute('aria-label', 'Selected defender');
       }
     }
-    const panelSignature = JSON.stringify([selected?.id, selected?.levels, selected?.targeting, selected?.kills, selected?.ownerId, game.points, multiplayer?.sessionId, multiplayer?.connected, multiplayer?.result]);
+    const panelSignature = JSON.stringify([selected?.id, selected?.levels, selected?.targeting, selected?.kills, selected?.ownerId, game.points, game.profile?.pathUnlocks, multiplayer?.sessionId, multiplayer?.connected, multiplayer?.result]);
     if (panelSignature !== this.panelSignature) {
       this.panelSignature = panelSignature;
       const scrollTop = selectionChanged ? 0 : panel.scrollTop;
@@ -403,10 +409,12 @@ export class UI {
       ${!automatic ? `<button class="targeting-button" data-targeting ${!canEdit ? 'disabled' : ''} title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : `<div class="targeting-note ${tower.type === 'spore' && stats.poisonSpreadRadius > 0 ? 'poison-spread-note' : ''}">${automaticNote}</div>`}
       ${tower.type === 'stun' ? `<div class="targeting-note">50% slower for ${precise(stats.slowDuration)}s · does not stack</div>` : ''}
       ${tower.type === 'strawberry' ? `<div class="targeting-note">Lobs at a fixed landing spot · ${precise(stats.flightDuration)}s flight · ${precise(stats.explosionRadius)} blast radius. Seeds deal ${n(stats.seedDamage)} damage to up to ${n(stats.seedPierce)} ${stats.seedPierce === 1 ? 'target' : 'targets'} each.</div>` : ''}
-      ${helpers ? `<div class="necro-ability"><p>Spell kills send helpers from the cottage to march toward enemies. Helper kills summon no one; helper upgrades apply to new summons.</p><div class="helper-stats" aria-label="New helper stats"><span><b>${n(stats.allyHp)}</b> helper HP</span><span><b>${n(stats.allyDamage)}</b> melee damage</span><span><b>${precise(stats.summonInterval)}s</b> dispatch</span><span><b>${precise(stats.allySpeed)}</b> march speed</span></div><div class="helper-counts"><span><b data-helper-active>${helpers.active}</b> / ${n(stats.allyLimit)} active</span><span><b data-helper-waiting>${helpers.waiting}</b> waiting</span></div></div>` : ''}
+      ${helpers ? `<div class="necro-ability"><p>Spell kills queue guardians at the cottage to march toward enemies. Helper kills summon no one; helper upgrades apply to new summons.</p><div class="helper-stats" aria-label="New helper stats"><span><b>${n(stats.summonCount || 1)}</b> ${(stats.summonCount || 1) === 1 ? 'guardian' : 'guardians'} per spell kill</span><span><b>${n(stats.allyHp)}</b> helper HP</span><span><b>${n(stats.allyDamage)}</b> melee damage</span><span><b>${precise(stats.summonInterval)}s</b> dispatch</span><span><b>${precise(stats.allySpeed)}</b> march speed</span></div><div class="helper-counts"><span><b data-helper-active>${helpers.active}</b> / ${n(stats.allyLimit)} active</span><span><b data-helper-waiting>${helpers.waiting}</b> queued guardians</span></div></div>` : ''}
       <div class="upgrade-heading"><strong>UPGRADES</strong><span>${icons.leaf}${currency(game.points)} points</span></div>
-      <p class="path-rule">${limit === 1 ? '1 special path · 3 powerful tiers' : def.paths.length === 3 ? `Choose 2 of 3 paths · ${used}/2 chosen` : `Choose ${limit} paths · ${used}/${limit} chosen`}</p>
+      <p class="path-rule">${limit === 1 ? '1 special path · 3 powerful tiers' : `Choose ${limit} of ${def.paths.length} paths · ${used}/${limit} chosen`}</p>
       <div class="upgrade-paths">${def.paths.map((path, index) => {
+        const undiscovered = !!path.unlockSecret && !game.isPathUnlocked?.(tower.type, index);
+        if (undiscovered) return `<div class="upgrade-path secret-path-locked"><div class="upgrade-copy"><strong>Mysterious path</strong><span class="secret-path-mark" aria-hidden="true">???</span><small>The cottage in Pumpkin Hollow keeps another secret.</small></div><button class="upgrade-buy" data-upgrade="${index}" disabled aria-label="Mysterious path. Visit the cottage in Pumpkin Hollow." title="Discover this path in Pumpkin Hollow">${icons.lock}<span>Undiscovered</span></button></div>`;
         const level = levels[index] || 0;
         const maxed = level >= path.costs.length;
         const locked = level === 0 && used >= limit;
@@ -473,7 +481,27 @@ export class UI {
   }
 
   showCottageClue() {
-    this.openModal('clue', `<div class="modal-heading"><div><span class="eyebrow">PUMPKIN HOLLOW</span><h2>The cottage rhyme</h2></div><button class="modal-close" data-close aria-label="Close cottage clue">×</button></div><div class="cottage-clue"><p>The moon rises, a star wakes, a leaf falls, and a flame guides you home.</p><small>Four little lanterns remember the way.</small></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
+    const game = this.last?.game;
+    this.clueSignature = cottageClueSignature(game);
+    const ownsMorrow = !!game?.isUnlocked('necro');
+    const awakened = !!game?.isPathUnlocked?.('necro', 3);
+    const kills = Math.min(NECRO_PATH_SECRET.requiredKills, game?.necroSpellKills || 0);
+    const ready = !!game?.canDiscoverNecroPath?.();
+    let heading = 'The cottage rhyme';
+    let poem = 'The moon rises, a star wakes, a leaf falls, and a flame guides you home.';
+    let hint = 'Four little lanterns remember the way.';
+    let progress = '';
+    if (awakened) {
+      heading = 'The cottage echoes';
+      poem = 'Soul Echoes awakened!';
+      hint = 'Morrow can now learn Soul Echoes. Spend upgrade points to send more guardians from each spell kill. Each gnome still chooses only two paths.';
+    } else if (ownsMorrow) {
+      heading = ready ? 'The returning lanterns' : 'The cottage’s second verse';
+      poem = ready ? 'A flame dies, a leaf falls, a star fades, and the moon remembers the way home.' : 'The cottage has another verse, but ten souls must first hear Morrow’s own spell.';
+      hint = ready ? 'The lanterns remember a different journey now. Follow this new rhyme.' : 'Defeat ten skeletons with Morrow’s own spells in this Pumpkin Hollow run. Helper kills do not count.';
+      progress = `<div class="cottage-soul-progress" role="status" aria-label="${n(kills)} of ${NECRO_PATH_SECRET.requiredKills} souls harvested by Morrow’s spells"><strong data-necro-soul-progress>${n(kills)} / ${NECRO_PATH_SECRET.requiredKills}</strong><span>souls harvested by Morrow’s spells</span></div>`;
+    }
+    this.openModal('clue', `<div class="modal-heading"><div><span class="eyebrow">PUMPKIN HOLLOW</span><h2>${heading}</h2></div><button class="modal-close" data-close aria-label="Close cottage clue">×</button></div><div class="cottage-clue ${ready || awakened ? 'cottage-awakened' : ''}"><p>${poem}</p>${progress}<small>${hint}</small></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
   }
 
   showMaps() {
@@ -485,7 +513,7 @@ export class UI {
   }
   showHelp(focusSection = null) {
     const state = this.last?.state || {};
-    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Effects: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><section class="music-settings" id="music-settings" aria-labelledby="music-heading" tabindex="-1"><div class="music-heading"><h3 id="music-heading">♪ Music</h3><span>Original garden soundtracks</span></div><div class="music-choices" role="group" aria-label="Music style"><button class="music-choice" data-music="rock" aria-pressed="false"><strong>Rock</strong><span>Upbeat & energetic</span></button><button class="music-choice" data-music="chill" aria-pressed="false"><strong>Chill</strong><span>Relaxed & mellow</span></button><button class="music-choice" data-music="jazz" aria-pressed="false"><strong>Jazz</strong><span>Easygoing swing</span></button><button class="music-choice music-off" data-music="off" aria-pressed="true"><strong>Off</strong><span>No background music</span></button></div><div class="music-volume-row"><label for="music-volume">Music volume</label><input id="music-volume" type="range" min="0" max="100" step="1" value="35" aria-valuetext="35%"><output id="music-volume-value" for="music-volume">35%</output></div><p class="music-status" id="music-status" role="status" aria-live="polite">Music is off.</p><p class="music-hint">Choose a style to preview its loop. Music and game effects have separate controls.</p></section><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes. Some gardens have two entrances—defend both routes. Loops and spirals bring enemies past your defenses again.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note"><strong>Keep going in endless mode</strong><p>After round 20, choose Continue in endless mode to keep your gnomes, upgrades, gold, and lives. Each round brings tougher enemies until the garden falls. Your highest fully cleared round is saved for each garden in this browser. Auto rounds still works; you can pause or build between rounds.</p></div>${this.last?.game.isUnlocked('necro') ? '<div class="help-note"><strong>Morrow’s reborn crew</strong><p>Morrow has three upgrade paths; choose two. His spell kills summon melee helpers from the cottage. They march toward the skeletons and fight until defeated or their time runs out. Helper upgrades improve new summons. Helper kills never summon more helpers.</p></div>' : '<div class="help-note"><strong>A quieter rumor</strong><p>Pumpkin Hollow keeps a quiet secret. Its cottage may have a story to tell.</p></div>'}<div class="help-note secret-rumors"><strong>Garden rumors</strong><p>Three discoveries in Mossy Meadow and three in Crystal Quarry may reveal hidden guardians. Look closely at the scenery! One guardian’s final power upgrade makes its holes capture enemies. Another grows barriers that can explode when enemies destroy them.</p></div><div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Morel’s Wild Garden upgrade spreads poison to nearby skeletons at 65% damage. Spread poison cannot spread again. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
+    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Effects: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><section class="music-settings" id="music-settings" aria-labelledby="music-heading" tabindex="-1"><div class="music-heading"><h3 id="music-heading">♪ Music</h3><span>Original garden soundtracks</span></div><div class="music-choices" role="group" aria-label="Music style"><button class="music-choice" data-music="rock" aria-pressed="false"><strong>Rock</strong><span>Upbeat & energetic</span></button><button class="music-choice" data-music="chill" aria-pressed="false"><strong>Chill</strong><span>Relaxed & mellow</span></button><button class="music-choice" data-music="jazz" aria-pressed="false"><strong>Jazz</strong><span>Easygoing swing</span></button><button class="music-choice music-off" data-music="off" aria-pressed="true"><strong>Off</strong><span>No background music</span></button></div><div class="music-volume-row"><label for="music-volume">Music volume</label><input id="music-volume" type="range" min="0" max="100" step="1" value="35" aria-valuetext="35%"><output id="music-volume-value" for="music-volume">35%</output></div><p class="music-status" id="music-status" role="status" aria-live="polite">Music is off.</p><p class="music-hint">Choose a style to preview its loop. Music and game effects have separate controls.</p></section><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes. Some gardens have two entrances—defend both routes. Loops and spirals bring enemies past your defenses again.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note"><strong>Keep going in endless mode</strong><p>After round 20, choose Continue in endless mode to keep your gnomes, upgrades, gold, and lives. Each round brings tougher enemies until the garden falls. Your highest fully cleared round is saved for each garden in this browser. Auto rounds still works; you can pause or build between rounds.</p></div>${this.last?.game.isUnlocked('necro') ? '<div class="help-note"><strong>Morrow’s reborn crew</strong><p>Morrow can choose two upgrade paths. The cottage in Pumpkin Hollow may reveal another. His spell kills queue melee guardians at the cottage. They march toward the skeletons and fight until defeated or their time runs out. Helper upgrades improve new summons. Helper kills never summon more helpers.</p></div>' : '<div class="help-note"><strong>A quieter rumor</strong><p>Pumpkin Hollow keeps a quiet secret. Its cottage may have a story to tell.</p></div>'}<div class="help-note secret-rumors"><strong>Garden rumors</strong><p>Three discoveries in Mossy Meadow and three in Crystal Quarry may reveal hidden guardians. Look closely at the scenery! One guardian’s final power upgrade makes its holes capture enemies. Another grows barriers that can explode when enemies destroy them.</p></div><div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Morel’s Wild Garden upgrade spreads poison to nearby skeletons at 65% damage. Spread poison cannot spread again. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
     this.syncAudioSettings(state);
     if (focusSection === 'music') {
       const section = document.getElementById('music-settings');

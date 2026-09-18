@@ -1,8 +1,8 @@
 import { Game } from '../src/game.js';
-import { MAPS, TOWERS, SECRETS } from '../src/data.js';
+import { MAPS, TOWERS, SECRETS, NECRO_PATH_SECRET } from '../src/data.js';
 
 export const PROTOCOL = 1;
-const BOARD_FIELDS = ['wave', 'completedWaves', 'maxWaves', 'endless', 'lives', 'gold', 'points', 'status', 'kills', 'time', 'towers', 'enemies', 'traps', 'holes', 'barriers', 'allies', 'secretDiscoveries', 'effects', 'projectiles'];
+const BOARD_FIELDS = ['wave', 'completedWaves', 'maxWaves', 'endless', 'lives', 'gold', 'points', 'status', 'kills', 'time', 'towers', 'enemies', 'traps', 'holes', 'barriers', 'allies', 'secretDiscoveries', 'pathSecretDiscoveries', 'necroSpellKills', 'effects', 'projectiles'];
 const reject = message => { throw new Error(message); };
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -14,15 +14,16 @@ export function validateIdentity(options) {
 
 /** Server-only state. Browser commands can never import gold, unlocks, HP, or saves. */
 export class Match {
-  constructor({ mode, mapId, unlockedRewards = [] }) {
+  constructor({ mode, mapId, unlockedRewards = [], unlockedPaths = [] }) {
     if (!['coop', 'pvp'].includes(mode)) reject('Choose coop or pvp.');
     if (!MAPS.some(map => map.id === mapId)) reject('Unknown map.');
     this.mode = mode;
     this.mapId = mapId;
     this.unlockedRewards = unlockedRewards.filter(id => id === 'strawberry');
+    this.unlockedPaths = [...new Set(Array.isArray(unlockedPaths) ? unlockedPaths.filter(id => id === NECRO_PATH_SECRET.id) : [])];
     this.players = new Map();
     this.boards = new Map();
-    if (mode === 'coop') this.boards.set(null, new Game(mapId, { unlocks: [...this.unlockedRewards] }));
+    if (mode === 'coop') this.boards.set(null, new Game(mapId, { unlocks: [...this.unlockedRewards], pathUnlocks: [...this.unlockedPaths] }));
     this.hostId = null;
     this.speed = 1;
     this.manualPause = false;
@@ -43,7 +44,7 @@ export class Match {
     this.players.set(id, player);
     this.hostId ??= id;
     if (this.mode === 'coop') for (const tower of this.board().towers) tower.ownerId ??= this.hostId;
-    if (this.mode === 'pvp') this.boards.set(id, new Game(this.mapId, { unlocks: [...this.unlockedRewards] }));
+    if (this.mode === 'pvp') this.boards.set(id, new Game(this.mapId, { unlocks: [...this.unlockedRewards], pathUnlocks: [...this.unlockedPaths] }));
     if (this.players.size === 2) this.sealed = true;
     this._syncWallets();
     return player;
@@ -68,6 +69,7 @@ export class Match {
     if (this.result) return;
     this.result = {
       mode: this.mode, mapId: this.mapId, reason, winnerId,
+      earnedPathUnlocks: [...new Set([...this.boards.values()].flatMap(board => board.profile.pathUnlocks || []))].filter(id => id === NECRO_PATH_SECRET.id && !this.unlockedPaths.includes(id)),
       players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, completedWaves: this.board(p.id)?.completedWaves ?? 0, lives: this.board(p.id)?.lives ?? 0 })),
     };
   }
@@ -194,7 +196,7 @@ export class Match {
       speed: this.speed, started: this.started, tick: this.tick, result: this.result,
       boards: [...this.boards.entries()].map(([playerId, game]) => ({ playerId, state: {
         ...Object.fromEntries(BOARD_FIELDS.map(field => [field, game[field]])),
-        profile: { unlocks: [...game.profile.unlocks], bestRounds: { ...game.profile.bestRounds } },
+        profile: { unlocks: [...game.profile.unlocks], pathUnlocks: [...game.profile.pathUnlocks], bestRounds: { ...game.profile.bestRounds } },
         bestRound: game.bestRound,
         events: game.events.slice(-12).map(event => {
           if (!this.eventIds.has(event)) this.eventIds.set(event, ++this.nextEventId);

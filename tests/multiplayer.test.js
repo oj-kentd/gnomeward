@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Match, validateIdentity } from '../server/match.js';
-import { SECRETS } from '../src/data.js';
+import { SECRETS, NECRO_PATH_SECRET } from '../src/data.js';
 import { createGnomewardRoom } from '../server/room.js';
 
 function pair(mode = 'coop', mapId = 'meadow') {
@@ -342,4 +342,73 @@ test('manual co-op pause permits owned building and upgrades while combat time s
   m.step();assert.equal(m.board().time,time);
   command(m,'a','sell',{towerId:tower.id});
   assert.equal(m.board().towers.length,1);
+});
+
+test('Soul Echoes requires the earned secret and charges only its owner after unlocking', () => {
+  const match = pair('coop', 'hollow');
+  const board = match.board();
+  for (const id of SECRETS.hollow.order) command(match, 'a', 'discover', { id });
+  const spot = Array.from({ length: 21 }, (_, index) => index - 10).flatMap(x => Array.from({ length: 13 }, (_, index) => ({ x, z: index - 6 }))).find(point => board.canPlace('necro', point.x, point.z));
+  command(match, 'a', 'place', { type: 'necro', ...spot });
+  const tower = board.towers[0];
+  match.players.get('a').points = 100;
+  match._syncWallets();
+  assert.throws(() => command(match, 'a', 'upgrade', { towerId: tower.id, path: 3, pathUnlocks: ['necro-echoes'], profile: { pathUnlocks: ['necro-echoes'] } }), /not available/);
+  assert.equal(match.players.get('a').points, 100);
+  assert.equal(tower.levels[3], 0);
+  for (const id of NECRO_PATH_SECRET.order) command(match, 'b', 'discover', { id, necroSpellKills: 10 });
+  assert.deepEqual(board.profile.pathUnlocks, []);
+  assert.equal(board.necroSpellKills, 0);
+  for (let kill = 0; kill < 10; kill++) {
+    const enemy = board._spawn('bone');
+    board._damage(enemy, enemy.hp, tower.id, { summon: true });
+  }
+  for (const id of NECRO_PATH_SECRET.order) command(match, 'b', 'discover', { id });
+  assert.equal(board.isPathUnlocked('necro', 3), true);
+  const snapshot = match.snapshot('hollow-room').boards[0].state;
+  assert.equal(snapshot.necroSpellKills, 10);
+  assert.deepEqual(snapshot.pathSecretDiscoveries, NECRO_PATH_SECRET.order);
+  assert.deepEqual(snapshot.profile.pathUnlocks, ['necro-echoes']);
+  snapshot.profile.pathUnlocks.length = 0;
+  snapshot.pathSecretDiscoveries.length = 0;
+  assert.equal(board.isPathUnlocked('necro', 3), true, 'snapshot arrays do not alias authoritative state');
+  assert.throws(() => command(match, 'b', 'upgrade', { towerId: tower.id, path: 3 }), /own gnomes/);
+  command(match, 'a', 'upgrade', { towerId: tower.id, path: 3 });
+  assert.equal(tower.levels[3], 1);
+  assert.equal(board.getStats(tower).summonCount, 2);
+  assert.ok(match.players.get('a').points < 100);
+  assert.equal(match.players.get('b').points, 0);
+  match.finish('server-closed');
+  assert.deepEqual(match.result.earnedPathUnlocks, ['necro-echoes']);
+});
+
+test('trusted path unlocks are filtered, isolated per board, and do not grant the necromancer', () => {
+  const supplied = ['necro-echoes', 'invented', 'necro-echoes'];
+  const match = new Match({ mode: 'pvp', mapId: 'hollow', unlockedPaths: supplied });
+  match.addPlayer('a', 'Alice'); match.addPlayer('b', 'Bob');
+  supplied.length = 0;
+  assert.deepEqual(match.board('a').profile.pathUnlocks, ['necro-echoes']);
+  assert.equal(match.board('a').isUnlocked('necro'), false);
+  match.board('a').profile.pathUnlocks.length = 0;
+  assert.deepEqual(match.board('b').profile.pathUnlocks, ['necro-echoes']);
+  match.finish('server-closed');
+  assert.deepEqual(match.result.earnedPathUnlocks, [], 'inherited paths are not mislabeled as newly earned');
+});
+
+test('secret path persistence retries failed writes and deduplicates overlapping saves', async () => {
+  let attempts = 0;
+  const RoomType = createGnomewardRoom({ onPathUnlocked: async id => {
+    assert.equal(id, 'necro-echoes');
+    if (++attempts === 1) throw new Error('temporary path write failure');
+  } });
+  const context = { match: { boards: new Map([[null, { profile: { pathUnlocks: ['necro-echoes'] } }]]) } };
+  await Promise.all([RoomType.prototype.savePathUnlocks.call(context), RoomType.prototype.savePathUnlocks.call(context)]);
+  assert.equal(attempts, 1); assert.equal(!!context.pathSaved, false); assert.equal(context.pathPending, false);
+  await RoomType.prototype.savePathUnlocks.call(context);
+  assert.equal(attempts, 1, 'failed persistence is retried after a delay');
+  context.pathRetryAt = 0;
+  await RoomType.prototype.savePathUnlocks.call(context);
+  assert.equal(context.pathSaved, true);
+  await RoomType.prototype.savePathUnlocks.call(context);
+  assert.equal(attempts, 2);
 });

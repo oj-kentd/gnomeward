@@ -17,7 +17,7 @@ test('seven maps contain complete paths and every specified unit has its upgrade
     assert.equal(m.path.at(-1)[0], 12);
     assert.deepEqual(g.pointAt(g.pathLength), { x: 12, z: m.path.at(-1)[1] });
   }
-  assert.deepEqual(Object.values(TOWERS).map(t => t.paths.length), [4, 4, 4, 4, 1, 2, 4, 4, 3, 3]);
+  assert.deepEqual(Object.values(TOWERS).map(t => t.paths.length), [4, 4, 4, 4, 1, 2, 4, 4, 4, 3]);
   assert.ok(ENEMIES.bone.hp < ENEMIES.green.hp && ENEMIES.green.hp < ENEMIES.blue.hp);
 });
 
