@@ -2,7 +2,7 @@
 
 The Three.js game now uses this service for public two-player co-op: lobby browsing, shared rendering, owned defenders, and synchronized ready controls. The service’s `/` connection-check page remains available for deployment checks. PvP game rendering is not yet exposed in the main game.
 
-Release **0.2.3** keeps protocol version **1**. Its browser motion smoothing works with server **0.2.2**. The new Soul Echoes rules and shared path reward require server **0.2.3**; older snapshots may omit `profile.pathUnlocks`, `necroSpellKills`, and `pathSecretDiscoveries`, which clients treat as empty/zero.
+Release **0.2.4** keeps protocol version **1** and adds `autoStart` and `autoCountdown` to snapshots. The client detects support by the presence of boolean `autoStart`. Older servers still receive ordinary Ready commands and benefit from readiness highlighting, but cannot withdraw Ready or run shared auto. Motion smoothing remains compatible with 0.2.2; Soul Echoes requires 0.2.3 or newer.
 
 ## Scope and rules
 
@@ -10,7 +10,7 @@ Release **0.2.3** keeps protocol version **1**. Its browser motion smoothing wor
 - Co-op uses one board and shared lives. Each player starts with **325 gold**, owns their gnomes, and receives half of earned gold and upgrade points. Half points are retained; they are not rounded away. Sell refunds go to the owner. Only an owner may upgrade, sell, or retarget their units. Gold gifting is deferred.
 - Co-op discoveries/unlocks are shared for that match. The player completing the crystal secret owns its free guardian. Existing browser saves and unlock lists are never accepted from clients. Strawberry Fields starts with one free host-owned mortar gnome; clearing round 20 saves the Strawberry reward for all later co-op rooms on this server. Discovering Soul Echoes similarly persists the trusted `necro-echoes` path reward for later rooms. Morrow’s character unlock and the run’s unfinished ritual progress remain separate from this persistent path reward.
 - PvP is a **defense race**: separate boards, identical map and wave schedules, 650 starting gold each. Both must ready before the next round. First board to lose ends the match; a loss on both boards during the same server tick is a draw. After both clear round 20, boards automatically enter endless mode. Sending skeletons to opponents is not implemented.
-- Co-op requires two `endless` votes after campaign victory, then both ready to start round 21. Leaving at the campaign victory screen records `campaign-cleared`; later defeat records completed rounds. Current boards and ordinary character unlocks exist only for the lifetime of the room; the Strawberry and Soul Echoes rewards persist separately.
+- Co-op requires two `endless` votes after campaign victory, then either both ready or the enabled shared countdown starts round 21. Leaving at the campaign victory screen records `campaign-cleared`; later defeat records completed rounds. Current boards and ordinary character unlocks exist only for the lifetime of the room; the Strawberry and Soul Echoes rewards persist separately.
 - Either co-op player may pause/resume; PvP has no manual pause. Only the creator can set speed (1, 2, 3). Both modes pause automatically on disconnect. The room holds a disconnected seat for **60 seconds**; reconnect retains the same player ID, board, ownership, and wallet. A consented leave or expired reconnect ends the match (PvP forfeit, co-op abandoned). Rooms cannot replace players once both seats have been occupied. A one-player lobby expires after five minutes without a valid command; occupied rooms expire after 30 minutes idle (paused, between rounds, or finished). Active rounds refresh this timer; snapshot polling does not.
 - There are no ranked scores, accounts, automatic matchmaking, active-match restoration after server restart, or per-account unlock storage. Strawberry and Soul Echoes are shared persistent party rewards. The server records match outcomes locally; records are not a trusted public leaderboard.
 
@@ -62,7 +62,8 @@ Send `room.send('command', { action, ...fields })`. Player identity comes only f
 | `sell` | integer `towerId` | Owner only; normal gold refund |
 | `target` | integer `towerId`, `mode` | Owner only; `first`, `last`, `strong`, `close` where supported |
 | `discover` | `id` | Validates secret ID against room map; existing puzzle sequence rules |
-| `ready` | none | Both connected players must vote between rounds; repeated votes do not count twice |
+| `ready` | optional boolean `ready` (defaults to true) | Set or withdraw your vote between rounds; two connected, unpaused Ready votes start the round |
+| `auto` | boolean `enabled` | Either co-op player enables or disables the shared five-second countdown between completed rounds |
 | `pause` | boolean `paused` | Co-op only; either player |
 | `speed` | `speed` | Creator only; integer 1, 2, or 3 |
 | `endless` | none | Co-op campaign-victory vote; both required |
@@ -83,7 +84,7 @@ The service simulates fixed 50 ms steps (20 Hz) and broadcasts complete, plain-d
 {
   protocol: 1, roomId, mode, mapId, hostId,
   players: [{ id, name, connected, ready, endlessReady, gold, points }],
-  paused, manualPause, speed, started, tick,
+  paused, manualPause, speed, started, autoStart, autoCountdown, tick,
   result: null, // or final result below
   boards: [{
     playerId: null, // co-op shared board; PvP uses its owner's session ID
@@ -106,3 +107,11 @@ A final `result` is `{ mode, mapId, reason, winnerId, earnedPathUnlocks, players
 ## Server configuration boundary
 
 `createGnomewardRoom({ recordResult, onRoomOpen, onRoomClose, getUnlockedRewards, onRewardUnlocked, getUnlockedPaths, onPathUnlocked, reconnectSeconds })` closes over server-owned callbacks. Never pass operational configuration through browser-controlled room creation options. `onRoomOpen` may reject creation when the process has reached its room capacity. The result recorder is called once per room outcome and errors are logged. Reward callbacks retry failed persistence with a delay; successful unlocks are retained independently of the rolling results list. This is one process with in-memory active rooms; it intentionally needs no Redis or database server. Horizontal scaling requires shared Colyseus presence/matchmaking and routing changes before adding replicas.
+
+## Shared auto rounds and readiness (0.2.4)
+
+`{ action: 'auto', enabled: true | false }` sets a shared co-op option, initially false. Either connected player may change it, including while the garden is paused or their teammate is disconnected. Re-enabling an already enabled timer does not reset it; disabling clears the timer and retains explicit Ready votes. PvP rejects this command.
+
+`{ action: 'ready', ready: true | false }` sets a player’s Ready vote. Omitting `ready` keeps the original true behavior. Marking ready requires both players connected, unpaused, and between rounds. A connected player may withdraw readiness during planning even while paused. When both are ready, the next round starts immediately and clears both votes and the timer.
+
+Round one always needs both manual votes. Once a round has completed, enabled auto starts `autoCountdown` at five seconds during planning. It advances by the unscaled 20 Hz server step, freezes on pause/disconnect, and starts the next round at zero. It is null outside an eligible build window or when auto is off; final results clear it. Campaign victory never starts endless mode automatically: both players must consent first. The browser may animate the remaining time locally but must never start a round itself.

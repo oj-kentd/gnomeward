@@ -50,6 +50,67 @@ test('results are serialized atomically and corrupt storage fails clearly', asyn
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test('two WebSocket clients share readiness and an authoritative five-second auto countdown', { timeout: 20000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'gnomeward-auto-'));
+  const config = readConfig({ PORT: '0', HOST: '127.0.0.1', DATA_DIR: directory, MAX_ROOMS: '1', ALLOWED_ORIGINS: 'https://game.example' });
+  const app = await startServer(config);
+  const url = `http://127.0.0.1:${app.port}`;
+  const connections = [];
+  try {
+    const host = await new Client(url).create('gnomeward', { protocol: 1, name: 'Host', mode: 'coop', mapId: 'meadow', autoStart: true, autoCountdown: 0 });
+    connections.push(host); const a = observe(host);
+    const guest = await new Client(url).joinById(host.roomId, { protocol: 1, name: 'Guest', ready: true });
+    connections.push(guest); const b = observe(guest);
+    await until(() => a.snapshot?.players.length === 2 && b.snapshot?.players.length === 2);
+    const match = [...app.rooms][0].match;
+    assert.equal(a.snapshot.autoStart, false, 'creation options cannot enable auto rounds');
+    assert.equal(a.snapshot.autoCountdown, null);
+    assert.ok(a.snapshot.players.every(player => !player.ready));
+    guest.send('command', { action: 'auto', enabled: true, autoCountdown: 0 });
+    await until(() => a.snapshot.autoStart && b.snapshot.autoStart);
+    host.send('command', { action: 'ready' });
+    await until(() => b.snapshot.players.find(player => player.id === host.sessionId).ready);
+    host.send('command', { action: 'ready', ready: false, playerId: guest.sessionId });
+    await until(() => a.snapshot.players.every(player => !player.ready) && b.snapshot.players.every(player => !player.ready));
+    assert.equal(match.board().wave, 0);
+    assert.equal(match.autoCountdown, null);
+    guest.send('command', { action: 'ready', ready: 'true' });
+    await until(() => b.errors.length === 1);
+    assert.match(b.errors[0].message, /boolean/);
+    host.send('command', { action: 'speed', speed: 3 });
+    host.send('command', { action: 'ready' }); guest.send('command', { action: 'ready' });
+    await until(() => a.snapshot.boards[0].state.wave === 1 && b.snapshot.boards[0].state.wave === 1);
+    match.board()._queue = []; match.board().enemies = [];
+    await until(() => a.snapshot.autoCountdown > 0 && b.snapshot.autoCountdown > 0, 'shared post-round countdown');
+    guest.send('command', { action: 'pause', paused: true });
+    await until(() => a.snapshot.manualPause && b.snapshot.manualPause);
+    const frozen = match.autoCountdown;
+    await delay(300);
+    assert.equal(match.autoCountdown, frozen);
+    host.send('command', { action: 'auto', enabled: false });
+    await until(() => !a.snapshot.autoStart && !b.snapshot.autoStart && a.snapshot.autoCountdown === null && b.snapshot.autoCountdown === null);
+    guest.send('command', { action: 'pause', paused: false });
+    guest.send('command', { action: 'auto', enabled: true });
+    await until(() => a.snapshot.autoCountdown > 0 && !a.snapshot.manualPause);
+    host.send('command', { action: 'ready' }); guest.send('command', { action: 'ready' });
+    await until(() => a.snapshot.boards[0].state.wave === 2 && b.snapshot.boards[0].state.wave === 2, 'manual votes start ahead of auto timer');
+    assert.equal(match.autoCountdown, null);
+    match.board()._queue = []; match.board().enemies = [];
+    await until(() => match.autoCountdown !== null);
+    const began = Date.now();
+    await until(() => match.board().wave === 3, 'five real seconds elapse independently of 3x game speed', 7500);
+    assert.ok(Date.now() - began >= 4800, 'the server must not divide the countdown by game speed');
+    await until(() => a.snapshot.boards[0].state.wave === 3 && b.snapshot.boards[0].state.wave === 3);
+    assert.equal(a.snapshot.autoCountdown, null);
+    assert.equal(b.snapshot.autoCountdown, null);
+    assert.ok(a.snapshot.players.every(player => !player.ready));
+  } finally {
+    for (const room of connections) if (room.connection.isOpen) await room.leave().catch(() => {});
+    await app.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('real HTTP and WebSocket clients enforce authority, room limits, reconnect, and saved results', { timeout: 30000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'gnomeward-network-'));
   const config = readConfig({ PORT: '0', HOST: '127.0.0.1', DATA_DIR: directory, MAX_ROOMS: '1', ALLOWED_ORIGINS: 'https://game.example' });

@@ -1,13 +1,13 @@
-Gnomeward 0.2.3 adds Morrow’s secret Soul Echoes path and smoother co-op movement. The server image is packaged for Unraid (Linux amd64).
+Gnomeward 0.2.4 adds clearer team readiness and shared automatic rounds. The server image is packaged for Unraid (Linux amd64).
 
-- Co-op movement now animates smoothly between network snapshots, addressing choppy motion even in the first round. This browser update works with the existing 0.2.2 server; refresh the game after deployment.
-- Morrow has a mysterious fourth upgrade path. Revisit the Pumpkin Hollow cottage after his own spells defeat ten skeletons in that run, then follow its new clue.
-- Once discovered, Soul Echoes upgrades queue 2 / 3 / 4 reborn gnomes per direct spell defeat. Each gnome still chooses only two paths. Helpers leave the cottage at the normal dispatch rate, preserve the defeated enemy’s route, and never summon another generation when they kill an enemy.
-- Server 0.2.3 enables this discovery in co-op and saves the path for future rooms. Existing Strawberry rewards and match results remain compatible. Discovery also enters participating players’ solo collections.
-- Public co-op lobbies, the seven gardens, Strawberry Fields, and the existing Cloudflare hostname remain available. Main-game PvP is still deferred.
+- Your Ready button glows when your teammate is waiting. Compact status indicators show each player’s readiness on desktop and phone.
+- Click your Ready check again to return to building. Both Ready votes start the next round immediately.
+- Either player can enable shared auto rounds. Round one still needs both Ready votes; later rounds start after a visible five-second build countdown.
+- The countdown uses real seconds, even at 2× or 3× game speed. Pausing or disconnecting freezes it. Either player can turn auto off to cancel the countdown; both Ready votes can skip the wait.
+- Auto never skips the campaign victory screen or the shared choice to continue into endless mode. Existing saves, Soul Echoes rewards, and smooth co-op movement remain supported.
 
-**[Unraid installation and update instructions](https://github.com/oj-kentd/gnomeward/blob/server-v0.2.3/docs/UNRAID.md)**
+**[Unraid installation and update instructions](https://github.com/oj-kentd/gnomeward/blob/server-v0.2.4/docs/UNRAID.md)**
 
-To update from 0.2.2 or earlier, download the 0.2.3 archive and `SHA256SUMS`, verify the checksum, and load the image with Docker. Change the Unraid container’s Repository field to `gnomeward-server:0.2.3` and Apply. Keep the existing data mount, port, environment variables, and `multiplayer.lightsoutphotos.com` Cloudflare route. Active rooms end when the container restarts; wait until the current game finishes before updating.
+Download the 0.2.4 image and `SHA256SUMS`, verify the checksum, then load the image with Docker. Set the Unraid container’s Repository to `gnomeward-server:0.2.4` and Apply. Keep the existing data mount, port, environment variables, and Cloudflare route. Finish active games before restarting the container.
 
-The motion fix does not require a tunnel change or higher snapshot frequency. The server remains authoritative for movement, damage, purchases, and rewards. After updating, confirm `/healthz` reports 0.2.3, then create and join a lobby through the normal game’s Co-op button. The backend root remains a connection diagnostic.
+After updating, verify `/healthz` reports 0.2.4 and refresh both game browsers. Readiness highlighting works with older servers, but shared auto rounds and changing an existing Ready vote require server 0.2.4. The normal Co-op screen remains the place to create and join games.

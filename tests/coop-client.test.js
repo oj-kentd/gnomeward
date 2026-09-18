@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyCoopSnapshot } from '../src/multiplayer.js';
+import { applyCoopSnapshot, coopCountdown } from '../src/multiplayer.js';
 import { Match } from '../server/match.js';
 
 function match() { const m = new Match({mode:'coop',mapId:'meadow'});m.addPlayer('host','Parent');m.addPlayer('guest','Child');return m; }
@@ -20,11 +20,32 @@ test('the updated browser still accepts 0.2.2 snapshots before an Unraid upgrade
   delete board.necroSpellKills;
   delete board.pathSecretDiscoveries;
   delete board.profile.pathUnlocks;
+  delete snapshot.autoStart;
+  delete snapshot.autoCountdown;
   const client = applyCoopSnapshot(null, snapshot, 'host', 0, 10);
   assert.equal(client.game.isPathUnlocked('necro', 3), false);
   assert.equal(client.game.canDiscoverNecroPath(), false);
   assert.equal(client.multiplayer.snapshotTick, snapshot.tick);
   assert.equal(client.multiplayer.snapshotReceivedAt, 10);
+  assert.equal(client.multiplayer.autoSupported, false);
+  assert.equal(coopCountdown(client.multiplayer, 11), null);
+});
+test('shared countdown is display-only, unscaled and frozen during pause or connection loss', () => {
+  const m = match(), snapshot = { ...m.snapshot('garden'), autoStart: true, autoCountdown: 5, speed: 3 };
+  const client = applyCoopSnapshot(null, snapshot, 'host', 0, 100);
+  assert.equal(client.multiplayer.autoSupported, true);
+  assert.equal(coopCountdown(client.multiplayer, 101.25), 3.75);
+  assert.equal(coopCountdown(client.multiplayer, 120), 0);
+  assert.equal(client.game.wave, 0, 'the browser never starts a round at zero');
+  assert.equal(client.multiplayer.autoCountdown, 5, 'authoritative countdown is unchanged');
+  for (const flags of [{paused:true}, {reconnecting:true}, {connected:false}]) {
+    assert.equal(coopCountdown({...client.multiplayer,...flags}, 102), 5);
+  }
+  for (const flags of [{autoStart:false}, {autoSupported:false}, {autoCountdown:null}, {result:{reason:'defeat'}}]) {
+    assert.equal(coopCountdown({...client.multiplayer,...flags}, 102), null);
+  }
+  const next = applyCoopSnapshot(client.game, {...snapshot, autoCountdown:2.5}, 'host', 0, 103);
+  assert.equal(coopCountdown(next.multiplayer, 103.2).toFixed(1), '2.3');
 });
 test('co-op rendering uses personal wallets and cannot change server state or solo profile', () => {
   const m = match();

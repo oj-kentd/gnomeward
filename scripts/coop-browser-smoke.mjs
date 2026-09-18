@@ -84,7 +84,8 @@ try {
   assert.equal(await b.evaluate(() => gnomeward.game.gold), 325);
   assert.equal(await a.locator('#map-button').isDisabled(), true);
   assert.equal(await b.locator('#speed-button').isDisabled(), true);
-  assert.equal(await a.locator('#auto-button').isVisible(), false, 'automatic solo rounds are unavailable in co-op');
+  assert.equal(await a.locator('#auto-button').isVisible(), true, 'shared automatic rounds are available in co-op');
+  assert.equal(await a.locator('#auto-button').getAttribute('aria-pressed'), 'false');
 
   stage = 'placing authoritative shared defenses with separate wallets';
   await place(a, 'sprout', -5, 2);
@@ -127,7 +128,20 @@ try {
   await a.locator('#start-button').click();
   await a.waitForFunction(() => gnomeward.state.multiplayer.players.find(p => p.id === gnomeward.state.multiplayer.sessionId)?.ready);
   assert.equal(await b.evaluate(() => gnomeward.game.wave), 0);
-  assert.equal(await a.locator('#start-button').isDisabled(), true);
+  assert.equal(await a.locator('#start-button').isEnabled(), true, 'ready can be withdrawn until the teammate starts');
+  await b.waitForFunction(() => document.getElementById('start-button').classList.contains('teammate-ready'));
+  assert.equal(await b.locator('#start-button').evaluate(node => node.classList.contains('teammate-ready')), true);
+  await b.setViewportSize({ width: 390, height: 844 });
+  await noOverflow(b);
+  const readyToastOverlap = await b.evaluate(() => {
+    const toast = document.querySelector('#toast-stack .toast:last-child');
+    if (!toast) return false;
+    const notice = toast.getBoundingClientRect(), readiness = document.getElementById('coop-readiness').getBoundingClientRect();
+    return notice.bottom > readiness.top && notice.top < readiness.bottom;
+  });
+  assert.equal(readyToastOverlap, false, 'phone readiness remains clear of teammate notifications');
+  await b.screenshot({ path: 'playtest-results/coop-game-ready-phone.png', fullPage: true });
+  await b.setViewportSize(desktopViewport);
   await b.locator('#start-button').click();
   for (const page of [a, b]) {
     await page.waitForFunction(() => gnomeward.game.wave === 1 && gnomeward.game.status === 'wave' && gnomeward.game.enemies.length > 0);

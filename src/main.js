@@ -4,7 +4,7 @@ import { MAPS, TOWERS } from './data.js';
 import { UI } from './ui.js';
 import { GardenRenderer } from './renderer.js';
 import { MusicPlayer, MUSIC_TRACKS } from './music.js';
-import { CoopClient, applyCoopSnapshot } from './multiplayer.js';
+import { CoopClient, applyCoopSnapshot, coopCountdown } from './multiplayer.js';
 
 let profile={unlocks:[]};
 try { const saved=JSON.parse(localStorage.getItem('gnomeward-profile')||'null');if(saved&&Array.isArray(saved.unlocks))profile={...saved,unlocks:saved.unlocks.filter(id=>Object.hasOwn(TOWERS,id))}; }catch{}
@@ -55,6 +55,7 @@ function ownSelection(){
 let soloRun=null,lastEventId=0,pendingPlacement=null,lobbyBusy=false,lobbyLoading=false;
 const multiplayer=new CoopClient({
   onSnapshot:(snapshot,sessionId)=>{
+    const previousMultiplayer=state.multiplayer;
     if(!state.multiplayer){
       save();soloRun={game,paused:state.paused,speed:state.speed,autoStart:state.autoStart};
       game=new Game(snapshot.mapId);lastEventId=0;
@@ -65,6 +66,15 @@ const multiplayer=new CoopClient({
     const applied=applyCoopSnapshot(game,snapshot,sessionId,lastEventId);
     game=applied.game;lastEventId=applied.eventId;state.multiplayer=applied.multiplayer;
     state.paused=snapshot.paused;state.speed=snapshot.speed;
+    state.autoStart=state.multiplayer.autoStart;state.autoCountdown=coopCountdown(state.multiplayer);
+    if(previousMultiplayer?.roomId===snapshot.roomId){
+      const teammate=state.multiplayer.players.find(player=>player.id!==sessionId);
+      const previousTeammate=previousMultiplayer.players.find(player=>player.id===teammate?.id);
+      if(teammate?.ready&&!previousTeammate?.ready&&game.status==='planning'){
+        ui.toast(`${teammate.name} is ready!`);beep(660,.12);
+      }
+      if(state.multiplayer.autoStart!==previousMultiplayer.autoStart)ui.toast(state.multiplayer.autoStart?'Auto rounds on · five seconds to build between rounds.':'Auto rounds off · both players choose when to start.');
+    }
     if(snapshot.mapId==='strawberry'&&game.completedWaves>=20&&game.profile.unlocks.includes('strawberry')&&soloRun&&!soloRun.game.profile.unlocks.includes('strawberry')){
       soloRun.game.profile.unlocks.push('strawberry');
       try{localStorage.setItem('gnomeward-profile',JSON.stringify(soloRun.game.profile));}catch{}
@@ -81,7 +91,12 @@ const multiplayer=new CoopClient({
     }
     refreshUI();
   },
-  onConnection:connected=>{if(state.multiplayer){state.multiplayer.connected=connected;state.multiplayer.reconnecting=!connected;if(!connected)state.paused=true;refreshUI();}},
+  onConnection:connected=>{if(state.multiplayer){
+    const now=performance.now()/1000,held=coopCountdown(state.multiplayer,now);
+    state.multiplayer.autoCountdown=held;state.multiplayer.countdownReceivedAt=now;state.autoCountdown=held;
+    state.multiplayer.connected=connected;state.multiplayer.reconnecting=!connected;
+    if(!connected)state.paused=true;refreshUI();
+  }},
   onError:message=>{pendingPlacement=null;ui.toast(message);},
   onLeave:message=>{
     if(soloRun){game=soloRun.game;Object.assign(state,{paused:true,speed:soloRun.speed,autoStart:soloRun.autoStart});soloRun=null;}
@@ -112,7 +127,7 @@ function start(){
   if(!ready)return;
   if(game.status==='won'){ui.showResult(game);return;}
   if(state.multiplayer){
-    if(game.status==='planning')multiplayer.command({action:'ready'});
+    if(game.status==='planning'&&(!state.multiplayer.ready||state.multiplayer.autoSupported))multiplayer.command({action:'ready',ready:!state.multiplayer.ready});
     else if(game.status==='wave'){if(state.multiplayer.manualPause)pause();else cycleSpeed();}
     return;
   }
@@ -139,7 +154,7 @@ const ui=new UI({
   onContinueEndless:()=>{if(state.multiplayer){multiplayer.command({action:'endless'});return;}if(game.continueEndless()){Object.assign(state,{paused:false,autoCountdown:null,placingType:null,selectedTowerId:null});world?.setGhost(null);save();refreshUI();}},
   onPause:pause,
   onSpeed:()=>{cycleSpeed();refreshUI()},
-  onAuto:()=>{if(state.multiplayer)return;state.autoStart=!state.autoStart;state.autoCountdown=null;refreshUI()},
+  onAuto:()=>{if(state.multiplayer){if(state.multiplayer.autoSupported)multiplayer.command({action:'auto',enabled:!state.multiplayer.autoStart});return;}state.autoStart=!state.autoStart;state.autoCountdown=null;refreshUI()},
   onTargeting:targetNext,
   onMusic:chooseMusic,
   onMusicVolume:value=>{music.setVolume(value);state.musicVolume=music.volume;saveAudioPreferences();refreshUI()},
@@ -190,7 +205,9 @@ function frame(now){
   const elapsed=(now-last)/1000,dt=Math.min(elapsed,.08);last=now;
   if(!ready)return;
   const active=!state.paused&&!document.hidden&&!document.querySelector('dialog[open]');
-  if(state.multiplayer||!state.autoStart||game.status!=='planning'||game.wave===0||(!game.endless&&game.wave>=game.maxWaves)){
+  if(state.multiplayer){
+    state.autoCountdown=coopCountdown(state.multiplayer,now/1000);
+  }else if(!state.autoStart||game.status!=='planning'||game.wave===0||(!game.endless&&game.wave>=game.maxWaves)){
     state.autoCountdown=null;
   }else{
     state.autoCountdown??=3;
@@ -215,4 +232,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.3'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.4'};

@@ -12,6 +12,13 @@ function pair(mode = 'coop', mapId = 'meadow') {
 }
 const command = (match, id, action, args = {}) => match.command(id, { action, ...args });
 function start(match) { command(match, 'a', 'ready'); command(match, 'b', 'ready'); }
+function clearRound(match) {
+  const game = match.board();
+  game._queue = []; game.enemies = [];
+  match.step();
+  assert.equal(game.status, 'planning');
+}
+function ticks(match, count) { for (let i = 0; i < count; i++) match.step(.05); }
 
 test('multiplayer identity and room options reject unsupported protocol or maps', () => {
   assert.equal(validateIdentity({ protocol: 1, name: ' Alice ' }), 'Alice');
@@ -61,6 +68,154 @@ test('two ready votes start one synchronized round; only host controls speed', (
   assert.equal(match.tick, 1);
   assert.ok(Math.abs(match.board().time - 0.15) < 1e-7);
   assert.throws(() => command(match, 'b', 'ready'));
+});
+
+test('ready can be undone without changing another player and old ready commands still work', () => {
+  const match = pair();
+  command(match, 'a', 'ready');
+  assert.equal(match.players.get('a').ready, true);
+  command(match, 'a', 'ready', { ready: false, playerId: 'b' });
+  assert.equal(match.players.get('a').ready, false);
+  command(match, 'b', 'ready');
+  assert.equal(match.board().wave, 0);
+  command(match, 'a', 'pause', { paused: true });
+  command(match, 'b', 'ready', { ready: false });
+  assert.equal(match.players.get('b').ready, false, 'a connected player can withdraw a vote while paused');
+  assert.throws(() => command(match, 'a', 'ready', { ready: true }), /connected/);
+  command(match, 'a', 'pause', { paused: false });
+  start(match);
+  assert.equal(match.board().wave, 1);
+  assert.ok([...match.players.values()].every(player => !player.ready));
+});
+
+test('shared auto rounds default off and never start the first round without both manual votes', () => {
+  const match = pair();
+  assert.equal(match.snapshot().autoStart, false);
+  assert.equal(match.snapshot().autoCountdown, null);
+  command(match, 'b', 'auto', { enabled: true });
+  assert.equal(match.snapshot().autoStart, true);
+  ticks(match, 200);
+  assert.equal(match.board().wave, 0);
+  assert.equal(match.autoCountdown, null);
+  command(match, 'a', 'ready');
+  ticks(match, 200);
+  assert.equal(match.board().wave, 0);
+  command(match, 'b', 'ready');
+  assert.equal(match.board().wave, 1);
+  assert.equal(match.autoCountdown, null);
+});
+
+test('shared auto rounds wait five unscaled seconds at every game speed', () => {
+  for (const speed of [1, 2, 3]) {
+    const match = pair();
+    command(match, 'a', 'auto', { enabled: true });
+    command(match, 'a', 'speed', { speed });
+    start(match); clearRound(match);
+    assert.equal(match.autoCountdown, 5);
+    ticks(match, 99);
+    assert.equal(match.board().wave, 1, `speed ${speed}: do not start before five seconds`);
+    assert.ok(Math.abs(match.autoCountdown - .05) < 1e-8);
+    match.step(.05);
+    assert.equal(match.board().wave, 2);
+    assert.equal(match.board().status, 'wave');
+    assert.equal(match.autoCountdown, null);
+    assert.ok([...match.players.values()].every(player => !player.ready));
+  }
+});
+
+test('pause and disconnect freeze the shared countdown and resume its remaining time', () => {
+  const match = pair();
+  command(match, 'a', 'auto', { enabled: true });
+  start(match); clearRound(match); ticks(match, 40);
+  assert.ok(Math.abs(match.autoCountdown - 3) < 1e-8);
+  command(match, 'b', 'pause', { paused: true });
+  const paused = match.autoCountdown;
+  ticks(match, 200);
+  assert.equal(match.autoCountdown, paused);
+  command(match, 'a', 'pause', { paused: false });
+  ticks(match, 20);
+  assert.ok(Math.abs(match.autoCountdown - 2) < 1e-8);
+  match.setConnected('b', false);
+  const disconnected = match.autoCountdown;
+  ticks(match, 200);
+  assert.equal(match.autoCountdown, disconnected);
+  match.setConnected('b', true);
+  ticks(match, 39);
+  assert.equal(match.board().wave, 1);
+  match.step(.05);
+  assert.equal(match.board().wave, 2);
+});
+
+test('either player may cancel or enable auto rounds, duplicate enables do not restart the timer', () => {
+  const match = pair();
+  start(match); clearRound(match);
+  assert.equal(match.autoCountdown, null);
+  command(match, 'b', 'auto', { enabled: true });
+  assert.equal(match.autoCountdown, 5);
+  ticks(match, 40);
+  const remaining = match.autoCountdown;
+  command(match, 'a', 'auto', { enabled: true });
+  assert.equal(match.autoCountdown, remaining);
+  command(match, 'a', 'ready');
+  command(match, 'b', 'auto', { enabled: false });
+  assert.equal(match.autoCountdown, null);
+  assert.equal(match.players.get('a').ready, true, 'manual votes remain independent of auto mode');
+  ticks(match, 120);
+  assert.equal(match.board().wave, 1);
+  command(match, 'a', 'auto', { enabled: true });
+  assert.equal(match.autoCountdown, 5);
+  command(match, 'b', 'ready');
+  assert.equal(match.board().wave, 2, 'both manual votes can skip the remaining countdown');
+  assert.equal(match.autoCountdown, null);
+});
+
+test('auto rounds respect victory and both endless votes before starting round twenty-one', () => {
+  const match = pair();
+  command(match, 'a', 'auto', { enabled: true });
+  start(match);
+  const game = match.board();
+  game.wave = 20; game._queue = []; game.enemies = [];
+  match.step();
+  assert.equal(game.status, 'won');
+  assert.equal(match.autoCountdown, null);
+  ticks(match, 200);
+  assert.equal(game.wave, 20);
+  command(match, 'a', 'endless');
+  ticks(match, 200);
+  assert.equal(game.status, 'won');
+  assert.equal(match.autoCountdown, null);
+  command(match, 'b', 'endless');
+  assert.equal(game.status, 'planning');
+  assert.equal(game.endless, true);
+  assert.equal(match.autoCountdown, 5);
+  ticks(match, 100);
+  assert.equal(game.wave, 21);
+  assert.equal(game.status, 'wave');
+});
+
+test('auto commands cannot forge timers, readiness, identity, or game mode', () => {
+  const match = new Match({ mode: 'coop', mapId: 'meadow', autoStart: true, autoCountdown: 0 });
+  match.addPlayer('a', 'Alice'); match.addPlayer('b', 'Bob');
+  assert.equal(match.autoStart, false);
+  assert.equal(match.autoCountdown, null);
+  for (const enabled of [undefined, null, 0, 1, 'true']) assert.throws(() => command(match, 'a', 'auto', { enabled }), /boolean/);
+  for (const ready of [null, 0, 1, 'true']) assert.throws(() => command(match, 'a', 'ready', { ready }), /boolean/);
+  assert.throws(() => command(match, 'unknown', 'auto', { enabled: true }), /connected/);
+  match.setConnected('b', false);
+  assert.throws(() => command(match, 'b', 'auto', { enabled: true }), /connected/);
+  match.setConnected('b', true);
+  start(match); clearRound(match);
+  command(match, 'a', 'auto', { enabled: true, autoCountdown: 0, ready: true, playerId: 'b' });
+  assert.equal(match.autoCountdown, 5);
+  assert.ok([...match.players.values()].every(player => !player.ready));
+  const countdown = match.autoCountdown;
+  for (const dt of [NaN, Infinity, -1, 0]) match.step(dt);
+  assert.equal(match.autoCountdown, countdown);
+  assert.throws(() => command(pair('pvp'), 'a', 'auto', { enabled: true }), /co-op/);
+  match.leave('b');
+  assert.equal(match.autoCountdown, null);
+  assert.ok([...match.players.values()].every(player => !player.ready));
+  assert.throws(() => command(match, 'a', 'auto', { enabled: false }), /ended/);
 });
 
 test('co-op earnings and upgrade points split equally, purchases spend only personal wallet', () => {

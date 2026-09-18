@@ -1,6 +1,6 @@
 {
   "name": "gnomeward",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,7 +21,8 @@
     "test:strawberry": "node scripts/strawberry-browser-smoke.mjs",
     "test:splash": "node scripts/splash-browser-smoke.mjs",
     "test:echoes": "node scripts/echoes-browser-smoke.mjs",
-    "test:coop-motion-browser": "node scripts/coop-motion-browser-smoke.mjs"
+    "test:coop-motion-browser": "node scripts/coop-motion-browser-smoke.mjs",
+    "test:coop-ready-browser": "node scripts/coop-ready-browser-smoke.mjs"
   },
   "dependencies": {
     "@colyseus/core": "0.18.14",

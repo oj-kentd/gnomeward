@@ -1,6 +1,6 @@
 # Co-op plan and implementation status
 
-Status: Docker backend implemented on 2026-09-17 at the user's request. It supports public two-player co-op and PvP survival rooms, validated game commands, reconnection, and persisted match results. The main game now includes public co-op lobbies, shared battlefield rendering, player ownership controls, ready synchronization, and reconnection. PvP remains backend-only. See [Unraid setup](UNRAID.md) and the [implemented protocol](../server/PROTOCOL.md). The design below records the broader plan; features such as gifting gold and durable player accounts are not in the backend's initial release.
+Status: Docker backend implemented on 2026-09-17 at the user's request. It supports public two-player co-op and PvP survival rooms, validated game commands, reconnection, and persisted match results. The main game now includes public co-op lobbies, shared battlefield rendering, player ownership controls, ready synchronization, optional shared five-second auto rounds, and reconnection. PvP remains backend-only. See [Unraid setup](UNRAID.md) and the [implemented protocol](../server/PROTOCOL.md). The design below records the broader plan; features such as gifting gold and durable player accounts are not in the backend's initial release.
 
 ## First release: public two-player online co-op
 
@@ -10,7 +10,7 @@ Two players defend the same garden from separate computers or tablets. Keep solo
 - Shared lives, enemies, waves, and victory/defeat.
 - Each player owns their placed gnomes, shown by colored rings. Only the owner upgrades or sells them.
 - Split the total starting gold and earned gold/upgrade points equally. Include a Give Gold button.
-- Both players ready up before a wave. Either may pause; the room creator controls game speed.
+- Both players ready up for the first wave. Afterwards they may ready together or use shared auto with a five-second build countdown. Either may turn auto off or pause; the room creator controls game speed.
 - Secret discoveries and unlocks earned together apply to both players.
 - Allow a disconnected player a grace period to rejoin and recover their units and resources.
 

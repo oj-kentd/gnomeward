@@ -27,6 +27,8 @@ export class Match {
     this.hostId = null;
     this.speed = 1;
     this.manualPause = false;
+    this.autoStart = false;
+    this.autoCountdown = null;
     this.started = false;
     this.sealed = false;
     this.result = null;
@@ -67,6 +69,8 @@ export class Match {
 
   finish(reason, winnerId = null) {
     if (this.result) return;
+    this.autoCountdown = null;
+    for (const player of this.players.values()) { player.ready = false; player.endlessReady = false; }
     this.result = {
       mode: this.mode, mapId: this.mapId, reason, winnerId,
       earnedPathUnlocks: [...new Set([...this.boards.values()].flatMap(board => board.profile.pathUnlocks || []))].filter(id => id === NECRO_PATH_SECRET.id && !this.unlockedPaths.includes(id)),
@@ -101,6 +105,24 @@ export class Match {
     }
   }
 
+  _startRound() {
+    for (const board of this.boards.values()) board.startWave();
+    for (const player of this.players.values()) player.ready = false;
+    this.autoCountdown = null;
+    this.started = true;
+  }
+
+  _updateAutoCountdown(elapsed = 0) {
+    const game = this.mode === 'coop' ? this.board() : null;
+    const eligible = this.autoStart && this.started && !this.result && game?.status === 'planning' &&
+      game.wave > 0 && (game.endless || game.wave < game.maxWaves);
+    if (!eligible) { this.autoCountdown = null; return; }
+    if (this.autoCountdown === null) { this.autoCountdown = 5; return; }
+    if (this.paused) return;
+    this.autoCountdown = Math.max(0, this.autoCountdown - elapsed);
+    if (this.autoCountdown <= 1e-8) this._startRound();
+  }
+
   command(id, message) {
     const player = this.players.get(id);
     if (!player?.connected) reject('Player is not connected.');
@@ -118,14 +140,18 @@ export class Match {
       this.manualPause = message.paused;
       return;
     }
+    if (action === 'auto') {
+      if (this.mode !== 'coop' || typeof message.enabled !== 'boolean') reject('Auto rounds require co-op and a boolean enabled value.');
+      this.autoStart = message.enabled;
+      this._updateAutoCountdown();
+      return;
+    }
     if (action === 'ready') {
-      if (this.players.size !== 2 || this.paused || ![...this.boards.values()].every(g => g.status === 'planning')) reject('Both players must be connected and between rounds.');
-      player.ready = true;
-      if ([...this.players.values()].every(p => p.ready)) {
-        for (const board of this.boards.values()) board.startWave();
-        for (const p of this.players.values()) p.ready = false;
-        this.started = true;
-      }
+      const ready = message.ready === undefined ? true : message.ready;
+      if (typeof ready !== 'boolean') reject('Ready must be a boolean.');
+      if (![...this.boards.values()].every(g => g.status === 'planning') || ready && (this.players.size !== 2 || this.paused)) reject('Both players must be connected and between rounds.');
+      player.ready = ready;
+      if (ready && [...this.players.values()].every(p => p.ready)) this._startRound();
       return;
     }
     if (action === 'endless') {
@@ -134,6 +160,7 @@ export class Match {
       if ([...this.players.values()].every(p => p.endlessReady)) {
         game.continueEndless();
         for (const p of this.players.values()) p.endlessReady = false;
+        this._updateAutoCountdown();
       }
       return;
     }
@@ -168,6 +195,7 @@ export class Match {
   step(dt = 0.05) {
     if (this.result || this.paused || !this.started || !Number.isFinite(dt) || dt <= 0) return;
     this.tick++;
+    this._updateAutoCountdown(Math.min(dt, 0.05));
     for (const game of this.boards.values()) {
       const gold = game.gold, points = game.points;
       game.update(Math.min(dt, 0.05) * this.speed);
@@ -187,13 +215,14 @@ export class Match {
       if (living.length < 2) this.finish(living.length === 0 ? 'draw' : 'last-standing', living[0] || null);
       else if (boards.every(g => g.status === 'won')) for (const game of boards) game.continueEndless();
     }
+    this._updateAutoCountdown();
   }
 
   snapshot(roomId = '') {
     return structuredClone({
       protocol: PROTOCOL, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
       players: [...this.players.values()], paused: this.paused, manualPause: this.manualPause,
-      speed: this.speed, started: this.started, tick: this.tick, result: this.result,
+      speed: this.speed, started: this.started, autoStart: this.autoStart, autoCountdown: this.autoCountdown, tick: this.tick, result: this.result,
       boards: [...this.boards.entries()].map(([playerId, game]) => ({ playerId, state: {
         ...Object.fromEntries(BOARD_FIELDS.map(field => [field, game[field]])),
         profile: { unlocks: [...game.profile.unlocks], pathUnlocks: [...game.profile.pathUnlocks], bestRounds: { ...game.profile.bestRounds } },

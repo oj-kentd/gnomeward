@@ -106,10 +106,11 @@ export class UI {
               <section class="selection-panel floating-upgrades" id="selection-panel" aria-label="Selected defender" hidden></section>
             </div>
             <footer class="battle-controls">
+              <div class="coop-readiness" id="coop-readiness" aria-label="Team readiness" hidden></div>
               <div class="battle-status"><span class="status-dot" id="status-dot"></span><strong id="status-title">Ready to defend!</strong><small id="status-detail">Place a gnome to get started.</small></div>
               <button class="start-button" id="start-button"><span class="play-triangle" aria-hidden="true">▶</span><span id="start-label">START ROUND 1</span></button>
               <div class="play-controls"><button class="control-button" id="pause-button" aria-label="Pause game" title="Pause / resume">Ⅱ</button><button class="control-button" id="speed-button" aria-label="Change game speed" title="Change game speed">1×</button><button class="control-button" id="sound-button" aria-label="Audio settings" title="Audio settings" aria-haspopup="dialog">♪</button></div>
-              <button class="auto-button" id="auto-button" aria-pressed="false"><span class="toggle-check" aria-hidden="true"></span><span id="auto-label">Auto rounds: off</span></button>
+              <button class="auto-button" id="auto-button" aria-pressed="false"><span class="toggle-check" aria-hidden="true"></span><span id="auto-label">Auto rounds: off</span><span class="auto-progress" id="auto-progress" aria-hidden="true" hidden></span></button>
             </footer>
             <section class="guardian-dock" aria-label="Choose a gnome to plant">
               <div class="dock-heading"><h2>GNOME SHOP</h2><span>Choose a guardian</span><button id="shop-toggle" aria-expanded="true" aria-controls="shop-slider">Hide ▾</button></div>
@@ -211,8 +212,9 @@ export class UI {
     const players = multiplayer?.players || [];
     const me = players.find((player) => player.id === multiplayer?.sessionId);
     const ready = multiplayer?.ready ?? me?.ready;
+    const teammate = players.find((player) => player.id !== multiplayer?.sessionId);
     const together = !!multiplayer?.connected && players.length === 2 && players.every((player) => player.connected);
-    const set = (id, text) => { document.getElementById(id).textContent = text; };
+    const set = (id, text) => { const element = document.getElementById(id); if (element.textContent !== text) element.textContent = text; };
     const map = typeof game.map === 'string' ? MAPS.find((m) => m.id === game.map) : game.map;
     const inWave = game.status === 'wave';
     const finished = ['won', 'lost'].includes(game.status);
@@ -231,6 +233,10 @@ export class UI {
     const routeInfo = mapRouteInfo(map);
     document.getElementById('map-button').title = `${map?.name || MAPS[0].name} · ${routeInfo.topology} · ${routeInfo.entrances} ${routeInfo.entrances === 1 ? 'entrance' : 'entrances'} · Choose a map`;
     const start = document.getElementById('start-button');
+    const yourTurn = !!multiplayer && together && !multiplayer.paused && !multiplayer.result && !inWave && !finished && !!teammate?.ready && !ready;
+    start.classList.toggle('teammate-ready', yourTurn);
+    if (multiplayer && !inWave && !finished && !multiplayer.result) start.setAttribute('aria-pressed', String(!!ready));
+    else start.removeAttribute('aria-pressed');
     start.disabled = game.status === 'lost';
     start.classList.toggle('fast-forward', inWave);
     start.innerHTML = `<span class="play-triangle" aria-hidden="true">${inWave && !state.paused ? '▶▶' : '▶'}</span><span>${won ? 'CONTINUE ∞' : finished ? 'FINISHED' : inWave && state.paused ? 'RESUME' : inWave ? `SPEED ${state.speed || 1}×` : `START ROUND ${upcoming}`}</span>`;
@@ -238,11 +244,11 @@ export class UI {
     start.title = won ? 'Choose to continue in endless mode' : inWave && state.paused ? 'Resume the round' : inWave ? 'Click to cycle game speed' : 'Send the next round';
     if (multiplayer) {
       const host = multiplayer.hostId === multiplayer.sessionId;
-      const label = multiplayer.result ? 'MATCH FINISHED' : won ? 'CONTINUE ∞' : finished ? 'FINISHED' : inWave ? multiplayer.manualPause ? 'RESUME' : host ? `SPEED ${state.speed || 1}×` : 'ROUND IN PROGRESS' : ready ? 'WAITING FOR TEAMMATE' : 'READY';
+      const label = multiplayer.result ? 'MATCH FINISHED' : won ? 'CONTINUE ∞' : finished ? 'FINISHED' : inWave ? multiplayer.manualPause ? 'RESUME' : host ? `SPEED ${state.speed || 1}×` : 'ROUND IN PROGRESS' : ready ? 'READY ✓' : state.autoStart && state.autoCountdown != null ? 'READY NOW' : 'READY';
       start.innerHTML = `<span class="play-triangle" aria-hidden="true">${ready ? '✓' : '▶'}</span><span>${label}</span>`;
-      start.disabled = !!multiplayer.result || game.status === 'lost' || !together || (inWave ? !multiplayer.manualPause && !host : !won && (!!ready || multiplayer.paused));
-      start.setAttribute('aria-label', label);
-      start.title = inWave ? 'The host controls game speed; either player can pause.' : 'Both players must be ready to start the next round.';
+      start.disabled = !!multiplayer.result || game.status === 'lost' || !together || (inWave ? !multiplayer.manualPause && !host : !won && ((!multiplayer.autoSupported && !!ready) || multiplayer.paused));
+      start.setAttribute('aria-label', !inWave && ready ? multiplayer.autoSupported ? 'You are ready. Waiting for your teammate. Click to change back to building.' : 'You are ready. Waiting for your teammate.' : yourTurn ? `${teammate.name} is ready. Your turn to ready up.` : label);
+      start.title = inWave ? 'The host controls game speed; either player can pause.' : ready && !multiplayer.autoSupported ? 'Waiting for your teammate. Update the server to 0.2.4 to change readiness and use shared auto rounds.' : ready ? 'Click to return to building. Turn shared auto off to hold the next round.' : state.autoStart ? 'Both players ready starts immediately. Turn shared auto off to hold the next round.' : 'Both players must be ready to start the next round.';
     }
     const countdown = state.autoStart && state.autoCountdown != null && !inWave && !finished;
     set('status-title', finished ? game.status === 'won' ? 'VICTORY!' : 'Garden overrun' : state.paused ? 'PAUSED' : countdown ? `Next round in ${Math.ceil(state.autoCountdown)}s` : inWave ? 'Defend the garden!' : 'Ready for the next round?');
@@ -259,21 +265,38 @@ export class UI {
     document.getElementById('map-button').disabled = !!multiplayer;
     document.getElementById('speed-button').disabled = !!multiplayer && (multiplayer.hostId !== multiplayer.sessionId || !together || !!multiplayer.result);
     document.getElementById('pause-button').disabled = !!multiplayer && (!together || !!multiplayer.result);
-    document.getElementById('auto-button').hidden = !!multiplayer;
+    const auto = document.getElementById('auto-button');
+    auto.hidden = false;
+    auto.disabled = !!multiplayer && (!multiplayer.autoSupported || !multiplayer.connected || multiplayer.reconnecting || !!multiplayer.result);
+    auto.title = multiplayer && !multiplayer.autoSupported ? 'Update the server to 0.2.4 for shared auto rounds.' : multiplayer ? 'Shared by both players. Either player can switch this off to hold the next round.' : 'Automatically start the next round after a short break.';
+    if (multiplayer) set('auto-label', !multiplayer.autoSupported ? 'Auto: server update' : countdown ? `${state.paused || !together ? 'Held' : 'Next'} · ${Math.ceil(state.autoCountdown)}s` : `Shared auto: ${state.autoStart ? 'on' : 'off'}`);
+    const autoProgress = document.getElementById('auto-progress');
+    autoProgress.hidden = !multiplayer || !countdown;
+    autoProgress.style.transform = `scaleX(${Math.max(0, Math.min(1, (state.autoCountdown || 0) / 5))})`;
+    const readiness = document.getElementById('coop-readiness');
+    readiness.hidden = !multiplayer;
+    if (multiplayer) {
+      const chip = (player, mine = false) => {
+        const isReady = mine ? ready : player?.ready;
+        const status = multiplayer.result || finished ? 'Finished' : !player ? 'Open seat' : !player.connected ? 'Reconnecting' : inWave ? 'Defending' : isReady ? 'Ready ✓' : mine && yourTurn ? 'Your turn!' : 'Building';
+        return `<span class="readiness-player ${isReady && !inWave && !finished && !multiplayer.result ? 'is-ready' : ''} ${mine && yourTurn ? 'is-your-turn' : ''}" title="${esc(player?.name || 'Teammate')}: ${status}"><b>${mine ? 'You' : esc(player?.name || 'Teammate')}</b><small>${status}</small></span>`;
+      };
+      const markup = chip(me, true) + chip(teammate);
+      if (readiness.innerHTML !== markup) readiness.innerHTML = markup;
+    }
     document.querySelector('.game-shell').classList.toggle('is-coop', !!multiplayer);
     set('coop-button', multiplayer ? 'Co-op · Room' : 'Co-op');
     const coopStatus = document.getElementById('coop-status');
     coopStatus.hidden = !multiplayer;
     if (multiplayer) {
-      const teammate = players.find((player) => player.id !== multiplayer.sessionId);
       const connection = multiplayer.reconnecting || !multiplayer.connected ? 'Reconnecting… garden paused' : !teammate ? 'Lobby open · waiting for a teammate' : !teammate.connected ? `${teammate.name} disconnected · garden paused` : `${teammate.name} · ${inWave ? 'defending together' : teammate.ready ? 'ready ✓' : 'building'}`;
-      coopStatus.textContent = connection;
+      if (coopStatus.textContent !== connection) coopStatus.textContent = connection;
       coopStatus.dataset.connection = together ? 'connected' : 'waiting';
       document.querySelector('.coins small').textContent = 'Your gold';
       document.querySelector('.points small').textContent = 'Your points';
       if (!finished) {
-        set('status-title', multiplayer.result ? 'Match ended' : !together ? 'Waiting for teammate' : multiplayer.manualPause ? 'GARDEN PAUSED' : inWave ? 'Defend together!' : ready ? 'You’re ready ✓' : 'Build, then press Ready');
-        set('status-detail', inWave && together ? `${game.enemies?.length || 0} skeletons on the path` : ready ? 'Your teammate starts when ready.' : 'Shared lives · your own gold & points');
+        set('status-title', multiplayer.result ? 'Match ended' : !together ? 'Waiting for teammate' : multiplayer.manualPause ? 'GARDEN PAUSED' : inWave ? 'Defend together!' : countdown ? `Next round in ${Math.ceil(state.autoCountdown)}s` : yourTurn ? `${teammate.name} is ready!` : ready ? 'You’re ready ✓' : 'Build, then press Ready');
+        set('status-detail', inWave && together ? `${game.enemies?.length || 0} skeletons on the path` : countdown ? 'Ready together to start now · auto off to hold.' : yourTurn ? 'Your turn — press Ready when you’re set.' : ready ? 'Waiting for your teammate to get ready.' : 'Shared lives · your own gold & points');
       }
       this.syncCoopRoom(multiplayer);
     } else {
@@ -477,7 +500,7 @@ export class UI {
       list.dataset.signature = signature;
       list.innerHTML = players.map((player) => `<div class="coop-player"><strong>${esc(player.name)}${player.id === multiplayer.sessionId ? ' (you)' : ''}</strong><span>${player.id === multiplayer.hostId ? 'Host · ' : ''}${!player.connected ? 'Reconnecting…' : player.ready ? 'Ready ✓' : 'In the garden'}</span></div>`).join('') + (players.length < 2 ? '<div class="coop-player coop-empty"><strong>Open seat</strong><span>Your lobby is visible to other gardeners.</span></div>' : '');
     }
-    document.getElementById('coop-room-message').textContent = multiplayer.result ? 'This match has ended. Leave to start another garden.' : multiplayer.reconnecting || !multiplayer.connected ? 'Reconnecting to your garden…' : players.some((player) => !player.connected) ? 'The garden is paused while your teammate reconnects.' : players.length < 2 ? 'Waiting for another gardener to join…' : 'Your team is together. Build your defenses and press Ready!';
+    document.getElementById('coop-room-message').textContent = multiplayer.result ? 'This match has ended. Leave to start another garden.' : multiplayer.reconnecting || !multiplayer.connected ? 'Reconnecting to your garden…' : players.some((player) => !player.connected) ? 'The garden is paused while your teammate reconnects.' : players.length < 2 ? 'Waiting for another gardener to join…' : multiplayer.autoStart ? 'Shared auto is on. Both players ready skips the countdown; either player can turn auto off to keep building.' : 'Your team is together. Build your defenses and both press Ready!' ;
   }
 
   showCottageClue() {
@@ -513,7 +536,7 @@ export class UI {
   }
   showHelp(focusSection = null) {
     const state = this.last?.state || {};
-    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Effects: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><section class="music-settings" id="music-settings" aria-labelledby="music-heading" tabindex="-1"><div class="music-heading"><h3 id="music-heading">♪ Music</h3><span>Original garden soundtracks</span></div><div class="music-choices" role="group" aria-label="Music style"><button class="music-choice" data-music="rock" aria-pressed="false"><strong>Rock</strong><span>Upbeat & energetic</span></button><button class="music-choice" data-music="chill" aria-pressed="false"><strong>Chill</strong><span>Relaxed & mellow</span></button><button class="music-choice" data-music="jazz" aria-pressed="false"><strong>Jazz</strong><span>Easygoing swing</span></button><button class="music-choice music-off" data-music="off" aria-pressed="true"><strong>Off</strong><span>No background music</span></button></div><div class="music-volume-row"><label for="music-volume">Music volume</label><input id="music-volume" type="range" min="0" max="100" step="1" value="35" aria-valuetext="35%"><output id="music-volume-value" for="music-volume">35%</output></div><p class="music-status" id="music-status" role="status" aria-live="polite">Music is off.</p><p class="music-hint">Choose a style to preview its loop. Music and game effects have separate controls.</p></section><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes. Some gardens have two entrances—defend both routes. Loops and spirals bring enemies past your defenses again.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note"><strong>Keep going in endless mode</strong><p>After round 20, choose Continue in endless mode to keep your gnomes, upgrades, gold, and lives. Each round brings tougher enemies until the garden falls. Your highest fully cleared round is saved for each garden in this browser. Auto rounds still works; you can pause or build between rounds.</p></div>${this.last?.game.isUnlocked('necro') ? '<div class="help-note"><strong>Morrow’s reborn crew</strong><p>Morrow can choose two upgrade paths. The cottage in Pumpkin Hollow may reveal another. His spell kills queue melee guardians at the cottage. They march toward the skeletons and fight until defeated or their time runs out. Helper upgrades improve new summons. Helper kills never summon more helpers.</p></div>' : '<div class="help-note"><strong>A quieter rumor</strong><p>Pumpkin Hollow keeps a quiet secret. Its cottage may have a story to tell.</p></div>'}<div class="help-note secret-rumors"><strong>Garden rumors</strong><p>Three discoveries in Mossy Meadow and three in Crystal Quarry may reveal hidden guardians. Look closely at the scenery! One guardian’s final power upgrade makes its holes capture enemies. Another grows barriers that can explode when enemies destroy them.</p></div><div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Morel’s Wild Garden upgrade spreads poison to nearby skeletons at 65% damage. Spread poison cannot spread again. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
+    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Effects: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><section class="music-settings" id="music-settings" aria-labelledby="music-heading" tabindex="-1"><div class="music-heading"><h3 id="music-heading">♪ Music</h3><span>Original garden soundtracks</span></div><div class="music-choices" role="group" aria-label="Music style"><button class="music-choice" data-music="rock" aria-pressed="false"><strong>Rock</strong><span>Upbeat & energetic</span></button><button class="music-choice" data-music="chill" aria-pressed="false"><strong>Chill</strong><span>Relaxed & mellow</span></button><button class="music-choice" data-music="jazz" aria-pressed="false"><strong>Jazz</strong><span>Easygoing swing</span></button><button class="music-choice music-off" data-music="off" aria-pressed="true"><strong>Off</strong><span>No background music</span></button></div><div class="music-volume-row"><label for="music-volume">Music volume</label><input id="music-volume" type="range" min="0" max="100" step="1" value="35" aria-valuetext="35%"><output id="music-volume-value" for="music-volume">35%</output></div><p class="music-status" id="music-status" role="status" aria-live="polite">Music is off.</p><p class="music-hint">Choose a style to preview its loop. Music and game effects have separate controls.</p></section><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes. Some gardens have two entrances—defend both routes. Loops and spirals bring enemies past your defenses again.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break. In co-op, both players press Ready for the first round. Shared auto then gives you five seconds between rounds; ready together to skip the wait. Either player can turn auto off to keep building. Click your Ready check to return to building; auto must be off to hold the next round. Pausing or a disconnected teammate freezes the countdown.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note"><strong>Keep going in endless mode</strong><p>After round 20, choose Continue in endless mode to keep your gnomes, upgrades, gold, and lives. Each round brings tougher enemies until the garden falls. Your highest fully cleared round is saved for each garden in this browser. Auto rounds still works; you can pause or build between rounds.</p></div>${this.last?.game.isUnlocked('necro') ? '<div class="help-note"><strong>Morrow’s reborn crew</strong><p>Morrow can choose two upgrade paths. The cottage in Pumpkin Hollow may reveal another. His spell kills queue melee guardians at the cottage. They march toward the skeletons and fight until defeated or their time runs out. Helper upgrades improve new summons. Helper kills never summon more helpers.</p></div>' : '<div class="help-note"><strong>A quieter rumor</strong><p>Pumpkin Hollow keeps a quiet secret. Its cottage may have a story to tell.</p></div>'}<div class="help-note secret-rumors"><strong>Garden rumors</strong><p>Three discoveries in Mossy Meadow and three in Crystal Quarry may reveal hidden guardians. Look closely at the scenery! One guardian’s final power upgrade makes its holes capture enemies. Another grows barriers that can explode when enemies destroy them.</p></div><div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Morel’s Wild Garden upgrade spreads poison to nearby skeletons at 65% damage. Spread poison cannot spread again. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
     this.syncAudioSettings(state);
     if (focusSection === 'music') {
       const section = document.getElementById('music-settings');
@@ -554,8 +577,11 @@ export class UI {
       const setting = button.dataset.setting;
       const labels = { pause: state.paused ? '▶ Resume' : 'Ⅱ Pause', sound: `Effects: ${state.sound ? 'on' : 'off'}`, auto: `Auto rounds: ${state.autoStart ? 'on' : 'off'}` };
       button.textContent = labels[setting];
-      button.disabled = !!state.multiplayer && (setting === 'auto' || setting === 'pause' && (!state.multiplayer.connected || !!state.multiplayer.result || state.multiplayer.players?.length !== 2 || state.multiplayer.players?.some((player) => !player.connected)));
-      if (state.multiplayer && setting === 'auto') button.textContent = 'Co-op: both players ready';
+      button.disabled = !!state.multiplayer && (setting === 'auto' ? !state.multiplayer.autoSupported || !state.multiplayer.connected || state.multiplayer.reconnecting || !!state.multiplayer.result : setting === 'pause' && (!state.multiplayer.connected || !!state.multiplayer.result || state.multiplayer.players?.length !== 2 || state.multiplayer.players?.some((player) => !player.connected)));
+      if (state.multiplayer && setting === 'auto') {
+        button.textContent = state.multiplayer.autoSupported ? `Shared auto: ${state.autoStart ? 'on' : 'off'}` : 'Auto: update server to 0.2.4';
+        button.title = state.multiplayer.autoSupported ? 'Either player can turn this off to hold the next round.' : 'Update the server to 0.2.4 for shared auto rounds and changeable readiness.';
+      } else button.title = '';
       if (setting !== 'pause') button.setAttribute('aria-pressed', String(!!(setting === 'sound' ? state.sound : state.autoStart)));
     }
   }

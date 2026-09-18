@@ -4,6 +4,14 @@ export const MULTIPLAYER_URL = import.meta.env?.VITE_MULTIPLAYER_URL || 'https:/
 const SESSION_KEY = 'gnomeward-coop-session';
 let snapshotSequence = 0;
 
+// A display clock only; reaching zero never starts a round in the browser.
+export function coopCountdown(multiplayer, now = performance.now() / 1000) {
+  if (!multiplayer?.autoSupported || !multiplayer.autoStart || multiplayer.result || !Number.isFinite(multiplayer.autoCountdown)) return null;
+  const elapsed = multiplayer.paused || multiplayer.reconnecting || !multiplayer.connected
+    ? 0 : Math.max(0, now - (multiplayer.countdownReceivedAt ?? multiplayer.snapshotReceivedAt));
+  return Math.max(0, multiplayer.autoCountdown - elapsed);
+}
+
 export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0, receivedAt = performance.now() / 1000) {
   if (snapshot.protocol !== 1 || snapshot.mode !== 'coop') throw new Error('This room is not a compatible co-op game.');
   const board = snapshot.boards.find(board => board.playerId === null)?.state;
@@ -25,6 +33,10 @@ export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0, re
     roomId: snapshot.roomId, sessionId, hostId: snapshot.hostId, players: snapshot.players,
     connected: true, reconnecting: false, ready: player.ready, endlessReady: player.endlessReady,
     paused: snapshot.paused, manualPause: snapshot.manualPause, started: snapshot.started,
+    autoSupported: typeof snapshot.autoStart === 'boolean',
+    autoStart: snapshot.autoStart === true,
+    autoCountdown: Number.isFinite(snapshot.autoCountdown) && snapshot.autoCountdown >= 0 ? snapshot.autoCountdown : null,
+    countdownReceivedAt: receivedAt,
     result: snapshot.result,
   } };
 }

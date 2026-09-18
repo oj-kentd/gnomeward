@@ -81,11 +81,13 @@ Green arrows mark every entrance. Enemies alternate between the two entrances on
 
 ## Multiplayer server for Unraid
 
-The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and press Ready together for each round. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.3 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
+The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and coordinate rounds with Ready controls or shared auto rounds. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.4 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
 
 Run it locally with `npm run server`, then open `http://localhost:2567/`. Match results are stored in `server-data/results.json` by default. `npm test` includes authoritative multiplayer and real WebSocket integration tests; with the server running, `npm run test:server-browser` checks the desktop/phone connection page. See the [server protocol](server/PROTOCOL.md) for client integration and current rules.
 
 Client **0.2.3** smooths co-op movement between network snapshots, including the first round. This is a browser update and works with an existing **0.2.2** server; refresh the game after deployment. Install server **0.2.3** to enable Soul Echoes discovery, upgrades, and shared persistence in co-op. Motion smoothing changes only presentation: the server still owns movement, damage, purchases, and rewards, and sends five snapshots per second.
+
+Server **0.2.4** adds shared auto rounds and changeable Ready votes. Ready glows when your teammate is waiting, with a small status indicator for each player. Both players start round one manually; optional shared auto then gives five real seconds between rounds. Either player can disable it to keep building, both Ready votes start sooner, and pause/disconnect freezes the timer. Auto does not bypass the campaign victory or endless-mode choice. Older servers retain the readiness highlight and show an update hint for shared auto.
 
 ## Art and development
 
@@ -143,3 +145,5 @@ Strawberry Fields has two entrances and one free Strawberry Gnome at the center.
 In co-op the host owns the free gnome. Clearing the encounter awards Strawberry Gnome to both players’ local solo collections and the server’s shared party collection for future co-op rooms. Strawberry and the discovered Soul Echoes path persist in `/data/results.json` without accounts. Other co-op character unlocks remain scoped to the current run.
 
 Run `npm run test:coop` with a running game and multiplayer server to exercise the complete two-browser co-op flow. Set `VITE_MULTIPLAYER_URL` before starting Vite or building to target another backend.
+
+Run `npm run test:coop-ready-browser` against a running game preview to check readiness feedback, shared auto, countdown cancellation, pause/resume, and phone controls through a private WebSocket server fixture.
