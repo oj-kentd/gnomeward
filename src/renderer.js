@@ -296,7 +296,7 @@ export class GardenRenderer {
       let object = this.fx.get(effect.id);
       if (!object) {
         const berryModel = effect.type === 'strawberry-mortar' ? 'strawberry-fruit' : effect.type === 'strawberry-seed' ? 'strawberry-seed' : null;
-        object = this.clone(berryModel || (['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type) ? 'soul-puff' : effect.type === 'explosion' ? 'explosion' : 'projectile'), berryModel ? undefined : effect.color);
+        object = this.clone(berryModel || (['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type) ? 'soul-puff' : effect.type === 'explosion' ? 'explosion' : 'projectile'), effect.type === 'strawberry-seed' ? '#111111' : berryModel ? undefined : effect.color);
         this.actors.add(object);
         this.fx.set(effect.id, object);
       }
@@ -322,7 +322,7 @@ export class GardenRenderer {
         const mortar = effect.type === 'strawberry-mortar';
         const height = mortar ? .70 * (1 - progress) + .20 * progress + Math.sin(progress * Math.PI) * 3.3 : .27;
         object.position.set(effect.x + dx * progress, height, effect.z + dz * progress);
-        object.scale.setScalar(mortar ? .30 : .14);
+        object.scale.setScalar(mortar ? .30 : .21);
         if (mortar) object.rotation.set(progress * Math.PI * 2, Math.atan2(dx, dz), progress * Math.PI);
         else object.rotation.set(Math.PI / 2, 0, -Math.atan2(dx, dz));
       } else {

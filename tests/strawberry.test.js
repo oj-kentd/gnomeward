@@ -128,7 +128,7 @@ test('Strawberry defeats award rewards once without recursive seed explosions', 
   assert.equal(game.kills, 1);
   assert.equal(tower.kills, 1);
   assert.equal(game.gold, gold + 6);
-  assert.equal(game.effects.filter(effect => effect.type === 'explosion').length, 1);
+  assert.equal(game.effects.filter(effect => effect.type === 'explosion').length, 0);
   assert.equal(game.projectiles.length, stats.seedCount);
   game._advanceProjectiles(1);
   assert.equal(game.kills, 1);

@@ -379,8 +379,6 @@ export class Game {
 
   _burstStrawberry(shot) {
     const center = { x: shot.tx, z: shot.tz };
-    this._effect('explosion', center, center, TOWERS.strawberry.color, 0.5);
-    this.effects.at(-1).radius = shot.radius;
     for (const enemy of this.enemies) {
       if (enemy.hp > 0 && distance(center, enemy) <= shot.radius) this._damage(enemy, shot.damage, shot.sourceId);
     }
@@ -389,7 +387,7 @@ export class Game {
       this.projectiles.push({
         id: ++this._id, type: 'strawberry-seed', unitType: 'strawberry', sourceId: shot.sourceId,
         x: center.x, z: center.z, tx: center.x + Math.cos(angle) * shot.seedRange, tz: center.z + Math.sin(angle) * shot.seedRange,
-        ttl: 0.5, maxTtl: 0.5, color: '#ffe5a3', damage: shot.seedDamage, pierce: shot.seedPierce, hitIds: [],
+        ttl: 0.5, maxTtl: 0.5, color: '#111111', damage: shot.seedDamage, pierce: shot.seedPierce, hitIds: [],
       });
     }
   }

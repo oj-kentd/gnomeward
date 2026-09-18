@@ -89,7 +89,7 @@ try {
   assert.ok(flight.materials.includes('berry-red') && flight.materials.includes('berry-seed') && flight.materials.includes('berry-leaf-light'));
   await page.screenshot({ path: 'playtest-results/strawberry-mortar.png' });
 
-  stage = 'rendering the landing explosion and eight seed rays';
+  stage = 'rendering eight black seed rays without an explosion blob';
   const burst = await page.evaluate(() => {
     const game = gnomeward.game, world = gnomeward.renderer;
     for (let i = 0; i < 60 && game.projectiles.some(shot => shot.type === 'strawberry-mortar'); i++) game.update(.025);
@@ -101,6 +101,16 @@ try {
       countAtImpact, count: seeds.length, targetDead: !game.enemies.some(enemy => enemy.id === window.__strawberrySmoke.targetId && enemy.hp > 0),
       explosion: game.effects.some(effect => effect.type === 'explosion' && world.fx.has(effect.id)),
       allModeled: seeds.every(seed => !!world.fx.get(seed.id)?.getObjectByName('strawberry-seed')),
+      allBlack: seeds.every(seed => {
+        let black = true;
+        world.fx.get(seed.id)?.traverse(child => {
+          if (!child.isMesh) return;
+          for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
+            if (Math.max(material.color.r, material.color.g, material.color.b) > .02) black = false;
+          }
+        });
+        return black;
+      }),
       radii: seeds.map(seed => Math.hypot(world.fx.get(seed.id).position.x - seed.x, world.fx.get(seed.id).position.z - seed.z)),
       directions: seeds.map(seed => Math.atan2(seed.tz - seed.z, seed.tx - seed.x)),
     };
@@ -108,8 +118,9 @@ try {
   assert.equal(burst.countAtImpact, 8);
   assert.equal(burst.count, 8);
   assert.equal(burst.targetDead, true);
-  assert.equal(burst.explosion, true);
+  assert.equal(burst.explosion, false);
   assert.equal(burst.allModeled, true);
+  assert.equal(burst.allBlack, true);
   assert.ok(burst.radii.every(radius => radius > 1 && radius < 2), 'Eight seeds visibly travel outward from the landing');
   assert.equal(new Set(burst.directions.map(angle => angle.toFixed(3))).size, 8);
   await page.screenshot({ path: 'playtest-results/strawberry-seed-burst.png' });

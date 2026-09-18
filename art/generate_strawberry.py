@@ -11,7 +11,8 @@ exec(compile(shared.split('assets={}')[0], str(Path(__file__).with_name('generat
 for name, color in {
     'berry-red': (.82, .075, .10), 'berry-pink': (.98, .25, .28),
     'berry-leaf': (.19, .43, .14), 'berry-leaf-light': (.40, .64, .20),
-    'berry-seed': (.99, .84, .46), 'berry-mortar': (.22, .31, .19),
+    'berry-seed': (.99, .84, .46), 'berry-shrapnel': (.009, .012, .014),
+    'berry-mortar': (.22, .31, .19),
     'berry-mortar-dark': (.065, .11, .055), 'berry-rim': (.65, .72, .38),
 }.items(): mat(name, color, rough=.86)
 
@@ -89,7 +90,8 @@ for obj in parts:obj.location.z+=.01
 assets['gnome']=export('gnome-strawberry')
 
 reset();berry();assets['fruit']=export('strawberry-fruit')
-reset();uv('Round cream berry seed',(0,0,0),(.40,.31,1),'berry-seed',12,8);assets['seed']=export('strawberry-seed')
+# Flying impact seeds are black; the fruit and hat keep their cream seed details.
+reset();uv('Black flying berry seed',(0,0,0),(.40,.31,1),'berry-shrapnel',12,8);assets['seed']=export('strawberry-seed')
 reset()
 for i in range(7):
     a=i*math.tau/7
