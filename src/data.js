@@ -7,6 +7,10 @@ const crossingPaths = [
   [[-12,-5],[-8,-5],[-8,4],[-3,4],[-3,0],[0,0],[0,5],[5,5],[5,2],[10,2],[10,6],[12,6]],
   [[12,-5],[8,-5],[8,-1],[3,-1],[3,0],[0,0],[0,5],[5,5],[5,2],[10,2],[10,6],[12,6]],
 ];
+const strawberryPaths = [
+  [[-12,-5],[-8,-5],[-8,-1],[-3,-1],[-3,-6],[3,-6],[3,0],[8,0],[8,4],[12,4]],
+  [[-12,5],[-7,5],[-7,1],[-2,1],[-2,5],[3,5],[3,0],[8,0],[8,4],[12,4]],
+];
 export const MAPS = [
   { id: 'meadow', name: 'Mossy Meadow', subtitle: 'A gentle first adventure', topology: 'Winding', difficulty: 'Easy', description: 'A long garden trail with generous bends. A lovely place to learn.', color: '#88b65d', path: [[-12,4],[-7,4],[-7,-4],[-1,-4],[-1,3],[5,3],[5,-3],[12,-3]] },
   { id: 'orchard', name: 'Amber Orchard', subtitle: 'Twice around the apple trees', topology: 'Figure eight', difficulty: 'Easy', description: 'Two orchard loops revisit the same junctions before the final turn home. Cover their shared center.', color: '#b2aa50', path: [[-12,0],[-8,0],[-8,-5],[-2,-5],[-2,0],[-8,0],[-8,5],[-2,5],[-2,0],[4,0],[4,-5],[9,-5],[9,3],[12,3]] },
@@ -14,6 +18,7 @@ export const MAPS = [
   { id: 'quarry', name: 'Crystal Quarry', subtitle: 'Treasures below the stone', topology: 'Switchbacks', difficulty: 'Hard', description: 'A short, angular trail leaves little time. Explosions shine in the narrow bends.', color: '#8c819d', path: [[-12,-4],[-5,-4],[-5,3],[2,3],[2,-3],[7,-3],[7,2],[12,2]] },
   { id: 'hollow', name: 'Pumpkin Hollow', subtitle: 'Into the pumpkin spiral', topology: 'Spiral', difficulty: 'Medium', description: 'A broad outer circuit curls into a tight inner spiral before escaping along the garden edge.', color: '#967951', path: [[-12,6],[-9,6],[-9,-6],[9,-6],[9,4],[-5,4],[-5,-2],[4,-2],[4,1],[0,1],[0,6],[12,6]] },
   { id: 'crossroads', name: 'Twinbrook Crossing', subtitle: 'Guard both sides of the brook', topology: 'Two entrances', difficulty: 'Hard', description: 'Enemies arrive from opposite sides on unequal trails. Guard the meeting point and the final zigzag.', color: '#669c91', path: crossingPaths[0], paths: crossingPaths },
+  { id: 'strawberry', name: 'Strawberry Fields', subtitle: 'A berry big adventure', topology: 'Two entrances', difficulty: 'Medium', description: 'Defend two trails through the berry patch with a free Strawberry Gnome. Clear all 20 rounds to recruit this mortar guardian in every garden.', color: '#87b969', path: strawberryPaths[0], paths: strawberryPaths, startingTowers: [{ type: 'strawberry', x: 0, z: 0 }] },
 ];
 
 /** Shared cottage and door coordinates for models and reborn-gnome departures. */
@@ -58,6 +63,7 @@ export const TOWERS = {
   crystal: { id: 'crystal', name: 'Prism', role: 'Crystal architect', description: 'Raises crystals ahead of skeletons. They must break through to continue. Find three hidden gems in Crystal Quarry to summon your first Prism for free.', cost: 280, color: '#6ad7de', unlockWave: 0, unlockSecret: 'quarry', paths: [path('durability','Diamond Walls','Raise stronger, longer-lasting crystal barriers.'),path('volatile','Shattering Light','Crystals explode when enemies destroy them. Expired crystals fade safely.'),path('speed','Crystal Bloom','Raise replacement crystals sooner.'),path('range','Prismatic Reach','Raise crystals farther away.')] },
 
   necro: { id: 'necro', name: 'Morrow', role: 'Necromancer', description: 'Spell defeats call reborn gnomes from the cottage to march against the skeletons. Follow the cottage clue in Pumpkin Hollow to find this secret guardian.', cost: 300, color: '#9ba3d8', unlockWave: 0, unlockSecret: 'hollow', paths: [path('champions','Reborn Champions','Reborn gnomes gain more health and stronger melee attacks.'),path('procession','Soul Procession','Dispatch gnomes sooner, support a larger group, and march faster.'),path('gravecraft','Gravecraft','Cast stronger spells more often and reach farther.')] },
+  strawberry: { id: 'strawberry', name: 'Strawberry', role: 'Berry mortar', description: 'Lobs giant strawberries across the garden. Each landing bursts with damage and sprays flying seeds. Clear Strawberry Fields to recruit this guardian everywhere.', cost: 350, color: '#ed5b72', unlockWave: 0, unlockMap: 'strawberry', paths: [path('fruit','Juicy Payload','Bigger strawberries make wider, stronger landing explosions.',[15,32,60]),path('seeds','Seed Storm','More seeds, stronger hits, and piercing seeds at tiers 2 and 3.',[14,30,56]),path('reload','Quick Harvest','Reload faster and send strawberries to their landing spot sooner.',[16,34,64])] },
 
 };
 

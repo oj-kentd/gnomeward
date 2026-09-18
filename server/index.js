@@ -39,6 +39,14 @@ export async function startServer(config = readConfig(), roomOptions = {}) {
       app.disable('x-powered-by');
       app.get('/healthz', (_req, res) => res.json({ status: 'ok', service: 'gnomeward-server', version: SERVER_VERSION, protocol: PROTOCOL_VERSION }));
       app.get('/readyz', (_req, res) => res.status(!stopping && store.healthy ? 200 : 503).json({ ready: !stopping && store.healthy }));
+      app.get('/lobbies', (req, res) => {
+        if (req.headers.origin) {
+          res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+          res.setHeader('Vary', 'Origin');
+        }
+        if (stopping || !store.healthy) return res.status(503).json({ error: 'Server is not ready' });
+        res.json({ lobbies: [...rooms].map(room => room.lobbyListing()).filter(Boolean) });
+      });
       app.get('/vendor/colyseus.js', (_req, res) => res.sendFile(sdkFile));
       app.get('/', (_req, res) => res.sendFile(resolve(publicDir, 'index.html')));
       app.use(express.static(publicDir, { index: false, dotfiles: 'deny' }));
@@ -48,6 +56,8 @@ export async function startServer(config = readConfig(), roomOptions = {}) {
   gameServer.define('gnomeward', createGnomewardRoom({
     ...roomOptions,
     recordResult: result => store.record(result),
+    getUnlockedRewards: () => store.unlocks,
+    onRewardUnlocked: type => store.grantUnlock(type),
     onRoomOpen: room => {
       if (stopping || !store.healthy) throw new Error('Server is not ready');
       if (rooms.size >= config.maxRooms) throw new Error('All gardens are busy. Try again after a match ends.');
@@ -80,6 +90,10 @@ export async function startServer(config = readConfig(), roomOptions = {}) {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     const reject = (status, error) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error })); };
     if (!originAllowed(req.headers.origin, req.headers.host, config.allowedOrigins)) return reject(403, 'Origin not allowed');
+    if (req.headers.origin) {
+      res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+      res.setHeader('Vary', 'Origin');
+    }
     const matchmake = req.url.startsWith('/matchmake/');
     if (matchmake && stopping) return reject(503, 'Server restarting');
     if (matchmake && !rateAllowed(req)) return reject(429, 'Too many connection requests; wait a minute');

@@ -37,9 +37,9 @@ const addBarrier = (g, tower, progress, routeIndex = 0) => {
   return barrier;
 };
 
-test('six maps provide finite loops, a spiral, and two unequal dual-entry routes', () => {
-  assert.equal(MAPS.length, 6);
-  assert.deepEqual(MAPS.filter(map => map.paths?.length === 2).map(map => map.id), ['creek', 'crossroads']);
+test('seven maps provide finite loops, a spiral, and three unequal dual-entry maps', () => {
+  assert.equal(MAPS.length, 7);
+  assert.deepEqual(MAPS.filter(map => map.paths?.length === 2).map(map => map.id), ['creek', 'crossroads', 'strawberry']);
   for (const map of MAPS) {
     const g = new Game(map.id);
     assert.ok(map.topology);

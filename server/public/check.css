@@ -30,12 +30,18 @@ button:disabled { opacity: .48; cursor: default; }
 .secondary { background: #36513e; color: #ecf2df; border-color: #65795b; }
 .quiet { background: transparent; border-color: #667c61; color: #dce9c7; padding: 7px 12px; }
 .lobby-options { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 19px 0; }
-.join-row { display: flex; align-items: end; gap: 12px; border-top: 1px solid #425d48; margin-top: 26px; padding-top: 20px; }
-.join-row > div { flex: 1; min-width: 0; }
-.join-row + .hint { margin: 17px 0 0; }
+.lobby-browser { border-top: 1px solid #425d48; margin: 26px 0 20px; padding-top: 20px; }
+.lobby-browser h3 { margin: 0; font-size: 1.05rem; }
+#lobbies-status { margin: 12px 0; }
+.open-lobbies { list-style: none; margin: 0; padding: 0; }
+.open-lobbies li { display: flex; align-items: center; gap: 14px; padding: 15px 0; border-bottom: 1px solid #425d48; }
+.open-lobbies li > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.open-lobbies strong, .open-lobbies span { display: block; }
+.open-lobbies span { color: #bbccbf; font-size: .84rem; margin-top: 3px; }
+#waiting-player { margin: 14px 0; }
 #notice { padding: 13px 17px; background: #314431; border-left: 3px solid #c6df95; border-radius: 8px; overflow-wrap: anywhere; }
 .room-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
-#room-title { font-family: ui-monospace, monospace; font-size: 1.65rem; margin: 0; overflow-wrap: anywhere; }
+#room-title { font-size: 1.65rem; margin: 0; overflow-wrap: anywhere; }
 #room-details { margin: 9px 0 16px; }
 .players { list-style: none; margin: 0 0 22px; padding: 0; }
 .players li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 7px 16px; padding: 11px 0; border-bottom: 1px solid #405645; }
@@ -48,4 +54,4 @@ button:disabled { opacity: .48; cursor: default; }
 .room-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 footer { margin: 24px 4px 0; }
 [hidden] { display: none !important; }
-@media (max-width: 520px) { main { padding: 30px 16px 24px; } .panel { padding: 20px 16px; } .lobby-options { grid-template-columns: 1fr; } .health-panel { padding: 12px 15px; } .join-row { flex-wrap: wrap; } .join-row > div { flex-basis: 100%; } .join-row button { width: 100%; } .room-actions > button { flex: 1 1 150px; } }
+@media (max-width: 520px) { main { padding: 30px 16px 24px; } .panel { padding: 20px 16px; } .lobby-options { grid-template-columns: 1fr; } .health-panel { padding: 12px 15px; } .room-actions > button { flex: 1 1 150px; } }

@@ -2,6 +2,7 @@ import { MAPS, TOWERS, ENEMIES } from './data.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const n = (value) => Math.round(Number(value) || 0).toLocaleString();
+const wallet = (value) => (Number(value) || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
 const precise = (value) => Number(value).toFixed(1).replace(/\.0$/, '');
 const portrait = (type) => `<img class="portrait" src="${import.meta.env.BASE_URL}assets/${type}.png" alt="" draggable="false">`;
 const icons = {
@@ -40,6 +41,7 @@ function upgradeBenefit(game, tower, index, stats) {
     ['gravityDps', 'Gravity/s'], ['pullSpeed', 'Pull speed'], ['holeDuration', 'Hole seconds'], ['holeRadius', 'Hole radius'],
     ['barrierHp', 'Barrier HP'], ['barrierLifetime', 'Barrier seconds'], ['barrierLimit', 'Max barriers'],
     ['allyHp', 'New helper HP'], ['allyDamage', 'New helper damage'], ['allySpeed', 'New march speed'], ['allyLimit', 'Helper limit'],
+    ['seedCount', 'Seeds'], ['seedDamage', 'Seed damage'], ['seedPierce', 'Targets per seed'], ['seedRange', 'Seed reach'],
   ];
   const terrain = ['gravity', 'crystal'].includes(tower.type);
   const benefits = labels.filter(([key]) => !(terrain && key === 'attackSpeed') && Number.isFinite(next[key]) && next[key] > (stats[key] || 0) + .001)
@@ -52,6 +54,7 @@ function upgradeBenefit(game, tower, index, stats) {
   }
   if (next.poisonSpreadRadius > 0 && !(stats.poisonSpreadRadius > 0)) benefits.unshift('Poison spreads to nearby skeletons');
   if (next.capture && !stats.capture) benefits.push('Captures enemies in the hole');
+  if (tower.type === 'strawberry' && next.flightDuration < stats.flightDuration) benefits.push(`Flight ${precise(stats.flightDuration)}s → ${precise(next.flightDuration)}s`);
   return benefits.join(' · ') || TOWERS[tower.type].paths[index].description;
 }
 
@@ -81,7 +84,8 @@ export class UI {
               <div class="hud-stat coins" title="Gold buys new gnomes">${icons.coin}<span><strong id="hud-gold">650</strong><small>Gold</small></span></div>
               <div class="hud-stat points" title="Points buy upgrades">${icons.leaf}<span><strong id="hud-points">0</strong><small>Points</small></span></div>
             </div>
-            <div class="field-toolbar"><span class="brand">GNOMEWARD</span><button class="map-picker" id="map-button" title="Choose a map"><span id="map-name">Mossy Meadow</span> <span aria-hidden="true">▾</span></button></div>
+            <div class="field-toolbar"><span class="brand">GNOMEWARD</span><button class="coop-button" id="coop-button" aria-haspopup="dialog">Co-op</button><button class="map-picker" id="map-button" title="Choose a map"><span id="map-name">Mossy Meadow</span> <span aria-hidden="true">▾</span></button></div>
+            <div class="coop-status" id="coop-status" role="status" hidden></div>
           </div>
           <div class="round-tools"><div class="wave-count"><small id="hud-round-label">ROUND</small><strong id="hud-wave">1<span>/20</span></strong><small class="round-best" id="hud-best" hidden></small></div><button class="icon-button" id="help-button" aria-label="Settings and how to play" title="Settings and how to play">☰</button></div>
         </header>
@@ -123,6 +127,7 @@ export class UI {
     click('cancel-placement', () => actions.onCancel?.());
     click('dismiss-tip', () => this.dismissTip());
     click('map-button', () => this.showMaps());
+    click('coop-button', () => actions.onCoopOpen?.());
     click('help-button', () => this.showHelp());
     click('shop-toggle', () => {
       const collapsed = document.querySelector('.game-shell').classList.toggle('shop-collapsed');
@@ -147,18 +152,25 @@ export class UI {
     document.getElementById('selection-panel').addEventListener('click', (event) => {
       const upgrade = event.target.closest('[data-upgrade]');
       if (upgrade && !upgrade.disabled) actions.onUpgrade?.(Number(upgrade.dataset.upgrade));
-      if (event.target.closest('[data-sell]')) actions.onSell?.();
-      if (event.target.closest('[data-targeting]')) actions.onTargeting?.();
+      if (event.target.closest('[data-sell]:not(:disabled)')) actions.onSell?.();
+      if (event.target.closest('[data-targeting]:not(:disabled)')) actions.onTargeting?.();
       if (event.target.closest('[data-close-upgrades]')) actions.onCancel?.();
     });
     this.dialog = document.getElementById('game-dialog');
     this.dialog.addEventListener('click', (event) => { if (event.target === this.dialog) this.closeModal(); });
     this.dialog.addEventListener('close', () => { this.modalType = null; });
     document.getElementById('dialog-content').addEventListener('click', (event) => {
+      if (event.target.closest('button:disabled')) return;
+      if (event.target.closest('[data-coop-refresh]')) actions.onCoopRefresh?.();
+      if (event.target.closest('[data-coop-leave]')) { this.closeModal(); actions.onCoopLeave?.(); }
+      const name = () => document.getElementById('coop-name')?.value.trim() || 'Gardener';
+      if (event.target.closest('[data-coop-create]')) actions.onCoopCreate?.({ name: name(), mapId: document.getElementById('coop-map').value });
+      const join = event.target.closest('[data-coop-join]');
+      if (join) actions.onCoopJoin?.({ name: name(), roomId: join.dataset.coopJoin });
       if (event.target.closest('[data-close]')) this.closeModal();
       const map = event.target.closest('[data-map]');
       if (map) { this.closeModal(); this.resultShown = ''; actions.onMap?.(map.dataset.map); }
-      if (event.target.closest('[data-continue-endless]')) { this.closeModal(); actions.onContinueEndless?.(); }
+      if (event.target.closest('[data-continue-endless]')) { if (!this.last?.state.multiplayer) this.closeModal(); actions.onContinueEndless?.(); }
       if (event.target.closest('[data-restart]')) { this.closeModal(); this.resultShown = ''; actions.onRestart?.(); }
       if (event.target.closest('[data-maps]')) this.showMaps();
       const music = event.target.closest('[data-music]');
@@ -188,6 +200,11 @@ export class UI {
 
   update(game, state = {}) {
     this.last = { game, state };
+    const multiplayer = state.multiplayer;
+    const players = multiplayer?.players || [];
+    const me = players.find((player) => player.id === multiplayer?.sessionId);
+    const ready = multiplayer?.ready ?? me?.ready;
+    const together = !!multiplayer?.connected && players.length === 2 && players.every((player) => player.connected);
     const set = (id, text) => { document.getElementById(id).textContent = text; };
     const map = typeof game.map === 'string' ? MAPS.find((m) => m.id === game.map) : game.map;
     const inWave = game.status === 'wave';
@@ -195,7 +212,8 @@ export class UI {
     const won = game.status === 'won';
     const upcoming = game.endless ? Number(game.wave || 0) + 1 : Math.min(game.maxWaves || 20, Number(game.wave || 0) + 1);
     const displayedRound = inWave || finished ? game.wave : upcoming;
-    set('hud-lives', n(game.lives)); set('hud-gold', n(game.gold)); set('hud-points', n(game.points));
+    const currency = multiplayer ? wallet : n;
+    set('hud-lives', n(game.lives)); set('hud-gold', currency(game.gold)); set('hud-points', currency(game.points));
     document.getElementById('hud-wave').innerHTML = `${displayedRound}<span>/${game.endless ? '∞' : game.maxWaves || 20}</span>`;
     set('hud-round-label', game.endless ? 'ENDLESS' : 'ROUND');
     const best = document.getElementById('hud-best');
@@ -211,6 +229,14 @@ export class UI {
     start.innerHTML = `<span class="play-triangle" aria-hidden="true">${inWave && !state.paused ? '▶▶' : '▶'}</span><span>${won ? 'CONTINUE ∞' : finished ? 'FINISHED' : inWave && state.paused ? 'RESUME' : inWave ? `SPEED ${state.speed || 1}×` : `START ROUND ${upcoming}`}</span>`;
     start.setAttribute('aria-label', won ? 'Continue in endless mode' : finished ? 'Game finished' : inWave && state.paused ? 'Resume round' : inWave ? `Change speed, currently ${state.speed || 1}×` : `Start round ${upcoming}`);
     start.title = won ? 'Choose to continue in endless mode' : inWave && state.paused ? 'Resume the round' : inWave ? 'Click to cycle game speed' : 'Send the next round';
+    if (multiplayer) {
+      const host = multiplayer.hostId === multiplayer.sessionId;
+      const label = multiplayer.result ? 'MATCH FINISHED' : won ? 'CONTINUE ∞' : finished ? 'FINISHED' : inWave ? multiplayer.manualPause ? 'RESUME' : host ? `SPEED ${state.speed || 1}×` : 'ROUND IN PROGRESS' : ready ? 'WAITING FOR TEAMMATE' : 'READY';
+      start.innerHTML = `<span class="play-triangle" aria-hidden="true">${ready ? '✓' : '▶'}</span><span>${label}</span>`;
+      start.disabled = !!multiplayer.result || game.status === 'lost' || !together || (inWave ? !multiplayer.manualPause && !host : !won && (!!ready || multiplayer.paused));
+      start.setAttribute('aria-label', label);
+      start.title = inWave ? 'The host controls game speed; either player can pause.' : 'Both players must be ready to start the next round.';
+    }
     const countdown = state.autoStart && state.autoCountdown != null && !inWave && !finished;
     set('status-title', finished ? game.status === 'won' ? 'VICTORY!' : 'Garden overrun' : state.paused ? 'PAUSED' : countdown ? `Next round in ${Math.ceil(state.autoCountdown)}s` : inWave ? 'Defend the garden!' : 'Ready for the next round?');
     set('status-detail', won ? 'Keep your garden growing in endless mode.' : game.status === 'lost' ? `Survived round ${n(game.completedWaves)} · Best ${n(game.bestRound)}` : inWave ? `${game.enemies?.length || 0} skeletons on the path` : 'Build and upgrade before starting.');
@@ -223,6 +249,30 @@ export class UI {
     this.syncAudioSettings(state);
     document.getElementById('auto-button').setAttribute('aria-pressed', String(!!state.autoStart));
     set('auto-label', countdown && !state.paused ? `Next round in ${Math.ceil(state.autoCountdown)}s` : `Auto rounds: ${state.autoStart ? 'on' : 'off'}`);
+    document.getElementById('map-button').disabled = !!multiplayer;
+    document.getElementById('speed-button').disabled = !!multiplayer && (multiplayer.hostId !== multiplayer.sessionId || !together || !!multiplayer.result);
+    document.getElementById('pause-button').disabled = !!multiplayer && (!together || !!multiplayer.result);
+    document.getElementById('auto-button').hidden = !!multiplayer;
+    document.querySelector('.game-shell').classList.toggle('is-coop', !!multiplayer);
+    set('coop-button', multiplayer ? 'Co-op · Room' : 'Co-op');
+    const coopStatus = document.getElementById('coop-status');
+    coopStatus.hidden = !multiplayer;
+    if (multiplayer) {
+      const teammate = players.find((player) => player.id !== multiplayer.sessionId);
+      const connection = multiplayer.reconnecting || !multiplayer.connected ? 'Reconnecting… garden paused' : !teammate ? 'Lobby open · waiting for a teammate' : !teammate.connected ? `${teammate.name} disconnected · garden paused` : `${teammate.name} · ${inWave ? 'defending together' : teammate.ready ? 'ready ✓' : 'building'}`;
+      coopStatus.textContent = connection;
+      coopStatus.dataset.connection = together ? 'connected' : 'waiting';
+      document.querySelector('.coins small').textContent = 'Your gold';
+      document.querySelector('.points small').textContent = 'Your points';
+      if (!finished) {
+        set('status-title', multiplayer.result ? 'Match ended' : !together ? 'Waiting for teammate' : multiplayer.manualPause ? 'GARDEN PAUSED' : inWave ? 'Defend together!' : ready ? 'You’re ready ✓' : 'Build, then press Ready');
+        set('status-detail', inWave && together ? `${game.enemies?.length || 0} skeletons on the path` : ready ? 'Your teammate starts when ready.' : 'Shared lives · your own gold & points');
+      }
+      this.syncCoopRoom(multiplayer);
+    } else {
+      document.querySelector('.coins small').textContent = 'Gold';
+      document.querySelector('.points small').textContent = 'Points';
+    }
     const next = typeof game.nextWaveInfo === 'function' ? game.nextWaveInfo() : null;
     document.getElementById('round-preview').hidden = inWave || finished;
     const previewSignature = JSON.stringify([upcoming, next?.counts]);
@@ -242,8 +292,9 @@ export class UI {
         const affordable = game.gold >= tower.cost;
         const secret = !unlocked && !!tower.unlockSecret;
         const secretGarden = MAPS.find((garden) => garden.id === tower.unlockSecret)?.name || 'a hidden garden';
-        const hint = secret ? id === 'necro' ? `A quiet secret in ${secretGarden}.` : `Three discoveries in ${secretGarden} may reveal a hidden guardian.` : `${tower.description}${!unlocked ? ` Beat round ${tower.unlockWave} to unlock.` : !affordable ? ' Not enough gold.' : ''}`;
-        return `<button class="tower-card ${!unlocked ? 'locked' : !affordable ? 'unaffordable' : 'affordable'} ${secret ? 'secret-locked' : ''} ${state.placingType === id ? 'chosen' : ''}" data-tower="${id}" ${!unlocked || !affordable ? 'disabled' : ''} aria-pressed="${state.placingType === id}" title="${esc(hint)}" ${secret ? `aria-label="Map secret. ${esc(hint)}"` : ''}><div class="tower-art" style="--tower-color:${tower.color}">${portrait(id)}${!unlocked ? `<span class="lock-badge">${icons.lock}</span>` : ''}</div><span class="tower-info"><strong>${secret ? '???' : esc(tower.name)}</strong><span class="tower-cost">${unlocked ? `${icons.coin}${n(tower.cost)}` : secret ? 'Map secret' : `Round ${tower.unlockWave}`}</span></span>${!affordable && unlocked ? '<span class="card-shortage">Need gold</span>' : ''}</button>`;
+        const unlockGarden = MAPS.find((garden) => garden.id === tower.unlockMap)?.name;
+        const hint = secret ? id === 'necro' ? `A quiet secret in ${secretGarden}.` : `Three discoveries in ${secretGarden} may reveal a hidden guardian.` : `${tower.description}${!unlocked ? unlockGarden ? ` Clear all 20 rounds of ${unlockGarden} to unlock.` : ` Beat round ${tower.unlockWave} to unlock.` : !affordable ? ' Not enough gold.' : ''}`;
+        return `<button class="tower-card ${!unlocked ? 'locked' : !affordable ? 'unaffordable' : 'affordable'} ${secret ? 'secret-locked' : ''} ${state.placingType === id ? 'chosen' : ''}" data-tower="${id}" ${!unlocked || !affordable ? 'disabled' : ''} aria-pressed="${state.placingType === id}" title="${esc(hint)}" ${secret ? `aria-label="Map secret. ${esc(hint)}"` : ''}><div class="tower-art" style="--tower-color:${tower.color}">${portrait(id)}${!unlocked ? `<span class="lock-badge">${icons.lock}</span>` : ''}</div><span class="tower-info"><strong>${secret ? '???' : esc(tower.name)}</strong><span class="tower-cost">${unlocked ? `${icons.coin}${n(tower.cost)}` : secret ? 'Map secret' : unlockGarden ? `Clear ${esc(unlockGarden)}` : `Round ${tower.unlockWave}`}</span></span>${!affordable && unlocked ? '<span class="card-shortage">Need gold</span>' : ''}</button>`;
       }).join('');
     }
     const selected = game.towers.find((tower) => tower.id === state.selectedTowerId);
@@ -262,7 +313,7 @@ export class UI {
         panel.setAttribute('aria-label', 'Selected defender');
       }
     }
-    const panelSignature = JSON.stringify([selected?.id, selected?.levels, selected?.targeting, selected?.kills, game.points]);
+    const panelSignature = JSON.stringify([selected?.id, selected?.levels, selected?.targeting, selected?.kills, selected?.ownerId, game.points, multiplayer?.sessionId, multiplayer?.connected, multiplayer?.result]);
     if (panelSignature !== this.panelSignature) {
       this.panelSignature = panelSignature;
       const scrollTop = selectionChanged ? 0 : panel.scrollTop;
@@ -281,11 +332,17 @@ export class UI {
       }
     }
     if (selected) this.positionUpgrades(state.selectionAnchor);
-    if (finished && this.resultShown !== `${map?.id}-${game.status}`) {
-      this.resultShown = `${map?.id}-${game.status}`;
+    const resultKey = `${map?.id}-${game.status}-${multiplayer?.roomId || ''}-${multiplayer?.result?.reason || ''}`;
+    if ((finished || multiplayer?.result) && this.resultShown !== resultKey) {
+      this.resultShown = resultKey;
       this.showResult(game);
     }
-    if (!finished) this.resultShown = '';
+    if (!finished && !multiplayer?.result) this.resultShown = '';
+    if (multiplayer && this.modalType === 'result') {
+      const endless = this.dialog.querySelector('[data-continue-endless]');
+      const voted = multiplayer.endlessReady ?? me?.endlessReady;
+      if (endless) { endless.disabled = !!voted || !together || !!multiplayer.paused; endless.textContent = voted ? 'WAITING FOR TEAMMATE…' : 'CONTINUE IN ENDLESS MODE ∞'; }
+    }
   }
 
   positionUpgrades(anchor) {
@@ -317,6 +374,11 @@ export class UI {
     const container = document.getElementById('selection-panel');
     if (!tower) { container.replaceChildren(); return; }
     const def = TOWERS[tower.type];
+    const multiplayer = this.last?.state.multiplayer;
+    const currency = multiplayer ? wallet : n;
+    const owned = !multiplayer || tower.ownerId === multiplayer.sessionId;
+    const canEdit = owned && (!multiplayer || multiplayer.connected && !multiplayer.result);
+    const owner = multiplayer?.players?.find((player) => player.id === tower.ownerId);
     const stats = game.getStats(tower);
     const levels = tower.levels || def.paths.map(() => 0);
     const used = levels.filter((level) => level > 0).length;
@@ -326,18 +388,22 @@ export class UI {
     const terrain = ['gravity', 'crystal'].includes(tower.type);
     const automatic = tower.type === 'spore' || terrain;
     const range = stats.range >= 40 ? '∞' : precise(stats.range);
-    const summary = tower.type === 'gravity'
+    const summary = tower.type === 'strawberry'
+      ? `<span><b>${n(stats.damage)}</b> blast damage</span><span><b>${n(stats.seedCount)}</b> seeds</span><span><b>${precise(stats.interval)}s</b> reload</span><span><b>∞</b> range</span>`
+      : tower.type === 'gravity'
       ? `<span><b>${precise(stats.gravityDps)}</b> gravity/s</span><span><b>${precise(stats.holeDuration)}s</b> hole duration</span><span><b>${precise(stats.interval)}s</b> cooldown</span><span><b>${range}</b> range</span>`
       : tower.type === 'crystal'
         ? `<span><b>${n(stats.barrierHp)}</b> barrier HP</span><span><b>${n(stats.barrierLimit)}</b> max barriers</span><span><b>${precise(stats.interval)}s</b> cooldown</span><span><b>${range}</b> range</span>`
         : `<span><b>${precise(tower.type === 'spore' ? stats.poisonDps : stats.damage)}</b> ${tower.type === 'spore' ? 'poison/s' : tower.type === 'necro' ? 'spell damage' : 'damage'}</span><span><b>${precise(stats.attackSpeed)}</b> attacks/s</span><span><b>${range}</b> range</span>`;
     const automaticNote = tower.type === 'gravity' ? `Creates holes automatically · ${stats.capture ? 'captures enemies in the hole' : 'pulls nearby enemies inward'}` : tower.type === 'crystal' ? `Places barriers automatically · ${stats.explosionDamage > 0 ? `destroyed barriers deal ${n(stats.explosionDamage)} blast damage` : 'upgrade the blast path for on-destruction explosions'}` : stats.poisonSpreadRadius > 0 ? `Wild Garden: each mushroom infection can spread to ${n(stats.poisonSpreadTargets)} nearby ${stats.poisonSpreadTargets === 1 ? 'enemy' : 'enemies'} within ${precise(stats.poisonSpreadRadius)} range, one every ${precise(stats.poisonSpreadInterval)}s, at ${n(stats.poisonSpreadMultiplier * 100)}% damage. Spread poison cannot spread again.` : 'Mushrooms poison passing enemies · Wild Garden unlocks poison spread';
-    container.innerHTML = `<div class="selected-heading">${portrait(tower.type)}<div><h3>${esc(def.name)}</h3><span>${tower.purchaseCost === 0 ? 'Summoned guardian · ' : ''}${n(tower.kills)} defeated</span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
+    container.innerHTML = `<div class="selected-heading">${portrait(tower.type)}<div><h3>${esc(def.name)}</h3><span>${tower.starting ? 'Free field guardian · ' : tower.starting ? 'Free starting guardian · ' : tower.purchaseCost === 0 ? 'Summoned guardian · ' : ''}${n(tower.kills)} defeated</span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
+      ${multiplayer ? `<div class="tower-owner-note">${owned ? 'Your gnome · you choose its upgrades' : `${esc(owner?.name || 'Teammate')}’s gnome · upgrades controlled by your teammate`}</div>` : ''}
       <div class="unit-summary ${terrain ? 'terrain-summary' : ''}">${summary}</div>
-      ${!automatic ? `<button class="targeting-button" data-targeting title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : `<div class="targeting-note ${tower.type === 'spore' && stats.poisonSpreadRadius > 0 ? 'poison-spread-note' : ''}">${automaticNote}</div>`}
+      ${!automatic ? `<button class="targeting-button" data-targeting ${!canEdit ? 'disabled' : ''} title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : `<div class="targeting-note ${tower.type === 'spore' && stats.poisonSpreadRadius > 0 ? 'poison-spread-note' : ''}">${automaticNote}</div>`}
       ${tower.type === 'stun' ? `<div class="targeting-note">50% slower for ${precise(stats.slowDuration)}s · does not stack</div>` : ''}
+      ${tower.type === 'strawberry' ? `<div class="targeting-note">Lobs at a fixed landing spot · ${precise(stats.flightDuration)}s flight · ${precise(stats.explosionRadius)} blast radius. Seeds deal ${n(stats.seedDamage)} damage to up to ${n(stats.seedPierce)} ${stats.seedPierce === 1 ? 'target' : 'targets'} each.</div>` : ''}
       ${helpers ? `<div class="necro-ability"><p>Spell kills send helpers from the cottage to march toward enemies. Helper kills summon no one; helper upgrades apply to new summons.</p><div class="helper-stats" aria-label="New helper stats"><span><b>${n(stats.allyHp)}</b> helper HP</span><span><b>${n(stats.allyDamage)}</b> melee damage</span><span><b>${precise(stats.summonInterval)}s</b> dispatch</span><span><b>${precise(stats.allySpeed)}</b> march speed</span></div><div class="helper-counts"><span><b data-helper-active>${helpers.active}</b> / ${n(stats.allyLimit)} active</span><span><b data-helper-waiting>${helpers.waiting}</b> waiting</span></div></div>` : ''}
-      <div class="upgrade-heading"><strong>UPGRADES</strong><span>${icons.leaf}${n(game.points)} points</span></div>
+      <div class="upgrade-heading"><strong>UPGRADES</strong><span>${icons.leaf}${currency(game.points)} points</span></div>
       <p class="path-rule">${limit === 1 ? '1 special path · 3 powerful tiers' : def.paths.length === 3 ? `Choose 2 of 3 paths · ${used}/2 chosen` : `Choose ${limit} paths · ${used}/${limit} chosen`}</p>
       <div class="upgrade-paths">${def.paths.map((path, index) => {
         const level = levels[index] || 0;
@@ -346,10 +412,10 @@ export class UI {
         const cost = path.costs[level];
         const affordable = !maxed && !locked && game.points >= cost;
         const benefit = maxed ? 'Maximum upgrade reached!' : upgradeBenefit(game, tower, index, stats);
-        const reason = locked ? 'Only 2 paths per gnome' : maxed ? 'Fully upgraded' : !affordable ? `Need ${n(cost - game.points)} more points` : `Upgrade ${path.name} to tier ${level + 1}`;
-        return `<div class="upgrade-path ${locked ? 'path-locked' : ''} ${level ? 'invested' : ''}"><div class="upgrade-copy"><strong>${esc(path.name)}</strong><span class="tier-chips" aria-label="Tier ${level} of ${path.costs.length}">${path.costs.map((_, tier) => `<i class="${tier < level ? 'filled' : ''}">${tier + 1}</i>`).join('')}</span><small>${locked ? 'Choose a different gnome for this path.' : esc(benefit)}</small></div><button class="upgrade-buy ${maxed ? 'maxed' : ''}" data-upgrade="${index}" ${!affordable ? 'disabled' : ''} title="${esc(reason)}">${locked ? `${icons.lock}<span>Locked</span>` : maxed ? '<b>✓</b><span>MAX</span>' : `<b>${icons.leaf}${n(cost)}</b><span>${affordable ? 'UPGRADE' : `Need ${n(cost - game.points)}`}</span>`}</button></div>`;
+        const reason = locked ? 'Only 2 paths per gnome' : maxed ? 'Fully upgraded' : !affordable ? `Need ${currency(cost - game.points)} more points` : `Upgrade ${path.name} to tier ${level + 1}`;
+        return `<div class="upgrade-path ${locked ? 'path-locked' : ''} ${level ? 'invested' : ''}"><div class="upgrade-copy"><strong>${esc(path.name)}</strong><span class="tier-chips" aria-label="Tier ${level} of ${path.costs.length}">${path.costs.map((_, tier) => `<i class="${tier < level ? 'filled' : ''}">${tier + 1}</i>`).join('')}</span><small>${locked ? 'Choose a different gnome for this path.' : esc(benefit)}</small></div><button class="upgrade-buy ${maxed ? 'maxed' : ''}" data-upgrade="${index}" ${!affordable || !canEdit ? 'disabled' : ''} title="${esc(!owned ? 'Your teammate controls this gnome' : reason)}">${locked ? `${icons.lock}<span>Locked</span>` : maxed ? '<b>✓</b><span>MAX</span>' : `<b>${icons.leaf}${n(cost)}</b><span>${affordable ? 'UPGRADE' : `Need ${currency(cost - game.points)}`}</span>`}</button></div>`;
       }).join('')}</div>
-      <div class="selection-footer"><span>Points come from<br>defeats & cleared rounds</span><button class="sell-button" data-sell>SELL ${icons.coin}${n(Math.floor((tower.purchaseCost ?? def.cost) * .75))}</button></div>`;
+      <div class="selection-footer"><span>Points come from<br>defeats & cleared rounds</span><button class="sell-button" data-sell ${!canEdit ? 'disabled' : ''}>SELL ${icons.coin}${n(Math.floor((tower.purchaseCost ?? def.cost) * .75))}</button></div>`;
   }
 
   openModal(type, html) {
@@ -358,11 +424,59 @@ export class UI {
     if (!this.dialog.open) this.dialog.showModal();
   }
   closeModal() { this.dialog.close(); this.modalType = null; }
+  showCoopLobby() {
+    const multiplayer = this.last?.state.multiplayer;
+    if (multiplayer) {
+      this.openModal('coop-room', `<div class="modal-heading"><div><span class="eyebrow">TWO GARDENERS · ONE GARDEN</span><h2>Your co-op team</h2></div><button class="modal-close" data-close aria-label="Close co-op room">×</button></div><p class="modal-intro">Defend the same garden together. You each have your own gold, points, and gnomes. Both players press Ready for each round.</p><p class="coop-ring-legend"><span><i class="your-ring"></i>Cyan rings: your gnomes</span><span><i class="teammate-ring"></i>Amber rings: your teammate’s</span></p><div class="coop-players" id="coop-players"></div><p class="coop-room-message" id="coop-room-message" role="status"></p><div class="coop-room-actions"><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button><button class="text-button" data-coop-leave>Leave co-op and play solo</button></div><p class="coop-fineprint">Leaving ends this match for both players.</p>`);
+      this.syncCoopRoom(multiplayer);
+      return;
+    }
+    if (this.modalType === 'coop-lobby') return;
+    this.coopListSignature = '';
+    const currentMap = this.last?.game.map?.id || this.last?.game.map || MAPS[0].id;
+    this.openModal('coop-lobby', `<div class="modal-heading"><div><span class="eyebrow">TWO GARDENERS · ONE GARDEN</span><h2>Play co-op</h2></div><button class="modal-close" data-close aria-label="Close co-op lobbies">×</button></div><p class="modal-intro">Create a garden for someone to join, or hop into an open lobby. No accounts or room codes needed. Joining starts a fresh co-op run.</p><label class="coop-name-label" for="coop-name">Your nickname<input id="coop-name" type="text" maxlength="24" autocomplete="nickname" placeholder="Gardener" value="${esc(this.coopName || '')}"></label><section class="coop-create"><div><h3>Start a new garden</h3><label for="coop-map">Garden</label><select id="coop-map">${MAPS.map((map) => `<option value="${map.id}" ${map.id === currentMap ? 'selected' : ''}>${esc(map.name)}</option>`).join('')}</select></div><button class="primary-button" data-coop-create disabled>CREATE LOBBY</button></section><div class="coop-list-heading"><h3>Open lobbies</h3><button class="text-button" data-coop-refresh>Refresh</button></div><p class="coop-lobby-status" id="coop-lobby-status" role="status">Looking for open gardens…</p><div class="coop-lobbies" id="coop-lobbies"></div><p class="coop-fineprint">Each lobby has room for two players. Your host picks the garden; you share lives and split the rewards.</p>`);
+    document.getElementById('coop-name').addEventListener('input', (event) => { this.coopName = event.target.value; });
+    this.updateCoopLobby(this.coopLobbyState || { loading: true, available: false, lobbies: [] });
+  }
+
+  updateCoopLobby(update = {}) {
+    this.coopLobbyState = { ...this.coopLobbyState, ...update };
+    if (this.modalType !== 'coop-lobby') return;
+    const { loading = false, error, lobbies = [], available = false } = this.coopLobbyState;
+    const rooms = lobbies.filter((room) => room.mode === 'coop');
+    const status = document.getElementById('coop-lobby-status');
+    status.textContent = error || (loading ? 'Looking for open gardens…' : rooms.length ? `${rooms.length} open ${rooms.length === 1 ? 'garden' : 'gardens'} · pick a teammate below` : 'No open gardens yet. Create one and invite someone to open this page.');
+    status.dataset.error = String(!!error);
+    this.dialog.querySelector('[data-coop-create]').disabled = !available || loading;
+    this.dialog.querySelector('[data-coop-refresh]').disabled = loading;
+    const signature = JSON.stringify([rooms, available]);
+    if (signature !== this.coopListSignature) {
+      this.coopListSignature = signature;
+      const focusedRoom = document.activeElement?.dataset?.coopJoin;
+      const list = document.getElementById('coop-lobbies');
+      list.innerHTML = rooms.map((room) => `<article class="coop-lobby-row"><div><strong>${esc(room.hostName)}’s garden</strong><span>${esc(MAPS.find((map) => map.id === room.mapId)?.name || room.mapId)} · Co-op · ${n(room.players || 1)}/2 players</span></div><button class="primary-button" data-coop-join="${esc(room.roomId)}" ${!available ? 'disabled' : ''} aria-label="Join ${esc(room.hostName)}’s garden">JOIN ▶</button></article>`).join('');
+      if (focusedRoom) [...list.querySelectorAll('[data-coop-join]')].find(button => button.dataset.coopJoin === focusedRoom && !button.disabled)?.focus({ preventScroll: true });
+    }
+  }
+
+  syncCoopRoom(multiplayer) {
+    if (this.modalType !== 'coop-room') return;
+    const players = multiplayer.players || [];
+    const signature = JSON.stringify(players);
+    const list = document.getElementById('coop-players');
+    if (list.dataset.signature !== signature) {
+      list.dataset.signature = signature;
+      list.innerHTML = players.map((player) => `<div class="coop-player"><strong>${esc(player.name)}${player.id === multiplayer.sessionId ? ' (you)' : ''}</strong><span>${player.id === multiplayer.hostId ? 'Host · ' : ''}${!player.connected ? 'Reconnecting…' : player.ready ? 'Ready ✓' : 'In the garden'}</span></div>`).join('') + (players.length < 2 ? '<div class="coop-player coop-empty"><strong>Open seat</strong><span>Your lobby is visible to other gardeners.</span></div>' : '');
+    }
+    document.getElementById('coop-room-message').textContent = multiplayer.result ? 'This match has ended. Leave to start another garden.' : multiplayer.reconnecting || !multiplayer.connected ? 'Reconnecting to your garden…' : players.some((player) => !player.connected) ? 'The garden is paused while your teammate reconnects.' : players.length < 2 ? 'Waiting for another gardener to join…' : 'Your team is together. Build your defenses and press Ready!';
+  }
+
   showCottageClue() {
     this.openModal('clue', `<div class="modal-heading"><div><span class="eyebrow">PUMPKIN HOLLOW</span><h2>The cottage rhyme</h2></div><button class="modal-close" data-close aria-label="Close cottage clue">×</button></div><div class="cottage-clue"><p>The moon rises, a star wakes, a leaf falls, and a flame guides you home.</p><small>Four little lanterns remember the way.</small></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
   }
 
   showMaps() {
+    if (this.last?.state.multiplayer) { this.showCoopLobby(); return; }
     const current = this.last?.game.map;
     const currentId = typeof current === 'string' ? current : current?.id;
     const bestRounds = this.last?.game.profile.bestRounds || {};
@@ -411,6 +525,8 @@ export class UI {
       const setting = button.dataset.setting;
       const labels = { pause: state.paused ? '▶ Resume' : 'Ⅱ Pause', sound: `Effects: ${state.sound ? 'on' : 'off'}`, auto: `Auto rounds: ${state.autoStart ? 'on' : 'off'}` };
       button.textContent = labels[setting];
+      button.disabled = !!state.multiplayer && (setting === 'auto' || setting === 'pause' && (!state.multiplayer.connected || !!state.multiplayer.result || state.multiplayer.players?.length !== 2 || state.multiplayer.players?.some((player) => !player.connected)));
+      if (state.multiplayer && setting === 'auto') button.textContent = 'Co-op: both players ready';
       if (setting !== 'pause') button.setAttribute('aria-pressed', String(!!(setting === 'sound' ? state.sound : state.autoStart)));
     }
   }
@@ -418,6 +534,19 @@ export class UI {
   showResult(game) {
     const won = game.status === 'won';
     const survived = game.completedWaves ?? (won ? game.wave : Math.max(0, game.wave - 1));
+    const multiplayer = this.last?.state.multiplayer;
+    if (multiplayer) {
+      const ended = !!multiplayer.result;
+      const cleared = won && !ended;
+      const me = multiplayer.players?.find((player) => player.id === multiplayer.sessionId);
+      const voted = multiplayer.endlessReady ?? me?.endlessReady;
+      const together = multiplayer.connected && multiplayer.players?.length === 2 && multiplayer.players.every((player) => player.connected);
+      const reason = multiplayer.result?.reason;
+      const interrupted = ended && !['defeat', 'campaign-cleared'].includes(reason);
+      const message = cleared ? 'You saved the garden together! Both players can choose endless mode to keep this defense growing.' : interrupted ? reason === 'server-closed' ? 'The server closed this match. You can join a new lobby when it is back online.' : reason === 'idle-timeout' ? 'This garden closed after being idle. Start a new lobby whenever you are ready.' : 'Your co-op match has ended because a player left or could not reconnect.' : `Together, you survived through round ${n(survived)}. Start a new garden and try another strategy!`;
+      this.openModal('result', `<div class="result-card"><span class="eyebrow">${cleared ? 'GARDEN SAVED TOGETHER!' : 'CO-OP MATCH COMPLETE'}</span><h2>${cleared ? 'TEAM VICTORY!' : interrupted ? 'Garden closed' : 'What a team!'}</h2><p>${message}</p><div class="result-stats"><span><strong>${n(survived)}</strong><small>ROUNDS SURVIVED</small></span><span><strong>${game.towers.length}</strong><small>TEAM GNOMES</small></span><span><strong>${n(game.lives)}</strong><small>SHARED LIVES</small></span></div>${cleared ? `<button class="primary-button" data-continue-endless ${voted || !together || multiplayer.paused ? 'disabled' : ''}>${voted ? 'WAITING FOR TEAMMATE…' : 'CONTINUE IN ENDLESS MODE ∞'}</button>` : ''}<button class="${cleared ? 'text-button' : 'primary-button'}" data-coop-leave>LEAVE CO-OP</button><button class="text-button" data-close>View the battlefield</button></div>`);
+      return;
+    }
     this.openModal('result', `<div class="result-card"><span class="eyebrow">${won ? 'GARDEN SAVED!' : game.endless ? 'ENDLESS RUN COMPLETE' : 'THE SKELETONS GOT THROUGH'}</span><h2>${won ? 'VICTORY!' : game.endless ? 'What a stand!' : 'Try a new strategy!'}</h2><p>${won ? 'Your guardians saved the garden! Keep your whole defense and continue against ever stronger skeletons. How far can you go?' : `You survived through round ${n(survived)}. The garden fell during round ${n(game.wave)}.`}</p><div class="result-stats"><span><strong>${n(survived)}</strong><small>ROUNDS SURVIVED</small></span><span><strong>${game.towers.length}</strong><small>GNOMES</small></span><span><strong>${n(game.lives)}</strong><small>LIVES</small></span></div><p class="result-best">Garden best: <strong>round ${n(game.bestRound)}</strong><small>Saved in this browser · fully cleared rounds</small></p>${won ? '<button class="primary-button" data-continue-endless>CONTINUE IN ENDLESS MODE ∞</button><button class="text-button" data-restart>Start a new run</button>' : '<button class="primary-button" data-restart>PLAY AGAIN ▶</button>'}<button class="text-button" data-maps>Choose another garden</button><button class="text-button" data-close>View the battlefield</button></div>`);
   }
   announce(message, kind = 'round') {

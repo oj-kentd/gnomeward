@@ -10,6 +10,7 @@ concurrency:
 jobs:
   image:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,7 +27,7 @@ jobs:
           ACTUAL=$(node --input-type=module -e "import {SERVER_VERSION} from './server/config.js'; process.stdout.write(SERVER_VERSION)")
           test "$VERSION" = "$ACTUAL"
           docker build -f Dockerfile.server -t "gnomeward-server:$VERSION" .
-          docker run -d --name gnomeward-image-check --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --mount type=volume,target=/data -p 127.0.0.1:2567:2567 "gnomeward-server:$VERSION"
+          docker run -d --name gnomeward-image-check -e ALLOWED_ORIGINS=http://127.0.0.1:5175 --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --mount type=volume,target=/data -p 127.0.0.1:2567:2567 "gnomeward-server:$VERSION"
           trap 'docker logs gnomeward-image-check; docker rm -fv gnomeward-image-check' EXIT
           for attempt in {1..30}; do
             if curl -fsS http://127.0.0.1:2567/readyz; then break; fi
@@ -36,6 +37,14 @@ jobs:
           curl -fsS http://127.0.0.1:2567/readyz
           npx playwright install --with-deps chromium
           SERVER_URL=http://127.0.0.1:2567 npm run test:server-browser
+          VITE_MULTIPLAYER_URL=http://127.0.0.1:2567 npm run build
+          npm run preview -- --host 127.0.0.1 --port 5175 > /tmp/gnomeward-preview.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:5175/ > /dev/null; then break; fi
+            sleep 1
+          done
+          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:coop
+          PLAYTEST_URL=http://127.0.0.1:5175 node scripts/strawberry-browser-smoke.mjs
           mkdir -p release
           docker save "gnomeward-server:$VERSION" | gzip > "release/gnomeward-server-$VERSION-linux-amd64.tar.gz"
           cd release

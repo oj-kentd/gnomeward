@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { TOWERS, ENEMIES, SECRETS, cottagePosition } from './data.js';
 
-const ASSETS = ['reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
+const ASSETS = ['strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
 const palettes = [
   {grass:0x87aa59, edge:0x6c6946, road:0xe2c795, bg:0x183c35},
   {grass:0xa4ad64, edge:0x716147, road:0xe8cc9c, bg:0x293d32},
@@ -10,6 +10,7 @@ const palettes = [
   {grass:0x8c9891, edge:0x657c7e, road:0xdbd7c2, bg:0x294753},
   {grass:0x92915c, edge:0x625246, road:0xd7c2a1, bg:0x303b35},
   {grass:0x79a58a, edge:0x516d62, road:0xe1ceb0, bg:0x233f3e},
+  {grass:0xa4bd73, edge:0x697349, road:0xf1cfbb, bg:0x294737},
 ];
 export class GardenRenderer {
   constructor(container, handlers) {
@@ -99,10 +100,18 @@ export class GardenRenderer {
     // Border planting leaves the buildable interior clear.
     for(let i=0;i<68;i++){
       const horizontal=i<40;const x=horizontal?(random()*24-12):(i%2?-11.8:11.8);const z=horizontal?(i%2?-7.7:7.7):(random()*15-7.5);
-      if(distance(x,z)<1.7||!clearOfCottages(x,z)||(SECRETS[map.id]?.spots||[]).some(spot=>Math.hypot(spot.x-x,spot.z-z)<1.1))continue;let type=i%6===0?(index===1?'apple-tree':'tree'):index===4&&i%3===0?'pumpkin':i%3===0?'rock':i%4===0?'flower':'bush';if(type.endsWith('tree')&&distance(x,z)<3)type='bush';const scale=type==='tree'?.7+random()*.45:.55+random()*.6;
+      if(distance(x,z)<1.7||!clearOfCottages(x,z)||(SECRETS[map.id]?.spots||[]).some(spot=>Math.hypot(spot.x-x,spot.z-z)<1.1))continue;let type=i%6===0?(index===1?'apple-tree':'tree'):index===4&&i%3===0?'pumpkin':i%3===0?'rock':i%4===0?'flower':'bush';if(map.id==='strawberry'&&i%3!==0)type='strawberry-bush';if(type.endsWith('tree')&&distance(x,z)<3)type='bush';const scale=type==='tree'?.7+random()*.45:.55+random()*.6;
       this.add(type,x,.06,z,scale,scale,scale,undefined,random()*Math.PI*2);
     }
     for(let i=0;i<35;i++){const x=random()*23-11.5,z=random()*14-7;if(distance(x,z)>1.3&&clearOfCottages(x,z))this.add('flower',x,.045,z,.5,.5,.5,undefined,random()*6.28)}
+    if (map.id === 'strawberry') {
+      // Low rows of Blender berry plants leave routes, cottages and the starting
+      // defender clear while retaining generous space for players to build.
+      for (const x of [-10.3, -5.3, -.3, 5.2, 10.4]) for (const z of [-6.8, -3.0, .4, 3.2, 6.5]) {
+        if (distance(x, z) < 2 || !clearOfCottages(x, z) || Math.hypot(x, z) < 1.6) continue;
+        this.add('strawberry-bush', x, .06, z, .95, .95, .95, undefined, random() * Math.PI * 2);
+      }
+    }
     if(index===3)for(let i=0;i<10;i++){const x=i%2?-10.5:10.5,z=-6+i*1.3;if(distance(x,z)>1.4&&clearOfCottages(x,z))this.add('crystal',x,.04,z,.55,.7,.55)}
     if(index===2){this.add('water',3.2,.035,-6.9,4.7,.06,1.5);this.add('water',4.2,.035,-7.8,6,.06,1.3);}
     const exits = new Set(), entrances = new Set();
@@ -146,6 +155,7 @@ export class GardenRenderer {
       this.world.add(object);
       this.secrets.set(spot.id, object);
     }
+    this.lastRenderTime = undefined;
     this.resize();
   }
   resize() {
@@ -172,10 +182,41 @@ export class GardenRenderer {
     this.ghost.position.set(x,.05,z);this.ghost.visible=true;this.showRange(x,z,range,valid);
   }
   showRange(x,z,range,valid=true){this.range.position.set(x,.13,z);this.range.scale.set(Math.min(range,35),1,Math.min(range,35));this.range.visible=true;this.range.traverse(o=>{if(o.isMesh)o.material.color.set(valid?0xd5f395:0xf3817e)})}
+  // Smooth only the displayed location between server snapshots. Keep the authoritative
+  // game entities untouched, and snap new actors or large discontinuities immediately.
+  actorPosition(object, x, y, z, smoothing) {
+    const previous = object.userData.displayPosition;
+    if (!previous || smoothing === null || Math.hypot(x - previous.x, z - previous.z) > 3) {
+      object.userData.displayPosition = { x, z };
+    } else {
+      previous.x += (x - previous.x) * smoothing;
+      previous.z += (z - previous.z) * smoothing;
+    }
+    const position = object.userData.displayPosition;
+    object.position.set(position.x, y, position.z);
+  }
+  ownershipRing(object, tower, multiplayer) {
+    let ring = object.getObjectByName('owner-ring');
+    if (!multiplayer || !tower.ownerId) { if (ring) ring.visible = false; return; }
+    const mine = tower.ownerId === multiplayer.sessionId;
+    if (!ring || ring.userData.mine !== mine) {
+      if (ring) object.remove(ring);
+      ring = this.clone('ring', mine ? 0x68d9f0 : 0xffcc72);
+      ring.name = 'owner-ring';
+      ring.userData.mine = mine;
+      ring.position.y = .025;
+      ring.scale.set(.58, .55, .58);
+      object.add(ring);
+    }
+    ring.visible = true;
+  }
   render(game,state,time) {
+    const elapsed = this.lastRenderTime === undefined ? 1 / 60 : Math.max(0, Math.min(.1, time - this.lastRenderTime));
+    this.lastRenderTime = time;
+    const smoothing = state.multiplayer ? 1 - Math.exp(-elapsed * 18) : null;
     const seen=new Set();
-    for(const t of game.towers){const key='t'+t.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone('gnome-'+t.type);o.userData.towerId=t.id;this.actors.add(o);this.entities.set(key,o)}o.position.set(t.x,.07,t.z);const nearest=game.enemies.reduce((best,e)=>!best||Math.hypot(e.x-t.x,e.z-t.z)<Math.hypot(best.x-t.x,best.z-t.z)?e:best,null);if(nearest)o.rotation.y=Math.atan2(nearest.x-t.x,nearest.z-t.z);o.scale.setScalar(1+Math.min(t.levels.reduce((a,b)=>a+b,0),6)*.035);}
-    for(const e of game.enemies){const key='e'+e.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone(e.boss||e.isBoss?'skeleton-boss':'skeleton');const color=e.color||ENEMIES[e.type]?.color; if(color)o.traverse(m=>{if(!m.isMesh)return;const tint=mat=>{if(!/cream|purple|bone|skull|rib/i.test(mat.name))return mat;const k=mat.uuid+color;if(!this.tintMaterials.has(k)){const copy=mat.clone();copy.color.set(color);this.tintMaterials.set(k,copy)}return this.tintMaterials.get(k)};m.material=Array.isArray(m.material)?m.material.map(tint):tint(m.material)});this.actors.add(o);this.entities.set(key,o);const hp=this.clone('path',0xd5f395);hp.name='health';hp.scale.set(.8,.055,.065);hp.position.set(0,1.65,0);o.add(hp);}o.position.set(e.x,.1+Math.sin(time*10+e.id)*.035,e.z);if(o.userData.lastX!==undefined){const dx=e.x-o.userData.lastX,dz=e.z-o.userData.lastZ;if(Math.abs(dx)+Math.abs(dz)>.001)o.rotation.y=Math.atan2(dx,dz)}o.userData.lastX=e.x;o.userData.lastZ=e.z;const hp=o.getObjectByName('health');if(hp){hp.scale.x=.8*Math.max(.01,e.hp/e.maxHp);hp.visible=e.hp<e.maxHp;}if(e.slowRemaining>0)o.rotation.z=Math.sin(time*5)*.025;else o.rotation.z=0;
+    for(const t of game.towers){const key='t'+t.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone('gnome-'+t.type);o.userData.towerId=t.id;this.actors.add(o);this.entities.set(key,o)}o.position.set(t.x,.07,t.z);this.ownershipRing(o,t,state.multiplayer);const nearest=game.enemies.reduce((best,e)=>!best||Math.hypot(e.x-t.x,e.z-t.z)<Math.hypot(best.x-t.x,best.z-t.z)?e:best,null);if(nearest)o.rotation.y=Math.atan2(nearest.x-t.x,nearest.z-t.z);o.scale.setScalar(1+Math.min(t.levels.reduce((a,b)=>a+b,0),6)*.035);}
+    for(const e of game.enemies){const key='e'+e.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone(e.boss||e.isBoss?'skeleton-boss':'skeleton');const color=e.color||ENEMIES[e.type]?.color; if(color)o.traverse(m=>{if(!m.isMesh)return;const tint=mat=>{if(!/cream|purple|bone|skull|rib/i.test(mat.name))return mat;const k=mat.uuid+color;if(!this.tintMaterials.has(k)){const copy=mat.clone();copy.color.set(color);this.tintMaterials.set(k,copy)}return this.tintMaterials.get(k)};m.material=Array.isArray(m.material)?m.material.map(tint):tint(m.material)});this.actors.add(o);this.entities.set(key,o);const hp=this.clone('path',0xd5f395);hp.name='health';hp.scale.set(.8,.055,.065);hp.position.set(0,1.65,0);o.add(hp);}this.actorPosition(o,e.x,.1+Math.sin(time*10+e.id)*.035,e.z,smoothing);if(o.userData.lastX!==undefined){const dx=e.x-o.userData.lastX,dz=e.z-o.userData.lastZ;if(Math.abs(dx)+Math.abs(dz)>.001)o.rotation.y=Math.atan2(dx,dz)}o.userData.lastX=e.x;o.userData.lastZ=e.z;const hp=o.getObjectByName('health');if(hp){hp.scale.x=.8*Math.max(.01,e.hp/e.maxHp);hp.visible=e.hp<e.maxHp;}if(e.slowRemaining>0)o.rotation.z=Math.sin(time*5)*.025;else o.rotation.z=0;
       if(!e.capturedBy&&game.barriers.some(b=>b.hp>0&&Math.hypot(e.x-b.x,e.z-b.z)<.4)){o.rotation.z=Math.sin(time*12+e.id)*.1;o.position.y+=Math.abs(Math.sin(time*12+e.id))*.04;}
       if(e.allyTargetId&&!e.capturedBy){const ally=game.allies.find(a=>a.id===e.allyTargetId);if(ally)o.rotation.y=Math.atan2(ally.x-e.x,ally.z-e.z);o.rotation.z=Math.sin(game.time*12+e.id)*.1;}
       if(e.capturedBy){o.position.y=-.06;o.position.x+=Math.sin(time*5+e.id)*.16;o.position.z+=Math.cos(time*5+e.id)*.16;o.rotation.y=time*5+e.id;o.rotation.z=.25;}o.scale.setScalar(THREE.MathUtils.lerp(o.scale.x,e.capturedBy?.52:1,.25));}
@@ -193,7 +234,7 @@ export class GardenRenderer {
       }
       const target = ally.phase === 'fighting' && game.enemies.find(enemy => enemy.id === ally.targetId && enemy.hp > 0);
       const dx = ally.x - (object.userData.lastX ?? ally.x), dz = ally.z - (object.userData.lastZ ?? ally.z);
-      object.position.set(ally.x, .12, ally.z);
+      this.actorPosition(object, ally.x, .12, ally.z, smoothing);
       if (target) {
         object.rotation.y = Math.atan2(target.x - ally.x, target.z - ally.z);
         const swing = Math.sin(game.time * 12 + ally.id);
@@ -254,7 +295,8 @@ export class GardenRenderer {
       fs.add(effect.id);
       let object = this.fx.get(effect.id);
       if (!object) {
-        object = this.clone(['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type) ? 'soul-puff' : effect.type === 'explosion' ? 'explosion' : 'projectile', effect.color);
+        const berryModel = effect.type === 'strawberry-mortar' ? 'strawberry-fruit' : effect.type === 'strawberry-seed' ? 'strawberry-seed' : null;
+        object = this.clone(berryModel || (['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type) ? 'soul-puff' : effect.type === 'explosion' ? 'explosion' : 'projectile'), berryModel ? undefined : effect.color);
         this.actors.add(object);
         this.fx.set(effect.id, object);
       }
@@ -273,6 +315,16 @@ export class GardenRenderer {
         object.scale.setScalar(.26);
       } else if (effect.type === 'impact') {
         object.scale.setScalar(.08 + .18 * (1 - progress));
+      } else if (effect.type === 'strawberry-mortar' || effect.type === 'strawberry-seed') {
+        // Mortar fruit and its seed rays follow fixed destinations; the server
+        // owns their impact time and damage. This is display animation only.
+        const dx = effect.tx - effect.x, dz = effect.tz - effect.z;
+        const mortar = effect.type === 'strawberry-mortar';
+        const height = mortar ? .70 * (1 - progress) + .20 * progress + Math.sin(progress * Math.PI) * 3.3 : .27;
+        object.position.set(effect.x + dx * progress, height, effect.z + dz * progress);
+        object.scale.setScalar(mortar ? .30 : .14);
+        if (mortar) object.rotation.set(progress * Math.PI * 2, Math.atan2(dx, dz), progress * Math.PI);
+        else object.rotation.set(Math.PI / 2, 0, -Math.atan2(dx, dz));
       } else {
         // A compact Blender-made pellet travels from the weapon to its moving target.
         const target = game.enemies.find(enemy => enemy.id === effect.targetId);

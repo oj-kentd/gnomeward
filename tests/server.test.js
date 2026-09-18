@@ -56,11 +56,27 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
   const url = `http://127.0.0.1:${app.port}`;
   const client = new Client(url);
   const connections = [];
+  async function lobbies() {
+    const response = await fetch(`${url}/lobbies`, { headers: { origin: 'https://game.example' } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), 'https://game.example');
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const body = await response.json();
+    assert.deepEqual(Object.keys(body), ['lobbies']);
+    return body.lobbies;
+  }
+  async function reserve(method, options) {
+    const response = await fetch(`${url}/matchmake/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(options) });
+    assert.equal(response.status, 200);
+    return response.json();
+  }
   try {
     await t.test('health, origin rejection, request limits and private routes', async () => {
       const response = await fetch(`${url}/healthz`);
       assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { status: 'ok', service: 'gnomeward-server', version: '0.2.0', protocol: 1 });
+      assert.deepEqual(await response.json(), { status: 'ok', service: 'gnomeward-server', version: '0.2.1', protocol: 1 });
+      assert.deepEqual(await lobbies(), []);
+      assert.equal((await fetch(`${url}/lobbies`, { headers: { origin: 'https://evil.example' } })).status, 403);
       assert.equal((await fetch(`${url}/readyz`)).status, 200);
       assert.equal((await fetch(`${url}/data/results.json`)).status, 404);
       assert.equal((await fetch(`${url}/matchmake/create/gnomeward`, { method: 'POST', headers: { origin: 'https://evil.example', 'content-type': 'application/json' }, body: '{}' })).status, 403);
@@ -75,13 +91,37 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
       await assert.rejects(client.create('gnomeward', { protocol: 99, name: 'Alice', mode: 'coop', mapId: 'meadow' }), /Protocol/);
       assert.equal(app.rooms.size, 0);
     });
-    await t.test('two seats, ownership, ready synchronization and reconnect token', async () => {
-      const a = await client.create('gnomeward', { protocol: 1, name: 'Alice', mode: 'coop', mapId: 'meadow', maxClients: 100, gold: 9999 });
+    await t.test('public discovery tracks available seats, host reconnect, ownership and ready synchronization', async () => {
+      const hostReservation = await reserve('create/gnomeward', { protocol: 1, name: 'Alice', mode: 'coop', mapId: 'meadow', maxClients: 100, gold: 9999, unlockedRewards: ['strawberry'] });
+      assert.deepEqual(await lobbies(), [], 'a host reservation without a connected host is not an open lobby');
+      let a = await client.consumeSeatReservation(hostReservation);
       connections.push(a); const sa = observe(a);
-      const b = await new Client(url).joinById(a.roomId, { protocol: 1, name: 'Bob' });
+      await until(() => sa.snapshot?.players.length === 1, 'host arrival');
+      const listing = { roomId: a.roomId, hostName: 'Alice', mode: 'coop', mapId: 'meadow', players: 1, maxPlayers: 2 };
+      assert.deepEqual(await lobbies(), [listing], 'public metadata contains no session IDs, reconnect tokens or game state');
+      a.reconnection.enabled = false;
+      const hostToken = a.reconnectionToken;
+      const hostId = a.sessionId;
+      a.connection.close(1000, 'test lobby disconnect');
+      await until(() => [...app.rooms][0].match.players.get(hostId)?.connected === false, 'disconnected lobby host');
+      assert.deepEqual(await lobbies(), [], 'a disconnected host cannot be joined through discovery');
+      a = await new Client(url).reconnect(hostToken);
+      connections.push(a);
+      a.onMessage('snapshot', value => { sa.snapshot = value; });
+      a.onMessage('command-error', value => sa.errors.push(value));
+      a.onError(() => {});
+      a.send('snapshot');
+      await until(() => sa.snapshot?.players[0]?.connected, 'reconnected lobby host');
+      assert.deepEqual(await lobbies(), [listing]);
+      const guestReservation = await reserve(`joinById/${a.roomId}`, { protocol: 1, name: 'Bob' });
+      assert.deepEqual(await lobbies(), [], 'a pending guest reservation removes the lobby before its WebSocket connects');
+      await assert.rejects(new Client(url).joinById(a.roomId, { protocol: 1, name: 'Competing guest' }));
+      const b = await new Client(url).consumeSeatReservation(guestReservation);
       connections.push(b); const sb = observe(b);
       await until(() => sa.snapshot?.players.length === 2 && sb.snapshot?.players.length === 2, 'both seats');
+      assert.deepEqual(await lobbies(), [], 'filled lobbies are hidden');
       assert.equal(sa.snapshot.players[0].gold, 325);
+      assert.equal(sa.snapshot.boards[0].state.profile.unlocks.includes('strawberry'), false, 'browser cannot forge encounter rewards');
       await assert.rejects(new Client(url).joinById(a.roomId, { protocol: 1, name: 'Third' }));
       await assert.rejects(client.create('gnomeward', { protocol: 1, name: 'Extra', mode: 'coop', mapId: 'meadow' }), /busy/);
       a.send('command', { action: 'place', type: 'sprout', x: -4, z: 0, playerId: b.sessionId, gold: 9999 });
@@ -93,6 +133,7 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
       assert.match(sb.errors[0].message, /own gnomes/);
       a.send('command', { action: 'ready' }); b.send('command', { action: 'ready' });
       await until(() => sa.snapshot?.boards[0].state.wave === 1, 'wave start');
+      assert.deepEqual(await lobbies(), [], 'started matches are hidden');
       b.reconnection.enabled = false;
       const token = b.reconnectionToken;
       b.connection.close(1000, 'test disconnect');
@@ -105,8 +146,11 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
       assert.equal(reconnected.sessionId, b.sessionId);
       await until(() => sa.snapshot.players.every(p => p.connected), 'reconnect');
       assert.equal([...app.rooms][0].match.board().towers[0].ownerId, a.sessionId);
-      await reconnected.leave(); await a.leave();
+      await reconnected.leave();
+      assert.deepEqual(await lobbies(), [], 'a sealed match does not reopen when a guest leaves');
+      await a.leave();
       await until(() => app.rooms.size === 0, 'room disposal');
+      assert.deepEqual(await lobbies(), [], 'closed rooms are removed');
       await app.store.flush();
       assert.equal(app.store.count, 1);
     });
@@ -128,14 +172,37 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
       assert.equal(app.store.count, 2);
       assert.equal((await openResultStore(directory)).count, 2);
     });
+    await t.test('Strawberry victory persists a party reward for later rooms', async () => {
+      const a = await client.create('gnomeward', { protocol: 1, name: 'Alice', mode: 'coop', mapId: 'strawberry' });
+      connections.push(a); const sa = observe(a);
+      const b = await new Client(url).joinById(a.roomId, { protocol: 1, name: 'Bob' });
+      connections.push(b); observe(b);
+      await until(() => sa.snapshot?.players.length === 2);
+      assert.equal(sa.snapshot.boards[0].state.towers[0].ownerId, a.sessionId);
+      a.send('command', { action: 'ready' }); b.send('command', { action: 'ready' });
+      await until(() => sa.snapshot?.boards[0].state.wave === 1);
+      // Put the authoritative simulation at the last cleared enemy of wave 20.
+      // No browser command can set these fields; gameplay tests cover the campaign.
+      const board = [...app.rooms][0].match.board();
+      board.wave = 20; board._queue = []; board.enemies = [];
+      await until(() => sa.snapshot?.boards[0].state.status === 'won');
+      await until(() => app.store.unlocks.includes('strawberry'), 'persistent encounter reward');
+      await app.store.flush();
+      assert.deepEqual((await openResultStore(directory)).unlocks, ['strawberry']);
+      await b.leave(); await a.leave();
+      await until(() => app.rooms.size === 0);
+      await app.store.flush();
+      assert.equal(app.store.count, 3);
+    });
     await t.test('shutdown records an interrupted match without awarding a PvP win', async () => {
       const a = await client.create('gnomeward', { protocol: 1, name: 'Alice', mode: 'pvp', mapId: 'meadow' });
       connections.push(a); observe(a);
       const b = await new Client(url).joinById(a.roomId, { protocol: 1, name: 'Bob' });
       connections.push(b); observe(b);
+      assert.ok([...app.rooms][0].match.board(a.sessionId).isUnlocked('strawberry'), 'later rooms inherit the earned party reward');
       await app.stop();
       const records = JSON.parse(await readFile(join(directory, 'results.json'), 'utf8')).results;
-      assert.equal(records.length, 3);
+      assert.equal(records.length, 4);
       assert.equal(records.at(-1).reason, 'server-closed');
       assert.equal(records.at(-1).winnerId, null);
     });
@@ -144,4 +211,29 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
     await app.stop();
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('encounter rewards persist independently of the rolling match history', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'gnomeward-reward-'));
+  try {
+    const store=await openResultStore(directory);
+    assert.deepEqual(store.unlocks,[]);
+    await Promise.all([store.grantUnlock('strawberry'),store.record({roomId:'victory',reason:'campaign-cleared'}),store.grantUnlock('strawberry')]);
+    await store.flush();
+    const restored=await openResultStore(directory);
+    assert.deepEqual(restored.unlocks,['strawberry']);assert.equal(restored.count,1);
+    const exported=restored.unlocks;exported.push('necro');
+    assert.deepEqual(restored.unlocks,['strawberry']);
+    await assert.rejects(store.grantUnlock('made-up'),/Unknown/);
+  } finally { await rm(directory,{recursive:true,force:true}); }
+});
+
+test('saving a completed encounter also preserves its reward if the room closed before retry', async () => {
+  const directory=await mkdtemp(join(tmpdir(),'gnomeward-completion-'));
+  try {
+    const store=await openResultStore(directory);
+    await store.record({roomId:'cleared',mapId:'strawberry',reason:'campaign-cleared',players:[{completedWaves:20}]});
+    assert.deepEqual(store.unlocks,['strawberry']);
+    assert.deepEqual((await openResultStore(directory)).unlocks,['strawberry']);
+  } finally { await rm(directory,{recursive:true,force:true}); }
 });

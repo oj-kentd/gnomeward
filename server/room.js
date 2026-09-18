@@ -2,17 +2,16 @@ import { Room } from '@colyseus/core';
 import { Match, validateIdentity } from './match.js';
 
 /** Configuration is closed over by the server, never merged with browser options. */
-export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () => {}, onRoomClose = () => {}, reconnectSeconds = 60, lobbyIdleMs = 300_000, roomIdleMs = 1_800_000 } = {}) {
+export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () => {}, onRoomClose = () => {}, getUnlockedRewards = () => [], onRewardUnlocked = () => {}, reconnectSeconds = 60, lobbyIdleMs = 300_000, roomIdleMs = 1_800_000 } = {}) {
   return class GnomewardRoom extends Room {
     maxClients = 2;
     autoDispose = true;
 
     async onCreate(options) {
       validateIdentity(options);
-      this.match = new Match(options);
+      this.match = new Match({ ...options, unlockedRewards: getUnlockedRewards() });
       await onRoomOpen(this);
       this.registered = true;
-      await this.setPrivate(true);
       this.budgets = new Map();
       this.backpressure = new Map();
       this.pendingJoins = new Map();
@@ -38,6 +37,7 @@ export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () =
           this.match.step(0.05);
           this.accumulator -= 50;
         }
+        this.saveEncounterReward();
         this.saveResult();
         if (!this.match.result && !this.match.paused && [...this.match.boards.values()].some(board => board.status === 'wave')) this.lastActivity = Date.now();
       }, 50);
@@ -50,6 +50,13 @@ export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () =
       if (options.mode !== undefined && options.mode !== this.match.mode) throw new Error('Room mode does not match.');
       if (options.mapId !== undefined && options.mapId !== this.match.mapId) throw new Error('Room map does not match.');
       return true;
+    }
+
+    lobbyListing() {
+      const match = this.match;
+      const host = match?.players.get(match.hostId);
+      if (!host?.connected || match.players.size !== 1 || match.sealed || match.started || match.result || this.locked || this.hasReachedMaxClients()) return null;
+      return { roomId: this.roomId, hostName: host.name, mode: match.mode, mapId: match.mapId, players: 1, maxPlayers: this.maxClients };
     }
 
     onJoin(client, options) {
@@ -138,6 +145,19 @@ export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () =
         snapshot ??= this.match.snapshot(this.roomId);
         client.send('snapshot', snapshot);
       }
+    }
+
+    async saveEncounterReward() {
+      if (this.rewardSaved || this.rewardPending || Date.now() < (this.rewardRetryAt || 0) || this.match.mapId !== 'strawberry' ||
+          ![...this.match.boards.values()].some(board => board.completedWaves >= 20 && board.profile.unlocks.includes('strawberry'))) return;
+      this.rewardPending = true;
+      try {
+        await onRewardUnlocked('strawberry');
+        this.rewardSaved = true;
+      } catch (error) {
+        this.rewardRetryAt = Date.now() + 5000;
+        console.error('Could not save Strawberry reward:', error.message);
+      } finally { this.rewardPending = false; }
     }
 
     saveResult() {

@@ -14,14 +14,15 @@ export function validateIdentity(options) {
 
 /** Server-only state. Browser commands can never import gold, unlocks, HP, or saves. */
 export class Match {
-  constructor({ mode, mapId }) {
+  constructor({ mode, mapId, unlockedRewards = [] }) {
     if (!['coop', 'pvp'].includes(mode)) reject('Choose coop or pvp.');
     if (!MAPS.some(map => map.id === mapId)) reject('Unknown map.');
     this.mode = mode;
     this.mapId = mapId;
+    this.unlockedRewards = unlockedRewards.filter(id => id === 'strawberry');
     this.players = new Map();
     this.boards = new Map();
-    if (mode === 'coop') this.boards.set(null, new Game(mapId));
+    if (mode === 'coop') this.boards.set(null, new Game(mapId, { unlocks: [...this.unlockedRewards] }));
     this.hostId = null;
     this.speed = 1;
     this.manualPause = false;
@@ -30,6 +31,8 @@ export class Match {
     this.result = null;
     this.tick = 0;
     this.freeTowerOwners = new Map();
+    this.eventIds = new WeakMap();
+    this.nextEventId = 0;
   }
 
   get paused() { return this.manualPause || this.players.size !== 2 || [...this.players.values()].some(p => !p.connected); }
@@ -39,7 +42,8 @@ export class Match {
     const player = { id, name, connected: true, ready: false, endlessReady: false, gold: this.mode === 'coop' ? 325 : 650, points: 0 };
     this.players.set(id, player);
     this.hostId ??= id;
-    if (this.mode === 'pvp') this.boards.set(id, new Game(this.mapId));
+    if (this.mode === 'coop') for (const tower of this.board().towers) tower.ownerId ??= this.hostId;
+    if (this.mode === 'pvp') this.boards.set(id, new Game(this.mapId, { unlocks: [...this.unlockedRewards] }));
     if (this.players.size === 2) this.sealed = true;
     this._syncWallets();
     return player;
@@ -131,7 +135,7 @@ export class Match {
       }
       return;
     }
-    if (this.paused && this.started) reject('The match is paused.');
+    if (this.started && (this.players.size !== 2 || [...this.players.values()].some(p => !p.connected))) reject('The match is paused while a player reconnects.');
     if (!['planning', 'wave'].includes(game.status)) reject('This board is not accepting actions.');
     if (action === 'discover') {
       if (typeof message.id !== 'string' || !SECRETS[this.mapId]?.spots.some(spot => spot.id === message.id)) reject('Unknown discovery.');
@@ -192,7 +196,10 @@ export class Match {
         ...Object.fromEntries(BOARD_FIELDS.map(field => [field, game[field]])),
         profile: { unlocks: [...game.profile.unlocks], bestRounds: { ...game.profile.bestRounds } },
         bestRound: game.bestRound,
-        events: game.events.slice(-12),
+        events: game.events.slice(-12).map(event => {
+          if (!this.eventIds.has(event)) this.eventIds.set(event, ++this.nextEventId);
+          return { ...event, eventId: this.eventIds.get(event) };
+        }),
       } })),
     });
   }

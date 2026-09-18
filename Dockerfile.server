@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim
 LABEL org.opencontainers.image.title="Gnomeward multiplayer server" \
       org.opencontainers.image.source="https://github.com/oj-kentd/gnomeward" \
-      org.opencontainers.image.version="0.2.0"
+      org.opencontainers.image.version="0.2.1"
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=2567 DATA_DIR=/data
 COPY package.json package-lock.json ./

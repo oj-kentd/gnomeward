@@ -16,7 +16,7 @@ The `.blend` file stores the meshes hidden to keep portrait renders clean; revea
 
 ## Art direction
 
-Rounded woodland toy proportions, oversized bent wool hats, red pompoms, hidden eyes, large noses, ivory beards, tartan coats and soft boots. Defender colors carry across hat, clothing, and weapon. Environment pieces share a warm rounded toy garden palette. Assets are intentionally compact and reusable across all six maps.
+Rounded woodland toy proportions, oversized bent wool hats, red pompoms, hidden eyes, large noses, ivory beards, tartan coats and soft boots. Defender colors carry across hat, clothing, and weapon. Environment pieces share a warm rounded toy garden palette. Assets are intentionally compact and reusable across all seven maps.
 
 ## Rounded garden environment
 
@@ -53,3 +53,12 @@ blender --background --python art/generate_necromancer.py
 ```
 
 This exports Morrow’s `gnome-necro.glb` and `necro.png` portrait, the 1.05-unit-tall `reborn-gnome.glb`, a compact `soul-puff.glb`, four subtly marked pumpkin models, and the cottage’s `necro-clue.glb` plaque. All characters face +Z with their bases at Y=0. `art/necromancer.blend` is the editable collection; `art/necromancer-preview.png` shows the new family of assets. The pumpkin material named `pumpkin-rune` has no initial emission; the renderer lights it only after a correct discovery. Existing characters and garden assets are preserved.
+
+
+## Strawberry Fields
+
+```sh
+blender --background --python art/generate_strawberry.py
+```
+
+This separately exports `gnome-strawberry.glb` and its `strawberry.png` portrait, the rounded `strawberry-fruit.glb` mortar projectile, `strawberry-seed.glb` shrapnel and `strawberry-bush.glb` field decoration. The gnome keeps the original plush proportions with a red seeded hat, green leaf accents, an ivory beard and a hollow toy mortar. The fruit's cream seeds and green leaves are separate material regions; preserve those colors when rendering it. Fruit and seed projectiles are centered on the origin; the berry's radius is approximately one unit and the elongated seed has a one-unit major radius. The bush has an approximately 1.2-unit footprint and a low padded base. `art/strawberry.blend` is the editable source collection, and `art/strawberry-preview.png` shows the family together. Strawberry Fields uses the existing rounded garden and path assets together with these berry plants; it does not require a monolithic map model. Existing assets are preserved.

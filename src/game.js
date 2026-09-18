@@ -74,6 +74,10 @@ export class Game {
     // Preserve the original single-route API for callers and map previews.
     this._segments = this.routes[0].segments;
     this.pathLength = this.routes[0].length;
+    for (const starter of this.map.startingTowers || []) {
+      if (!TOWERS[starter.type] || !this._validTowerSpot(starter.x, starter.z)) continue;
+      this._makeTower(starter.type, starter.x, starter.z, 0).starting = true;
+    }
   }
 
   _event(type, message, extra = {}) {
@@ -130,7 +134,7 @@ export class Game {
 
   isUnlocked(type) {
     const tower = TOWERS[type];
-    return !!tower && ((!tower.unlockWave && !tower.unlockSecret) || this.profile.unlocks.includes(type));
+    return !!tower && ((!tower.unlockWave && !tower.unlockSecret && !tower.unlockMap) || this.profile.unlocks.includes(type));
   }
 
   _validTowerSpot(x, z) {
@@ -268,6 +272,7 @@ export class Game {
       }
       case 'crystal': stats = { damage: 0, range: 4 + d, interval: Math.max(8, 12 - c * 1.4), barrierHp: [70, 120, 200, 320][a], barrierLifetime: 20 + a * 2, barrierLimit: 2, explosionDamage: [0, 28, 55, 95][b], explosionRadius: 1.5 + b * 0.4 }; break;
       case 'necro': stats = { damage: [12, 20, 32, 48][c], interval: 1.5 * 0.82 ** c, range: 4 + c * 0.6, allyHp: [50, 90, 150, 240][a], allyDamage: [8, 14, 24, 38][a], allyInterval: 0.8, allySpeed: 3.5 + b * 0.5, allyLifetime: 55, allyLimit: 3 + b * 2, summonInterval: [2.4, 1.8, 1.2, 0.7][b] }; break;
+      case 'strawberry': stats = { damage: [18,34,60,96][a], interval: 4 * 0.76 ** c, range: 40, explosionRadius: [2.1,2.45,2.8,3.2][a], seedCount: [8,12,16,20][b], seedDamage: [4,6,9,13][b], seedPierce: [1,1,2,3][b], seedRange: 3 + b * 0.25, flightDuration: [1.5,1.25,1,0.8][c] }; break;
       default: stats = { damage: 0, interval: 1, range: 0 };
     }
     return { shots: 1, poisonDps: 0, poisonDuration: 0, poisonSpreadRadius: 0, poisonSpreadInterval: 0, poisonSpreadTargets: 0, poisonSpreadMultiplier: 0, slowDuration: 0, slowMultiplier: 1, explosionDamage: 0, explosionRadius: 0, ...stats, attackSpeed: 1 / stats.interval };
@@ -320,6 +325,16 @@ export class Game {
   }
 
   _launch(tower, target, stats) {
+    if (tower.type === 'strawberry') {
+      this.projectiles.push({
+        id: ++this._id, type: 'strawberry-mortar', unitType: tower.type, sourceId: tower.id,
+        x: tower.x, z: tower.z, tx: target.x, tz: target.z,
+        ttl: stats.flightDuration, maxTtl: stats.flightDuration, color: TOWERS.strawberry.color,
+        damage: stats.damage, radius: stats.explosionRadius, seedCount: stats.seedCount,
+        seedDamage: stats.seedDamage, seedPierce: stats.seedPierce, seedRange: stats.seedRange,
+      });
+      return;
+    }
     const duration = clamp(distance(tower, target) / 14, 0.16, 1.8);
     this.projectiles.push({
       id: ++this._id, type: tower.type === 'stun' ? 'stun' : 'shot',
@@ -334,6 +349,16 @@ export class Game {
     const flying = this.projectiles;
     this.projectiles = [];
     for (const shot of flying) {
+      if (shot.type === 'strawberry-mortar') {
+        shot.ttl -= dt;
+        if (shot.ttl > 0) this.projectiles.push(shot);
+        else this._burstStrawberry(shot);
+        continue;
+      }
+      if (shot.type === 'strawberry-seed') {
+        this._advanceSeed(shot, dt);
+        continue;
+      }
       const target = this.enemies.find(e => e.id === shot.targetId && e.hp > 0);
       if (!target) continue;
       shot.tx = target.x;
@@ -350,6 +375,44 @@ export class Game {
       }
       this._effect('impact', target, target, shot.color, 0.12);
     }
+  }
+
+  _burstStrawberry(shot) {
+    const center = { x: shot.tx, z: shot.tz };
+    this._effect('explosion', center, center, TOWERS.strawberry.color, 0.5);
+    this.effects.at(-1).radius = shot.radius;
+    for (const enemy of this.enemies) {
+      if (enemy.hp > 0 && distance(center, enemy) <= shot.radius) this._damage(enemy, shot.damage, shot.sourceId);
+    }
+    for (let i = 0; i < shot.seedCount; i++) {
+      const angle = i / shot.seedCount * Math.PI * 2;
+      this.projectiles.push({
+        id: ++this._id, type: 'strawberry-seed', unitType: 'strawberry', sourceId: shot.sourceId,
+        x: center.x, z: center.z, tx: center.x + Math.cos(angle) * shot.seedRange, tz: center.z + Math.sin(angle) * shot.seedRange,
+        ttl: 0.5, maxTtl: 0.5, color: '#ffe5a3', damage: shot.seedDamage, pierce: shot.seedPierce, hitIds: [],
+      });
+    }
+  }
+
+  _advanceSeed(shot, dt) {
+    const before = clamp(1 - shot.ttl / shot.maxTtl, 0, 1);
+    shot.ttl -= dt;
+    const after = clamp(1 - shot.ttl / shot.maxTtl, 0, 1);
+    const dx = shot.tx - shot.x, dz = shot.tz - shot.z;
+    const ax = shot.x + dx * before, az = shot.z + dz * before;
+    const sx = dx * (after - before), sz = dz * (after - before);
+    const lengthSquared = sx * sx + sz * sz;
+    const contacts = this.enemies.filter(enemy => enemy.hp > 0 && !shot.hitIds.includes(enemy.id)).map(enemy => {
+      const t = lengthSquared > 0 ? clamp(((enemy.x - ax) * sx + (enemy.z - az) * sz) / lengthSquared, 0, 1) : 0;
+      return { enemy, t, separation: Math.hypot(enemy.x - ax - sx * t, enemy.z - az - sz * t) };
+    }).filter(({ separation }) => separation <= 0.33).sort((a, b) => a.t - b.t);
+    for (const { enemy } of contacts) {
+      if (shot.hitIds.length >= shot.pierce) break;
+      shot.hitIds.push(enemy.id);
+      this._damage(enemy, shot.damage, shot.sourceId);
+      this._effect('impact', enemy, enemy, shot.color, 0.12);
+    }
+    if (shot.ttl > 0 && shot.hitIds.length < shot.pierce) this.projectiles.push(shot);
   }
 
   _unlock(type) {
@@ -735,6 +798,9 @@ export class Game {
       if (this.wave === 15) this._unlock('multi');
       this._event('wave-complete', `Wave ${this.wave} cleared! +${65 + this.wave * 5} gold, +${6 + Math.floor(this.wave / 2)} points.`, { wave: this.wave });
       this.status = !this.endless && this.wave === this.maxWaves ? 'won' : 'planning';
+      if (this.status === 'won') {
+        for (const tower of Object.values(TOWERS)) if (tower.unlockMap === this.map.id) this._unlock(tower.id);
+      }
       if (this.status === 'won') this._event('victory', 'The garden is safe! Continue in endless mode or try another garden.');
     }
   }

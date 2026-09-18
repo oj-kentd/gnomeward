@@ -1,4 +1,4 @@
-export const SERVER_VERSION = '0.2.0';
+export const SERVER_VERSION = '0.2.1';
 export const PROTOCOL_VERSION = 1;
 
 function integer(value, fallback, min, max, name) {
@@ -7,7 +7,7 @@ function integer(value, fallback, min, max, name) {
   return n;
 }
 export function readConfig(env = process.env) {
-  const defaults = 'https://gnomeward.thekents.org,http://gnomeward.thekents.org,https://oj-kentd.github.io,https://multiplayer.thekents.org,http://localhost:5173,http://localhost:5174';
+  const defaults = 'https://gnomeward.thekents.org,http://gnomeward.thekents.org,https://oj-kentd.github.io,https://multiplayer.lightsoutphotos.com,http://localhost:5173,http://localhost:5174';
   const allowedOrigins = new Set((env.ALLOWED_ORIGINS ?? defaults).split(',').filter(Boolean).map(value => {
     const url = new URL(value.trim());
     if (!['http:', 'https:'].includes(url.protocol) || url.origin !== value.trim()) throw new Error('ALLOWED_ORIGINS must contain exact http(s) origins, without paths or trailing slashes');

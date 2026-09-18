@@ -1,12 +1,13 @@
-Deployable multiplayer backend for Gnomeward, packaged for Unraid (Linux amd64).
+Co-op and Strawberry Fields server update for Gnomeward, packaged for Unraid (Linux amd64).
 
-- Private two-player co-op and separate-board PvP survival rooms with server-controlled rules.
-- Player-owned gnomes, validated purchases/upgrades, synchronized rounds, and reconnect handling.
-- Persistent match results, health checks, and a browser connection-test page.
-- Docker image runs without root; existing Cloudflare Tunnel connectors can route to it.
+- The main game now supports two-player co-op: shared garden, personal gold/points, owned gnomes, Ready controls, pause/speed, and reconnect.
+- Public lobbies let the second player click Join. No room-code copying or accounts.
+- Strawberry Fields adds two entrances, a free host-owned Strawberry Gnome, and an encounter reward that persists for future co-op rooms.
+- Strawberry mortar attacks burst into damaging seed shrapnel, with three upgrade paths (choose two).
+- Setup examples use multiplayer.lightsoutphotos.com with the existing Cloudflare Tunnel.
 
-Download the image archive and SHA256SUMS below, verify the checksum, then load it with Docker. No container-registry login is needed.
+**[Unraid installation and update instructions](https://github.com/oj-kentd/gnomeward/blob/server-v0.2.1/docs/UNRAID.md)**
 
-**[Unraid installation and existing Cloudflare Tunnel setup](https://github.com/oj-kentd/gnomeward/blob/server-v0.2.0/docs/UNRAID.md)**
+To update from 0.2.0, download the archive and SHA256SUMS, verify the checksum, and load the image with Docker. Change the Unraid container’s Repository field to `gnomeward-server:0.2.1` and Apply. Keep the existing data mount, port, and Cloudflare route. Active rooms end when the container restarts; saved match results remain compatible.
 
-This release is the backend and connection diagnostic. The existing game remains solo until its multiplayer lobby and gameplay client are connected. No accounts, ranked matchmaking, or PvP enemy sending are included. Active rooms are held in memory and end when the container restarts; the last 1,000 match results persist in the mounted data folder.
+After updating, open the normal game and click Co-op. One player creates a lobby, the other joins it, and both press Ready. The backend root remains a connection diagnostic. PvP gameplay is deferred; the main game delivers co-op first.

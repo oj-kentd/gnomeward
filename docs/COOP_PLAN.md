@@ -1,12 +1,12 @@
 # Co-op plan and implementation status
 
-Status: Docker backend implemented on 2026-09-17 at the user's request. It supports private two-player co-op and PvP survival rooms, validated game commands, reconnection, and persisted match results. The game lobby and multiplayer rendering/client integration remain to be built; the published game is still solo. See [Unraid setup](UNRAID.md) and the [implemented protocol](../server/PROTOCOL.md). The design below records the broader plan; features such as gifting gold and durable player accounts are not in the backend's initial release.
+Status: Docker backend implemented on 2026-09-17 at the user's request. It supports public two-player co-op and PvP survival rooms, validated game commands, reconnection, and persisted match results. The main game now includes public co-op lobbies, shared battlefield rendering, player ownership controls, ready synchronization, and reconnection. PvP remains backend-only. See [Unraid setup](UNRAID.md) and the [implemented protocol](../server/PROTOCOL.md). The design below records the broader plan; features such as gifting gold and durable player accounts are not in the backend's initial release.
 
-## First release: private two-player online co-op
+## First release: public two-player online co-op
 
-Two players defend the same garden from separate computers or tablets. Keep solo mode available and support all six maps.
+Two players defend the same garden from separate computers or tablets. Keep solo mode available and support all seven maps.
 
-- Create Game / Join Game with a short room code or invitation link; no accounts required initially.
+- Create Lobby / Join from an automatically refreshed list of waiting hosts; no codes or accounts required.
 - Shared lives, enemies, waves, and victory/defeat.
 - Each player owns their placed gnomes, shown by colored rings. Only the owner upgrades or sells them.
 - Split the total starting gold and earned gold/upgrade points equally. Include a Give Gold button.
@@ -30,7 +30,7 @@ Keep GitHub Pages and the existing playtest URL for the static client. A separat
 2. Add the server room, command validation, stable player identity/rejoin tokens, shared state, and version compatibility checks.
 3. Add create/join lobby, ownership rings, resources, ready controls, and cooperative discovery rewards.
 4. Test with two browser contexts, simultaneous placements, slow connections, refresh/rejoin, host departure, upgrades, all route types, summoned allies, and secret abilities.
-5. Playtest privately with two players before considering four players or public matchmaking.
+5. Playtest co-op with two players before adding PvP gameplay or four-player rooms.
 
 The initial backend also supports PvP survival races: separate gardens face synchronized rounds, with the last surviving player winning. Sending skeletons to an opponent remains a later feature.
 

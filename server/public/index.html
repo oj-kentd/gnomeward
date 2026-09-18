@@ -15,7 +15,7 @@
         <p class="eyebrow">Gnomeward server</p>
         <h1>Connection check</h1>
         <p class="intro">A small test for your server and Cloudflare Tunnel. Open this page on two devices to check that they can share a room.</p>
-        <p class="note">This is a server diagnostic. Multiplayer controls in the game are a separate step. <a href="http://gnomeward.thekents.org/">Open the single-player playtest ↗</a></p>
+        <p class="note">This is a server diagnostic. To play together, use the Co-op button in the main game. <a href="http://gnomeward.thekents.org/">Open Gnomeward ↗</a></p>
       </header>
       <section class="health-panel" aria-label="Server status">
         <span id="health-status" class="status" role="status">Checking server…</span>
@@ -24,19 +24,24 @@
       </section>
       <p id="notice" role="status" aria-live="polite" hidden></p>
       <section id="lobby" class="panel" aria-labelledby="lobby-title">
-        <h2 id="lobby-title">Try a two-player room</h2>
+        <h2 id="lobby-title">Find a garden friend</h2>
         <label for="player-name">Your name</label>
         <input id="player-name" autocomplete="nickname" maxlength="24" placeholder="Garden guest" value="Garden guest">
         <div class="lobby-options">
           <div><label for="mode">Mode</label><select id="mode"><option value="coop">Co-op · shared garden</option><option value="pvp">PvP · separate gardens</option></select></div>
-          <div><label for="map">Map</label><select id="map"><option value="meadow">Mossy Meadow</option><option value="orchard">Amber Orchard</option><option value="creek">Moonlit Creek</option><option value="quarry">Crystal Quarry</option><option value="hollow">Pumpkin Hollow</option><option value="crossroads">Twinbrook Crossing</option></select></div>
+          <div><label for="map">Map</label><select id="map"><option value="meadow">Mossy Meadow</option><option value="orchard">Amber Orchard</option><option value="creek">Moonlit Creek</option><option value="quarry">Crystal Quarry</option><option value="hollow">Pumpkin Hollow</option><option value="crossroads">Twinbrook Crossing</option><option value="strawberry">Strawberry Fields</option></select></div>
         </div>
-        <button id="create-room" type="button" disabled>Create test room</button>
-        <div class="join-row"><div><label for="room-code">Have a room code?</label><input id="room-code" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste the code exactly"></div><button id="join-room" class="secondary" type="button" disabled>Join room</button></div>
-        <p class="hint">The first player creates a room and shares its code. On the second device, enter a name and join. Both players press Ready to check that a round starts.</p>
+        <button id="create-room" type="button" disabled>Create lobby</button>
+        <section class="lobby-browser" aria-labelledby="open-lobbies-title">
+          <div class="room-heading"><h3 id="open-lobbies-title">Open lobbies</h3><button id="refresh-lobbies" class="quiet" type="button" disabled>Refresh</button></div>
+          <p id="lobbies-status" class="hint" role="status">Checking for open lobbies…</p>
+          <ul id="open-lobbies" class="open-lobbies"></ul>
+        </section>
+        <p class="hint">Create a lobby for someone to join, or pick an open lobby above. No codes or accounts needed. Both players press Ready to start a round.</p>
       </section>
       <section id="room" class="panel" aria-labelledby="room-title" hidden>
-        <div class="room-heading"><div><p class="eyebrow">Test room</p><h2 id="room-title"></h2></div><button id="copy-code" type="button" class="quiet">Copy code</button></div>
+        <div class="room-heading"><div><p class="eyebrow">Two-player lobby</p><h2 id="room-title">Your lobby</h2></div></div>
+        <p id="waiting-player" class="hint">Waiting for a friend… Your lobby is visible in the open-lobby list.</p>
         <p id="room-details" class="hint"></p>
         <p id="connection-status" class="status" role="status">Connected</p>
         <h3>Players</h3><ul id="players" class="players"></ul>

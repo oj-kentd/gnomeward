@@ -7,7 +7,7 @@ credentials-file: /etc/cloudflared/REPLACE_WITH_EXISTING_TUNNEL_UUID.json
 
 ingress:
   # Keep all of your existing hostname rules here.
-  - hostname: multiplayer.thekents.org
+  - hostname: multiplayer.lightsoutphotos.com
     # Replace this example LAN address with your Unraid server's actual address.
     service: http://192.168.1.10:2567
     # If both containers share a user-defined Docker network, use instead:

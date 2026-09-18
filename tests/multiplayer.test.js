@@ -308,3 +308,38 @@ test('JOIN_ROOM acknowledgement releases the initial snapshot gate', () => {
   assert.equal(context.pendingJoins.size, 0);
   assert.equal(terminated, 0);
 });
+
+test('encounter reward retries a temporary write failure without duplicate parallel writes', async () => {
+  let calls=0;
+  const RoomType=createGnomewardRoom({onRewardUnlocked:async () => { calls++; if(calls===1)throw new Error('temporary write failure'); }});
+  const context={match:{mapId:'strawberry',boards:new Map([[null,{completedWaves:20,profile:{unlocks:['strawberry']}}]])}};
+  await Promise.all([RoomType.prototype.saveEncounterReward.call(context),RoomType.prototype.saveEncounterReward.call(context)]);
+  assert.equal(calls,1);assert.equal(!!context.rewardSaved,false);assert.equal(context.rewardPending,false);
+  await RoomType.prototype.saveEncounterReward.call(context);
+  assert.equal(calls,1,'wait before retrying');
+  context.rewardRetryAt=0;
+  await RoomType.prototype.saveEncounterReward.call(context);
+  assert.equal(context.rewardSaved,true);assert.equal(calls,2);
+  await RoomType.prototype.saveEncounterReward.call(context);
+  assert.equal(calls,2);
+});
+
+test('manual co-op pause permits owned building and upgrades while combat time stays still', () => {
+  const m=pair();
+  command(m,'a','place',{type:'sprout',x:-4,z:0});
+  start(m);
+  command(m,'a','pause',{paused:true});
+  const time=m.board().time;
+  m.players.get('a').points=20;
+  const tower=m.board().towers[0];
+  command(m,'a','upgrade',{towerId:tower.id,path:0});
+  assert.equal(tower.levels[0],1);assert.equal(m.players.get('a').points,10);
+  command(m,'b','place',{type:'sprout',x:2,z:0});
+  assert.equal(m.board().towers.length,2);
+  command(m,'a','target',{towerId:tower.id,mode:'strong'});
+  assert.equal(tower.targeting,'strong');
+  assert.throws(()=>command(m,'b','sell',{towerId:tower.id}),/own gnomes/);
+  m.step();assert.equal(m.board().time,time);
+  command(m,'a','sell',{towerId:tower.id});
+  assert.equal(m.board().towers.length,1);
+});

@@ -1,6 +1,6 @@
 {
   "name": "gnomeward",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,7 +16,9 @@
     "test:necro": "node scripts/necro-smoke.mjs",
     "test:endless": "node scripts/endless-smoke.mjs",
     "server": "node server/index.js",
-    "test:server-browser": "node scripts/server-browser-smoke.mjs"
+    "test:server-browser": "node scripts/server-browser-smoke.mjs",
+    "test:coop": "node scripts/coop-browser-smoke.mjs",
+    "test:strawberry": "node scripts/strawberry-browser-smoke.mjs"
   },
   "dependencies": {
     "@colyseus/core": "0.18.14",

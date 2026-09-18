@@ -1,6 +1,6 @@
 # Gnomeward
 
-A cozy, original 3D tower defense game made for a parent-and-child playtest. Protect six little gardens from colorful skeletons with nine plush gnomes, including three hidden friends. Built in Three.js with original Blender-created models and portraits.
+A cozy, original 3D tower defense game made for a parent-and-child playtest. Protect seven little gardens from colorful skeletons with ten plush gnomes, including three hidden friends and a Strawberry Fields reward. Built in Three.js with original Blender-created models and portraits.
 
 **Play:** http://gnomeward.thekents.org/
 
@@ -75,7 +75,7 @@ Green arrows mark every entrance. Enemies alternate between the two entrances on
 
 ## Multiplayer server for Unraid
 
-The Docker backend now supports private two-player co-op and PvP survival rooms. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The service includes a two-browser connection diagnostic; the main game remains solo until its multiplayer lobby and gameplay client are connected.
+The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and press Ready together for each round. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.1 or newer. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
 
 Run it locally with `npm run server`, then open `http://localhost:2567/`. Match results are stored in `server-data/results.json` by default. `npm test` includes authoritative multiplayer and real WebSocket integration tests; with the server running, `npm run test:server-browser` checks the desktop/phone connection page. See the [server protocol](server/PROTOCOL.md) for client integration and current rules.
 
@@ -111,7 +111,7 @@ npm run test:necro
 npm run test:endless
 ```
 
-The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all six maps, and checks the phone layout and console errors. The music browser check exercises all three decoded loops, output levels, independent effects/volume, tab suspension, saved preferences and phone settings. Additional browser checks verify hidden unlocks and combat effects, all six maps and entrance markers, Morel’s spread upgrades and animated spores, and Morrow’s hidden unlock, cottage departures, and melee helpers. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
+The browser smoke test places gnomes through the UI, checks pause, targeting, speed and automatic rounds, advances combat for upgrade checks, verifies the two-path lock, switches through all seven maps, and checks the phone layout and console errors. The music browser check exercises all three decoded loops, output levels, independent effects/volume, tab suspension, saved preferences and phone settings. Additional browser checks verify hidden unlocks and combat effects, all seven maps and entrance markers, Morel’s spread upgrades and animated spores, and Morrow’s hidden unlock, cottage departures, and melee helpers. Screenshots are saved in `playtest-results/`. Set `PLAYTEST_URL` to test a published site, or `CHROMIUM_PATH` to use a specific Chromium executable.
 
 ## Publishing
 
@@ -126,3 +126,11 @@ Useful feedback: map, wave, gnome combination, whether the game felt too easy or
 ## Saved future work
 
 The co-op design and implementation status are saved in [docs/COOP_PLAN.md](docs/COOP_PLAN.md). The backend is ready for Unraid setup; the multiplayer game lobby/client and PvP enemy sending remain future work.
+
+### Strawberry Fields
+
+Strawberry Fields has two entrances and one free Strawberry Gnome at the center. His mortar lobs fruit across the map; landing explosions scatter damaging seed projectiles. Choose two of three upgrade paths: **Juicy Payload** (blast damage/radius), **Seed Storm** (seed count, damage, and piercing), and **Quick Harvest** (reload and flight time). Clear all 20 rounds to unlock purchases in other gardens; the free starting gnome gives no sell refund.
+
+In co-op the host owns the free gnome. Clearing the encounter awards Strawberry Gnome to both players’ local solo collections and the server’s shared party collection for future co-op rooms. The party reward persists in `/data/results.json` without accounts. Other co-op unlocks remain scoped to the current run.
+
+Run `npm run test:coop` with a running game and multiplayer server to exercise the complete two-browser co-op flow. Set `VITE_MULTIPLAYER_URL` before starting Vite or building to target another backend.

@@ -7,9 +7,9 @@ const openGame = () => new Game('meadow', { unlocks: ['stun', 'multi', 'sniper']
 const run = (g, duration) => { for (let i = 0; i < duration * 20; i++) g.update(0.05); };
 const setEnemy = (g, type, progress) => { const e = g._spawn(type); e.progress = progress; Object.assign(e, g.pointAt(progress)); return e; };
 
-test('six maps contain complete paths and every specified unit has its upgrade paths', () => {
-  assert.equal(MAPS.length, 6);
-  assert.equal(new Set(MAPS.map(m => m.id)).size, 6);
+test('seven maps contain complete paths and every specified unit has its upgrade paths', () => {
+  assert.equal(MAPS.length, 7);
+  assert.equal(new Set(MAPS.map(m => m.id)).size, 7);
   for (const m of MAPS) {
     const g = new Game(m.id);
     assert.ok(g.pathLength > 40);
@@ -17,7 +17,7 @@ test('six maps contain complete paths and every specified unit has its upgrade p
     assert.equal(m.path.at(-1)[0], 12);
     assert.deepEqual(g.pointAt(g.pathLength), { x: 12, z: m.path.at(-1)[1] });
   }
-  assert.deepEqual(Object.values(TOWERS).map(t => t.paths.length), [4, 4, 4, 4, 1, 2, 4, 4, 3]);
+  assert.deepEqual(Object.values(TOWERS).map(t => t.paths.length), [4, 4, 4, 4, 1, 2, 4, 4, 3, 3]);
   assert.ok(ENEMIES.bone.hp < ENEMIES.green.hp && ENEMIES.green.hp < ENEMIES.blue.hp);
 });
 
@@ -319,7 +319,7 @@ test('simulation is deterministic and a starter defense can clear wave one', () 
   assert.deepEqual([a.gold, a.points, a.kills, a.towers.map(t => t.kills)], [b.gold, b.points, b.kills, b.towers.map(t => t.kills)]);
 });
 
-test('a budget-respecting mixed defense can complete the campaign on all six maps', () => {
+test('a budget-respecting mixed defense can complete the campaign on all seven maps', () => {
   for (const map of MAPS) {
     const g = new Game(map.id);
     const place = (type) => {
@@ -361,7 +361,7 @@ test('a budget-respecting mixed defense can complete the campaign on all six map
       assert.ok(g.gold >= 0 && g.points >= 0);
     }
     assert.equal(g.status, 'won');
-    assert.deepEqual(g.profile.unlocks, ['stun', 'multi', 'sniper'], map.id);
+    assert.deepEqual(g.profile.unlocks, ['stun', 'multi', 'sniper', ...(map.id === 'strawberry' ? ['strawberry'] : [])], map.id);
   }
 });
 

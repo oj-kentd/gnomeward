@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
   const mapNames = Object.fromEntries([...$('map').options].map(option => [option.value, option.text]));
   let healthy = false, busy = false, activeRoom = null, snapshot = null, dropped = false;
-  let reconnectTimer = null, reconnectDeadline = 0, lastUpdate = 0;
+  let reconnectTimer = null, reconnectDeadline = 0, lastUpdate = 0, loadingLobbies = false;
   const client = window.Colyseus ? new Colyseus.Client(location.origin) : null;
 
   function notice(message, state = 'info') {
@@ -13,8 +13,10 @@
     $('notice').hidden = !message;
   }
   function controls() {
-    $('create-room').disabled = $('join-room').disabled = !healthy || busy || !!activeRoom;
-    $('player-name').disabled = $('map').disabled = $('mode').disabled = $('room-code').disabled = busy || !!activeRoom;
+    $('create-room').disabled = !healthy || busy || !!activeRoom;
+    $('refresh-lobbies').disabled = !healthy || busy || !!activeRoom || loadingLobbies;
+    for (const button of $('open-lobbies').querySelectorAll('button')) button.disabled = !healthy || busy || !!activeRoom;
+    $('player-name').disabled = $('map').disabled = $('mode').disabled = busy || !!activeRoom;
     const me = snapshot?.players.find(player => player.id === activeRoom?.sessionId);
     const planning = snapshot?.boards.length > 0 && snapshot.boards.every(board => board.state.status === 'planning');
     $('ready').disabled = !activeRoom || dropped || !planning || !!me?.ready || !!snapshot?.paused || snapshot?.players.filter(player => player.connected).length !== 2;
@@ -23,9 +25,42 @@
   function explain(error) {
     const message = String(error?.message || error || 'Connection failed.');
     if (/protocol|version/i.test(message)) return 'The page and server use different protocol versions. Refresh this page after updating the server.';
-    if (/full|locked|maxclients|seat reservation/i.test(message)) return 'This room has no available seat. Create a new room for a different pair of players.';
-    if (/not found|does not exist|invalid room|404/i.test(message)) return 'That room is unavailable. Check the exact code, or ask the first player to create a new room.';
+    if (/full|locked|maxclients|seat reservation/i.test(message)) return 'Someone else took that seat. Choose another lobby or create your own.';
+    if (/not found|does not exist|invalid room|404/i.test(message)) return 'That lobby has closed. Choose another lobby or create your own.';
     return message;
+  }
+  async function refreshLobbies() {
+    if (!healthy || activeRoom || busy || loadingLobbies || document.hidden) return;
+    loadingLobbies = true; controls();
+    try {
+      const response = await fetch('/lobbies', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      if (!response.ok) throw new Error('Could not load open lobbies. Try Refresh in a moment.');
+      const { lobbies } = await response.json();
+      if (activeRoom) return;
+      // Retain existing buttons between polls so keyboard focus stays in place.
+      const current = new Map([...$('open-lobbies').children].map(row => [row.dataset.roomId, row]));
+      const ids = new Set(lobbies.map(lobby => lobby.roomId));
+      for (const [id, row] of current) if (!ids.has(id)) row.remove();
+      for (const lobby of lobbies) {
+        let row = current.get(lobby.roomId);
+        if (!row) {
+          row = document.createElement('li'); row.dataset.roomId = lobby.roomId;
+          const info = document.createElement('div');
+          info.append(document.createElement('strong'), document.createElement('span'));
+          const button = document.createElement('button');
+          button.type = 'button'; button.textContent = 'Join'; button.dataset.roomId = lobby.roomId;
+          button.addEventListener('click', () => connect(lobby.roomId));
+          row.append(info, button); $('open-lobbies').append(row);
+        }
+        row.querySelector('strong').textContent = `${lobby.hostName}’s lobby`;
+        row.querySelector('span').textContent = `${lobby.mode === 'pvp' ? 'PvP' : 'Co-op'} · ${mapNames[lobby.mapId] || lobby.mapId} · ${lobby.players}/${lobby.maxPlayers} players`;
+        row.querySelector('button').setAttribute('aria-label', `Join ${lobby.hostName}’s lobby`);
+      }
+      $('lobbies-status').textContent = lobbies.length ? 'Pick a lobby to join. This list refreshes automatically.' : 'No open lobbies yet. Create one and invite a friend to this page!';
+    } catch (error) {
+      $('open-lobbies').replaceChildren();
+      $('lobbies-status').textContent = error.name === 'TimeoutError' ? 'The server took too long to reply. Try Refresh.' : explain(error);
+    } finally { loadingLobbies = false; controls(); }
   }
   async function checkHealth() {
     $('health-retry').disabled = true;
@@ -50,7 +85,7 @@
       $('server-version').textContent = '';
     } finally {
       $('health-retry').disabled = false;
-      controls();
+      controls(); refreshLobbies();
     }
   }
   function render(data) {
@@ -60,6 +95,9 @@
       return;
     }
     snapshot = data;
+    const hostName = data.players.find(player => player.id === data.hostId)?.name || 'Garden friend';
+    $('room-title').textContent = `${hostName}’s lobby`;
+    $('waiting-player').hidden = data.players.length !== 1 || !!data.result;
     lastUpdate = Date.now();
     $('room-details').textContent = `${data.mode === 'pvp' ? 'PvP · separate gardens' : 'Co-op · shared garden'} · ${mapNames[data.mapId] || data.mapId}`;
     $('players').replaceChildren(...data.players.map(player => {
@@ -91,12 +129,14 @@
   function showLobby(message) {
     clearReconnect(); activeRoom = null; snapshot = null; dropped = false; lastUpdate = 0;
     $('room').hidden = true; $('lobby').hidden = false; busy = false;
-    controls(); notice(message);
+    controls(); notice(message); refreshLobbies();
   }
   function attach(room) {
     activeRoom = room; snapshot = null; dropped = false;
     Object.assign(room.reconnection, { minUptime: 0, maxRetries: 30, minDelay: 500, maxDelay: 3000 });
-    $('room-title').textContent = room.roomId;
+    $('room-title').textContent = 'Joining lobby…';
+    $('room').dataset.roomId = room.roomId;
+    $('waiting-player').hidden = true;
     $('connection-status').textContent = 'Connected · WebSocket is working';
     $('connection-status').dataset.state = 'ok';
     $('lobby').hidden = true; $('room').hidden = false;
@@ -116,7 +156,7 @@
         if (!remaining) {
           room.reconnection.enabled = false; room.reconnection.maxRetries = 0;
           room.connection.close();
-          showLobby('Reconnection timed out. Create a new room and share its code again.');
+          showLobby('Reconnection timed out. Create or join another lobby.');
         }
       };
       tick(); reconnectTimer = setInterval(tick, 1000); controls();
@@ -131,25 +171,22 @@
     room.onLeave(() => { if (activeRoom === room) showLobby('Room closed. You can create or join another test room.'); });
     room.send('snapshot'); controls();
   }
-  async function connect(join) {
+  async function connect(roomId = null) {
     if (!healthy || busy || activeRoom) return;
     const name = $('player-name').value.trim();
     if (!name) { notice('Enter a name before joining.', 'error'); $('player-name').focus(); return; }
-    const roomId = $('room-code').value.trim();
-    if (join && !roomId) { notice('Enter the room code from the first device.', 'error'); $('room-code').focus(); return; }
     busy = true; controls(); notice('Connecting…');
     try {
-      const room = join
+      const room = roomId
         ? await client.joinById(roomId, { protocol: PROTOCOL, name })
         : await client.create('gnomeward', { protocol: PROTOCOL, name, mapId: $('map').value, mode: $('mode').value });
       attach(room); notice('');
     } catch (error) { notice(explain(error), 'error'); }
-    finally { busy = false; controls(); }
+    finally { busy = false; controls(); refreshLobbies(); }
   }
   $('health-retry').addEventListener('click', checkHealth);
-  $('create-room').addEventListener('click', () => connect(false));
-  $('join-room').addEventListener('click', () => connect(true));
-  $('room-code').addEventListener('keydown', event => { if (event.key === 'Enter') connect(true); });
+  $('create-room').addEventListener('click', () => connect());
+  $('refresh-lobbies').addEventListener('click', refreshLobbies);
   $('ready').addEventListener('click', () => {
     if (!activeRoom || dropped || $('ready').disabled) return;
     notice(''); activeRoom.send('command', { action: 'ready' });
@@ -160,11 +197,8 @@
     if (dropped) room.connection.close(); else room.leave();
     showLobby('You left the test room.');
   });
-  $('copy-code').addEventListener('click', async () => {
-    if (!activeRoom) return;
-    try { await navigator.clipboard.writeText(activeRoom.roomId); notice('Room code copied. Share it with the second player.'); }
-    catch { notice(`Copy this room code: ${activeRoom.roomId}`); }
-  });
+  setInterval(refreshLobbies, 4000);
+  document.addEventListener('visibilitychange', refreshLobbies);
   setInterval(updateAge, 1000);
   checkHealth();
 })();

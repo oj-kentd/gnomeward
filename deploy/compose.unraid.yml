@@ -1,6 +1,6 @@
 services:
   gnomeward-server:
-    image: gnomeward-server:0.2.0
+    image: gnomeward-server:0.2.1
     pull_policy: never
     container_name: gnomeward-server
     restart: unless-stopped
@@ -13,7 +13,7 @@ services:
       PORT: "2567"
       DATA_DIR: /data
       MAX_ROOMS: "8"
-      ALLOWED_ORIGINS: "https://gnomeward.thekents.org,http://gnomeward.thekents.org,https://oj-kentd.github.io,https://multiplayer.thekents.org"
+      ALLOWED_ORIGINS: "https://gnomeward.thekents.org,http://gnomeward.thekents.org,https://oj-kentd.github.io,https://multiplayer.lightsoutphotos.com"
     volumes:
       - /mnt/user/appdata/gnomeward:/data
     read_only: true

@@ -1,24 +1,24 @@
-# Gnomeward private multiplayer protocol (version 1)
+# Gnomeward multiplayer protocol (version 1)
 
-This is the server foundation and connection-check client. The current Three.js playtest remains solo; it does not yet have multiplayer lobby, board rendering, ownership controls, or account/profile synchronization. Use the service's `/` connection-check page to exercise rooms before the game-client integration.
+The Three.js game now uses this service for public two-player co-op: lobby browsing, shared rendering, owned defenders, and synchronized ready controls. The service’s `/` connection-check page remains available for deployment checks. PvP game rendering is not yet exposed in the main game.
 
 ## Scope and rules
 
-- Two invited players per room. Create with `client.create('gnomeward', options)`, share the returned `room.roomId`, then use `client.joinById(roomId, options)`. Rooms are private and excluded from public listings. Knowing a room code permits taking an open seat; there are no accounts or passwords.
+- Two players per room. Create with `client.create('gnomeward', options)`. Other players discover waiting hosts through `GET /lobbies` and use `client.joinById(roomId, options)` when they click Join. No codes, accounts, or passwords are needed.
 - Co-op uses one board and shared lives. Each player starts with **325 gold**, owns their gnomes, and receives half of earned gold and upgrade points. Half points are retained; they are not rounded away. Sell refunds go to the owner. Only an owner may upgrade, sell, or retarget their units. Gold gifting is deferred.
-- Co-op discoveries/unlocks are shared for that match. The player completing the crystal secret owns its free guardian. Existing browser saves and unlock lists are never accepted from clients.
+- Co-op discoveries/unlocks are shared for that match. The player completing the crystal secret owns its free guardian. Existing browser saves and unlock lists are never accepted from clients. Strawberry Fields starts with one free host-owned mortar gnome; clearing round 20 saves the Strawberry reward for all later co-op rooms on this server.
 - PvP is a **defense race**: separate boards, identical map and wave schedules, 650 starting gold each. Both must ready before the next round. First board to lose ends the match; a loss on both boards during the same server tick is a draw. After both clear round 20, boards automatically enter endless mode. Sending skeletons to opponents is not implemented.
 - Co-op requires two `endless` votes after campaign victory, then both ready to start round 21. Leaving at the campaign victory screen records `campaign-cleared`; later defeat records completed rounds. Unlocks and current boards exist only for the lifetime of the room.
 - Either co-op player may pause/resume; PvP has no manual pause. Only the creator can set speed (1, 2, 3). Both modes pause automatically on disconnect. The room holds a disconnected seat for **60 seconds**; reconnect retains the same player ID, board, ownership, and wallet. A consented leave or expired reconnect ends the match (PvP forfeit, co-op abandoned). Rooms cannot replace players once both seats have been occupied. A one-player lobby expires after five minutes without a valid command; occupied rooms expire after 30 minutes idle (paused, between rounds, or finished). Active rounds refresh this timer; snapshot polling does not.
-- There are no ranked scores, accounts, matchmaking, active-match restoration after server restart, or long-term unlock storage. The server records match outcomes locally; records are not a trusted public leaderboard.
+- There are no ranked scores, accounts, automatic matchmaking, active-match restoration after server restart, or per-account unlock storage. The Strawberry reward is the shared persistent encounter unlock. The server records match outcomes locally; records are not a trusted public leaderboard.
 
 ## Connection and identity
 
-Use `@colyseus/sdk` 0.18 against this Colyseus 0.18 service. The browser endpoint is the HTTPS service address, e.g. `https://multiplayer.thekents.org`; Colyseus upgrades its game connection to secure WebSocket automatically.
+Use `@colyseus/sdk` 0.18 against this Colyseus 0.18 service. The browser endpoint is the HTTPS service address, e.g. `https://multiplayer.lightsoutphotos.com`; Colyseus upgrades its game connection to secure WebSocket automatically.
 
 ```js
 import { Client } from '@colyseus/sdk';
-const client = new Client('https://multiplayer.thekents.org');
+const client = new Client('https://multiplayer.lightsoutphotos.com');
 const room = await client.create('gnomeward', {
   protocol: 1,
   name: 'Garden Captain', // 1–24 characters, no control characters or HTML brackets
@@ -30,8 +30,10 @@ room.onMessage('command-error', ({ message }) => showError(message));
 room.send('snapshot'); // request a fresh snapshot after attaching handlers
 sessionStorage.setItem('gnomeward-reconnection', room.reconnectionToken);
 
-// Second browser:
-const guest = await client.joinById(room.roomId, { protocol: 1, name: 'Garden Friend' });
+// Second browser: show these lobbies as a list, then join the chosen entry.
+const { lobbies } = await fetch('https://multiplayer.lightsoutphotos.com/lobbies').then(r => r.json());
+const chosen = lobbies[0]; // the entry selected by the player
+const guest = await client.joinById(chosen.roomId, { protocol: 1, name: 'Garden Friend' });
 // mapId/mode may be omitted on join; if supplied they must match.
 
 // After a page reload, within the server's 60-second grace period:
@@ -39,7 +41,13 @@ const resumed = await client.reconnect(sessionStorage.getItem('gnomeward-reconne
 // Store the latest token after each successful join/reconnect.
 ```
 
-Treat the reconnection token as a private bearer credential. Do not put it in invitations, logs, or public URLs. Share only `roomId`. SDK automatic reconnection may be used for transient drops; manual reconnect restores a session after a page reload. See [Colyseus reconnection](https://docs.colyseus.io/room/reconnection).
+Treat the reconnection token as a private bearer credential. Do not put it in invitations, logs, or public URLs. Lobby listings expose only the joinable `roomId` and display information. SDK automatic reconnection may be used for transient drops; manual reconnect restores a session after a page reload. See [Colyseus reconnection](https://docs.colyseus.io/room/reconnection).
+
+## Open lobby discovery
+
+`GET /lobbies` returns `{ lobbies: [{ roomId, hostName, mode, mapId, players: 1, maxPlayers: 2 }] }`. Listings contain only connected, waiting hosts with an available guest seat. Empty rooms, pending guest reservations, disconnected hosts, full/sealed matches, started games, and finished games are excluded. Session IDs, reconnect tokens, and game snapshots are not included. Responses are uncached and use the existing browser-origin allowlist. A server that is shutting down or has unhealthy storage returns HTTP 503.
+
+The connection page refreshes the list every four seconds while visible and outside a room, with a manual Refresh button. Joining still reserves a seat through Colyseus: if two guests pick the same lobby, only one can join and the other sees a message and an updated list.
 
 ## Commands
 
@@ -76,7 +84,7 @@ The service simulates fixed 50 ms steps (20 Hz) and broadcasts complete, plain-d
       status, kills, time, towers, enemies, traps, holes, barriers,
       allies, secretDiscoveries, effects, projectiles,
       profile: { unlocks, bestRounds }, bestRound,
-      events // most recent 12 existing Game events
+      events // most recent 12 Game events, each with a stable eventId for client deduplication
     }
   }]
 }
