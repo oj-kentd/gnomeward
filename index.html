@@ -1,2 +1,36 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#142d27"/><meta name="description" content="Little gnomes. A big defense. A cozy 3D tower defense game with five gardens to protect."/><link rel="icon" type="image/png" href="./assets/sprout.png"/><title>Gnomeward — Garden Defense</title></head><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#193c31"/>
+  <meta name="description" content="Tiny hats. Big trouble. Defend seven magical gardens with a crew of gnomes in Gnomeward, a playful tower defense adventure for solo or two-player co-op."/>
+  <link rel="icon" type="image/png" href="./assets/sprout.png"/>
+  <title>Gnomeward — Garden Defense</title>
+</head>
+<body>
+  <main class="splash-screen" id="splash-screen" aria-labelledby="splash-title">
+    <picture class="splash-art">
+      <source media="(max-aspect-ratio: 4/5)" srcset="./assets/gnomeward-splash-mobile.webp"/>
+      <img src="./assets/gnomeward-splash.webp" alt="Plush gnome defenders face off against colorful skeletons beneath a giant Gnomeward logo, with mushrooms and a flying strawberry in a magical garden." width="1920" height="1080" fetchpriority="high"/>
+    </picture>
+    <div class="splash-shade" aria-hidden="true"></div>
+    <div class="splash-badge">GNOMES VS. BONES</div>
+    <h1 class="splash-title" id="splash-title">GNOMEWARD</h1>
+    <div class="splash-menu">
+      <p class="splash-tagline">Tiny hats. Big trouble.</p>
+      <p class="splash-description">Plant your defenders. Send the skeletons packing.</p>
+      <div class="splash-actions" aria-label="Choose how to play">
+        <button class="splash-play" id="splash-play"><span aria-hidden="true">▶</span> Play solo</button>
+        <button class="splash-coop" id="splash-coop"><span aria-hidden="true">＋</span> Play co-op</button>
+      </div>
+      <p class="splash-status" id="splash-status" role="status" aria-live="polite">A garden adventure, better together.</p>
+      <button class="splash-retry" id="splash-retry" hidden>Try again</button>
+    </div>
+    <footer class="splash-footer">7 gardens <span>•</span> 10 guardians <span>•</span> Endless mischief</footer>
+    <noscript><p class="splash-no-script">Enable JavaScript to enter the garden.</p></noscript>
+  </main>
+  <div id="app" hidden inert aria-hidden="true"></div>
+  <script type="module" src="/src/entry.js"></script>
+</body>
+</html>

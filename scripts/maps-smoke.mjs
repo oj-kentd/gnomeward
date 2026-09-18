@@ -1,3 +1,4 @@
+import { enterGarden } from './browser-helpers.mjs';
 import { chromium } from 'playwright';
 import { mkdir } from 'node:fs/promises';
 await mkdir('playtest-results', { recursive: true });
@@ -8,7 +9,7 @@ const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 try {
-  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173');
+  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173'); await enterGarden(page);
   await page.waitForFunction(() => window.gnomeward && document.getElementById('loading-card').hidden && gnomeward.renderer.renderer.info.render.frame > 3);
   await page.locator('#dismiss-tip').click();
   await page.locator('#map-button').click();

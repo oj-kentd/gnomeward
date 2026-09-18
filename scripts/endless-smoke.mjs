@@ -1,3 +1,4 @@
+import { enterGarden } from './browser-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
@@ -42,7 +43,7 @@ try {
   page.setDefaultTimeout(45000); page.setDefaultNavigationTimeout(45000);
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173'); await ready();
+  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173'); await enterGarden(page); await ready();
   await page.getByRole('button', { name: 'Dismiss welcome tip' }).click();
   await page.locator('[data-tower="sprout"]').click();
   const position = await page.evaluate(() => {
@@ -109,7 +110,7 @@ try {
   await savedBest('meadow', 21);
 
   stage = 'persisting records across reloads, retries, and different maps';
-  await page.reload(); await ready();
+  await page.reload(); await enterGarden(page); await ready();
   assert.equal(await page.evaluate(() => gnomeward.game.bestRound), 21);
   assert.equal(await page.evaluate(() => gnomeward.game.endless), false);
   await page.locator('#map-button').click();

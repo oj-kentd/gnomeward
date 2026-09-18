@@ -62,3 +62,11 @@ blender --background --python art/generate_strawberry.py
 ```
 
 This separately exports `gnome-strawberry.glb` and its `strawberry.png` portrait, the rounded `strawberry-fruit.glb` mortar projectile, `strawberry-seed.glb` black seed shrapnel and `strawberry-bush.glb` field decoration. The gnome keeps the original plush proportions with a red seeded hat, green leaf accents, an ivory beard and a hollow toy mortar. The fruit's cream seeds and green leaves are separate material regions; preserve those colors when rendering it. Only the standalone flying seed uses the near-black `berry-shrapnel` material. Fruit and seed projectiles are centered on the origin; the berry's radius is approximately one unit and the elongated seed has a one-unit major radius. The bush has an approximately 1.2-unit footprint and a low padded base. `art/strawberry.blend` is the editable source collection, and `art/strawberry-preview.png` shows the family together. Strawberry Fields uses the existing rounded garden and path assets together with these berry plants; it does not require a monolithic map model. Existing assets are preserved.
+
+## Gnomeward title scene
+
+```sh
+blender --background --threads 6 --python art/generate_splash.py
+```
+
+This renders `gnomeward-splash.webp` at 1920×1080 and a separately composed `gnomeward-splash-mobile.webp` at 960×1200. Both use the original Blender gnomes, colorful skeletons and rounded garden assets, together with layered extruded GNOMEWARD lettering. The flying strawberry retains its cream details; the impact seeds are black. The center below the battle is left open for the game's Play controls. `art/splash.blend` contains the editable desktop composition with the title font packed. The title uses DejaVu Sans Bold; its notice is in `art/DEJAVU-LICENSE.txt`. Set `GNOMEWARD_TITLE_FONT` to that font file if it is installed outside the generator’s default Linux path. Add `-- --draft` for half-resolution composition previews; run again without it before publishing. No existing game models are regenerated.

@@ -1,3 +1,4 @@
+import { enterGarden } from './browser-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
@@ -16,7 +17,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('response', response => { if (response.status() >= 400 && /\/assets\//.test(response.url())) errors.push(`${response.status()} ${response.url()}`); });
-  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5175');
+  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5175'); await enterGarden(page);
   await page.waitForFunction(() => window.gnomeward && document.getElementById('loading-card').hidden && gnomeward.renderer.renderer.info.render.frame > 2);
 
   if (await page.locator('#welcome-tip').isVisible()) await page.locator('#dismiss-tip').click();

@@ -196,6 +196,7 @@ export class UI {
     const loading = document.getElementById('loading-card');
     loading.hidden = value == null || value === false || value === 1 || value === 100 || value === 'ready';
     if (!loading.hidden) document.getElementById('loading-message').textContent = typeof value === 'string' ? value : 'Bringing the garden to life';
+    document.dispatchEvent(new CustomEvent('gnomeward-loading', { detail: { ready: loading.hidden, message: document.getElementById('loading-message').textContent } }));
   }
 
   update(game, state = {}) {

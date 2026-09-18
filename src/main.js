@@ -172,7 +172,7 @@ try {
   world.setMap(game.map,0);ready=true;ui.setLoading?.(null);
   multiplayer.resume().catch(()=>ui.toast('Your previous co-op room is no longer available. You can create or join another.'));
 }catch(error){console.error(error);ui.setLoading?.('The garden could not load. Please reload in a browser with WebGL 2 enabled.');}
-window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;if(e.code==='Escape')cancel();else if(e.code==='Space'){if(e.target.closest('button,a'))return;e.preventDefault();start();}else if(e.code==='KeyP'){pause();}else if(/^Digit[1-9]$/.test(e.code))choose(Object.keys(TOWERS)[Number(e.code.slice(-1))-1]);});
+window.addEventListener('keydown',e=>{if(!document.getElementById('splash-screen')?.hidden)return;if(e.target.closest('input,textarea,select')||document.querySelector('dialog[open]'))return;if(e.code==='Escape')cancel();else if(e.code==='Space'){if(e.target.closest('button,a'))return;e.preventDefault();start();}else if(e.code==='KeyP'){pause();}else if(/^Digit[1-9]$/.test(e.code))choose(Object.keys(TOWERS)[Number(e.code.slice(-1))-1]);});
 let last=performance.now(),uiElapsed=0;
 // Returning to the tab must not count time spent away toward an automatic round.
 document.addEventListener('visibilitychange',()=>{last=performance.now();music.setHidden(document.hidden);});
@@ -214,4 +214,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.1'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.2'};

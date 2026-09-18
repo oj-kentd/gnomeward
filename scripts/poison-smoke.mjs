@@ -1,3 +1,4 @@
+import { enterGarden } from './browser-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
@@ -17,7 +18,7 @@ try {
   page.setDefaultNavigationTimeout(45000);
   page.on('pageerror', (error) => { errors.push(error.message); console.error('Browser error:', error.message); });
   page.on('console', (message) => { if (message.type() === 'error') { errors.push(message.text()); console.error('Browser console:', message.text()); } });
-  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173');
+  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173'); await enterGarden(page);
   await page.waitForFunction(() => window.gnomeward && document.getElementById('loading-card').hidden);
   await page.waitForFunction(() => gnomeward.renderer.renderer.info.render.frame > 4);
 

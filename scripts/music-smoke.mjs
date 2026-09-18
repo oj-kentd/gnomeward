@@ -1,3 +1,4 @@
+import { enterGarden } from './browser-helpers.mjs';
 import { chromium } from 'playwright';
 import { mkdir } from 'node:fs/promises';
 await mkdir('playtest-results', {recursive:true});
@@ -6,7 +7,7 @@ const page=await browser.newPage({viewport:{width:1280,height:800}});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const requests=[];page.on('request',r=>{if(r.url().endsWith('.wav'))requests.push(r.url());});
 try {
- await page.goto(process.env.PLAYTEST_URL||'http://localhost:5173');
+ await page.goto(process.env.PLAYTEST_URL||'http://localhost:5173'); await enterGarden(page);
  await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden);
  if(requests.length||await page.evaluate(()=>gnomeward.music.context!==null))throw Error('Music must not load or autoplay on first visit');
  await page.locator('#sound-button').click();
@@ -39,7 +40,7 @@ try {
  await page.evaluate(()=>gnomeward.music.setHidden(false));
  await page.waitForFunction(()=>gnomeward.music.context.state==='running');
  if(!await page.evaluate(()=>gnomeward.music.source===window.musicSource))throw Error('Returning to tab restarted/layered music');
- await page.reload();await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden);
+ await page.reload(); await enterGarden(page);await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden);
  if(!await page.evaluate(()=>gnomeward.state.music==='jazz'&&gnomeward.state.musicVolume===.18&&gnomeward.state.sound&&gnomeward.music.context===null))throw Error('Audio preferences should persist without autoplay');
  await page.setViewportSize({width:390,height:844});await page.locator('#help-button').click();
  await page.waitForFunction(()=>gnomeward.state.musicStatus==='playing');

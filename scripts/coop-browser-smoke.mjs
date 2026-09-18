@@ -1,3 +1,4 @@
+import { enterGarden } from './browser-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
@@ -20,7 +21,7 @@ async function device() {
   const page = await context.newPage();
   page.setDefaultTimeout(45000);
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto(baseURL);
+  await page.goto(baseURL); await enterGarden(page);
   await page.waitForFunction(() => window.gnomeward && document.getElementById('loading-card').hidden && gnomeward.renderer.renderer.info.render.frame > 0);
   return { context, page, profile: await page.evaluate(() => structuredClone(gnomeward.game.profile)) };
 }
@@ -157,6 +158,7 @@ try {
   stage = 'browser reload resumes the same room and owned defenses';
   const reloadSession = await b.evaluate(() => gnomeward.state.multiplayer.sessionId);
   await b.reload();
+  assert.equal(await enterGarden(b), false, 'an active co-op session resumes without pressing Play again');
   await b.waitForFunction(() => window.gnomeward && document.getElementById('loading-card').hidden && gnomeward.state.multiplayer?.connected);
   assert.equal(await b.evaluate(() => gnomeward.state.multiplayer.sessionId), reloadSession);
   assert.equal(await b.evaluate(() => gnomeward.state.multiplayer.roomId), roomId);

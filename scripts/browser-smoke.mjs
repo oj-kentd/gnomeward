@@ -1,3 +1,4 @@
+import { enterGarden } from './browser-helpers.mjs';
 import { chromium } from 'playwright';
 import { mkdir } from 'node:fs/promises';
 await mkdir('playtest-results', { recursive: true });
@@ -5,7 +6,7 @@ const browser = await chromium.launch({executablePath:process.env.CHROMIUM_PATH 
 const page=await browser.newPage({viewport:{width:1440,height:960}});
 page.setDefaultTimeout(45000);
 const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text()+' '+m.location().url)});
-await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173');await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden);await page.waitForFunction(()=>gnomeward.renderer.renderer.info.render.frame>4);await page.screenshot({path:'playtest-results/initial.png'});
+await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173'); await enterGarden(page);await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden);await page.waitForFunction(()=>gnomeward.renderer.renderer.info.render.frame>4);await page.screenshot({path:'playtest-results/initial.png'});
 const immersiveLayout = await page.evaluate(() => {
   const canvas = document.querySelector('canvas').getBoundingClientRect();
   const world = gnomeward.renderer;

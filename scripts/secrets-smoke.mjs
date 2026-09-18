@@ -1,3 +1,4 @@
+import { enterGarden } from './browser-helpers.mjs';
 import { chromium } from 'playwright';
 import { mkdir } from 'node:fs/promises';
 await mkdir('playtest-results',{recursive:true});
@@ -8,7 +9,7 @@ async function point(x,y,z){return page.evaluate(({x,y,z})=>{const w=gnomeward.r
 async function clickSpot(x,y,z){const p=await point(x,y,z);await page.mouse.click(p.x,p.y);}
 async function map(id){await page.locator('#map-button').click();await page.locator(`[data-map="${id}"]`).click();}
 try{
- await page.goto(process.env.PLAYTEST_URL||'http://localhost:5173');await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden&&gnomeward.renderer.renderer.info.render.frame>3);
+ await page.goto(process.env.PLAYTEST_URL||'http://localhost:5173'); await enterGarden(page);await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden&&gnomeward.renderer.renderer.info.render.frame>3);
  if(!await page.evaluate(()=>['gnome-gravity','gnome-crystal','black-hole','crystal-barrier','secret-rune','secret-crystal'].every(name=>gnomeward.renderer.models[name])))throw Error('Missing secret Blender assets');
  if(!await page.locator('[data-tower="gravity"]').isDisabled()||!await page.locator('[data-tower="crystal"]').isDisabled())throw Error('Secrets must begin locked');
  if((await page.locator('#roster').textContent()).includes('undefined'))throw Error('Unknown secret milestone label');
@@ -48,12 +49,12 @@ try{
  await page.screenshot({path:'playtest-results/crystal-barrier.png'});
  const blast=await page.evaluate(()=>{const g=gnomeward.game;g.barriers[0].hp=.1;const e=g.enemies[0],before=e.hp;g.update(.05);return{damage:before-e.hp,barriers:g.barriers.length,effects:g.effects.filter(e=>e.type==='explosion').length};});
  if(blast.damage!==28||blast.barriers!==0||blast.effects!==1)throw Error('Enemy destruction should trigger one credited crystal blast');
- await page.reload();await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden&&gnomeward.renderer.renderer.info.render.frame>3);
+ await page.reload(); await enterGarden(page);await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden&&gnomeward.renderer.renderer.info.render.frame>3);
  if(!await page.evaluate(()=>gnomeward.game.isUnlocked('gravity')&&gnomeward.game.isUnlocked('crystal')))throw Error('Secret unlocks lost after reload');
  await map('quarry');for(const[x,z]of[[-2,-1],[4,-5],[5,0]])await clickSpot(x,.65,z);
  if(await page.evaluate(()=>gnomeward.game.towers.length)!==0)throw Error('Repeat quest summoned a second free Prism');
  // Fresh phone profile, real crystal mesh clicks, and one-time summon.
- await page.evaluate(()=>localStorage.removeItem('gnomeward-profile'));await page.reload();await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden&&gnomeward.renderer.renderer.info.render.frame>3);
+ await page.evaluate(()=>localStorage.removeItem('gnomeward-profile'));await page.reload(); await enterGarden(page);await page.waitForFunction(()=>window.gnomeward&&document.getElementById('loading-card').hidden&&gnomeward.renderer.renderer.info.render.frame>3);
  await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>Math.abs(document.querySelector('canvas').getBoundingClientRect().width-390)<1);await map('quarry');
  for(const[x,z]of[[-2,-1],[4,-5],[5,0]]){await clickSpot(x,.65,z);await page.waitForTimeout(120);}
  await page.waitForFunction(()=>gnomeward.game.towers.some(t=>t.summoned));

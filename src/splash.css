@@ -1,0 +1,59 @@
+html,body{margin:0;width:100%;height:100%;background:#193c31;font-family:"Trebuchet MS",Arial,sans-serif}
+[hidden]{display:none!important}
+.splash-screen{position:fixed;inset:0;z-index:1000;isolation:isolate;overflow:auto;min-width:280px;background:#193c31;color:#fff6d8;text-align:center;box-sizing:border-box}
+.splash-screen *{box-sizing:border-box}
+.splash-art{position:absolute;inset:0;z-index:-3;overflow:hidden}
+.splash-art img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 42%}
+.splash-shade{position:absolute;inset:0;z-index:-2;background:linear-gradient(180deg,#153a291a 0%,transparent 45%,#14342633 66%,#112e25dd 100%);pointer-events:none}
+.splash-badge{position:absolute;top:max(18px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);white-space:nowrap;padding:8px 17px;border:1px solid #fff1bd55;border-radius:30px;background:#1b4329c9;box-shadow:0 3px 12px #11281933;font-size:11px;font-weight:900;letter-spacing:2.8px}
+.splash-title{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;margin:0}
+.splash-menu{position:absolute;bottom:max(65px,calc(env(safe-area-inset-bottom) + 48px));left:50%;transform:translateX(-50%);width:min(600px,calc(100% - 36px));text-shadow:0 2px 5px #123022}
+.splash-tagline{font-size:clamp(22px,2.8vw,36px);font-weight:900;letter-spacing:-.5px;margin:0 0 6px;color:#fff3c4}
+.splash-description{font-size:15px;font-weight:600;margin:0 0 19px;color:#f1eccf}
+.splash-actions{display:flex;justify-content:center;gap:14px}
+.splash-actions button,.splash-retry{font:900 20px "Trebuchet MS",Arial,sans-serif;cursor:pointer;border:3px solid #263c20;border-radius:16px;padding:17px 28px;min-width:205px;box-shadow:0 6px 0 #1b2d16,0 10px 24px #0e231e55,inset 0 2px 0 #ffffff75;transition:transform .16s,filter .16s;touch-action:manipulation;text-shadow:0 1px 0 #ffffff55}
+.splash-actions button span{margin-right:10px;font-size:18px}
+.splash-play{color:#233e17;background:linear-gradient(#ddf77d,#92c63b)}
+.splash-coop{color:#563917;background:linear-gradient(#fff2c4,#e5b563)}
+.splash-actions button:not(:disabled):hover,.splash-retry:hover{filter:brightness(1.08);transform:translateY(-3px)}
+.splash-actions button:not(:disabled):active,.splash-retry:active{transform:translateY(2px)}
+.splash-actions button:disabled{cursor:wait;opacity:.65}
+.splash-screen button:focus-visible{outline:4px solid #fff4b3;outline-offset:6px}
+.splash-status{min-height:18px;margin:18px 0 0;color:#e3eccf;font-size:12px;line-height:1.5}
+.splash-footer{position:absolute;bottom:max(19px,env(safe-area-inset-bottom));left:12px;right:12px;font-size:11px;font-weight:700;letter-spacing:.8px;color:#c3d4ae}
+.splash-footer span{display:inline-block;padding:0 12px;color:#e6c76d}
+.splash-retry{margin-top:12px;min-width:0;padding:10px 20px;font-size:16px;color:#563917;background:#ffe3a0}
+.splash-art-missing .splash-title{clip-path:none;width:100%;height:auto;left:0;top:22%;font-size:clamp(32px,10vw,100px);font-weight:900;letter-spacing:-2px;color:#ffe6a0;text-shadow:0 5px 0 #6a4a25}
+.splash-no-script{position:absolute;bottom:0;left:0;right:0;background:#552f22;padding:12px;color:#fff}
+@media(max-aspect-ratio:4/5){
+  .splash-art img{height:auto;object-fit:contain;object-position:center top;mask-image:linear-gradient(#000 76%,transparent 100%)}
+  .splash-shade{background:linear-gradient(180deg,transparent 35%,#14342611 57%,#112e25ee 82%,#112e25 100%)}
+  .splash-menu{bottom:max(74px,calc(env(safe-area-inset-bottom) + 60px));width:calc(100% - 36px)}
+  .splash-tagline{font-size:27px}
+  .splash-description{font-size:13px;max-width:260px;margin:0 auto 20px;line-height:1.5}
+  .splash-actions{flex-direction:column;gap:13px;align-items:center}
+  .splash-actions button{width:min(310px,100%);min-width:0;padding:15px 18px;font-size:20px}
+  .splash-status{font-size:11px;margin-top:16px}
+  .splash-footer{font-size:9px;letter-spacing:.3px;bottom:max(25px,env(safe-area-inset-bottom))}
+  .splash-footer span{padding:0 5px}
+  .splash-badge{top:max(9px,env(safe-area-inset-top));font-size:9px;letter-spacing:2px;padding:7px 12px}
+}
+@media(max-height:600px) and (min-aspect-ratio:4/5){
+  .splash-badge{top:10px;font-size:9px;padding:5px 12px}
+  .splash-menu{bottom:31px}
+  .splash-tagline{font-size:21px;margin-bottom:4px}
+  .splash-description{display:none}
+  .splash-actions button{min-width:170px;padding:10px 22px;font-size:17px;border-radius:12px}
+  .splash-status{margin-top:10px;font-size:10px}
+  .splash-footer{bottom:8px;font-size:9px}
+}
+@media(max-height:700px) and (max-aspect-ratio:4/5){
+  .splash-menu{bottom:max(49px,calc(env(safe-area-inset-bottom) + 38px))}
+  .splash-tagline{font-size:23px}
+  .splash-description{display:none}
+  .splash-actions{gap:10px}
+  .splash-actions button{padding:12px 18px;font-size:19px}
+  .splash-status{font-size:10px;margin-top:10px}
+  .splash-footer{bottom:max(14px,env(safe-area-inset-bottom))}
+}
+@media(prefers-reduced-motion:reduce){.splash-screen button{transition:none}}

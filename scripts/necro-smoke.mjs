@@ -1,3 +1,4 @@
+import { enterGarden } from './browser-helpers.mjs';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
@@ -46,7 +47,7 @@ try {
   page.setDefaultNavigationTimeout(45000);
   page.on('pageerror', (error) => { errors.push(error.message); console.error('Browser error:', error.message); });
   page.on('console', (message) => { if (message.type() === 'error') { errors.push(message.text()); console.error('Browser console:', message.text()); } });
-  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173');
+  await page.goto(process.env.PLAYTEST_URL || 'http://localhost:5173'); await enterGarden(page);
   await ready();
   assert.equal(await page.locator('[data-tower="necro"]').isDisabled(), true);
   assert.match(await page.locator('[data-tower="necro"]').innerText(), /\?\?\?/);
@@ -154,10 +155,10 @@ try {
   assert.deepEqual(finalCrew, { active: 2, waiting: 0, kills: 3, enemyDead: true }, 'Only spell kills earn new helpers');
 
   stage = 'checking saved unlock and the phone puzzle with the shop visible';
-  await page.reload(); await ready();
+  await page.reload(); await enterGarden(page); await ready();
   assert.equal(await page.evaluate(() => gnomeward.game.isUnlocked('necro')), true);
   await page.evaluate(() => localStorage.removeItem('gnomeward-profile'));
-  await page.reload(); await ready();
+  await page.reload(); await enterGarden(page); await ready();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => Math.abs(document.querySelector('canvas').getBoundingClientRect().width - 390) < 1);
   await map('hollow');
