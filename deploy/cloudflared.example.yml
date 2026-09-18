@@ -1,0 +1,17 @@
+# Only for a LOCALLY managed tunnel that already reads a mounted config.yml.
+# Dashboard/token-managed tunnels: add a Published application route instead.
+# Merge the hostname rule into your existing file; preserve its tunnel ID,
+# credential path, existing applications, origin settings, and final catch-all.
+tunnel: REPLACE_WITH_EXISTING_TUNNEL_UUID
+credentials-file: /etc/cloudflared/REPLACE_WITH_EXISTING_TUNNEL_UUID.json
+
+ingress:
+  # Keep all of your existing hostname rules here.
+  - hostname: multiplayer.thekents.org
+    # Replace this example LAN address with your Unraid server's actual address.
+    service: http://192.168.1.10:2567
+    # If both containers share a user-defined Docker network, use instead:
+    # service: http://gnomeward-server:2567
+
+  # Keep your EXISTING catch-all last. This is only an example.
+  - service: http_status:404

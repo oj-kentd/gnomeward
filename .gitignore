@@ -3,3 +3,5 @@ dist/
 .DS_Store
 art/*.blend1
 playtest-results/
+server-data/
+*.tar.gz

@@ -1,0 +1,33 @@
+services:
+  gnomeward-server:
+    image: gnomeward-server:0.2.0
+    pull_policy: never
+    container_name: gnomeward-server
+    restart: unless-stopped
+    init: true
+    user: "99:100"
+    ports:
+      - "2567:2567"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "2567"
+      DATA_DIR: /data
+      MAX_ROOMS: "8"
+      ALLOWED_ORIGINS: "https://gnomeward.thekents.org,http://gnomeward.thekents.org,https://oj-kentd.github.io,https://multiplayer.thekents.org"
+    volumes:
+      - /mnt/user/appdata/gnomeward:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 2
+    stop_grace_period: 25s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

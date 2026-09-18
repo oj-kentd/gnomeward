@@ -1,0 +1,47 @@
+name: Publish Unraid server image
+on:
+  push:
+    tags: ['server-v*']
+permissions:
+  contents: write
+concurrency:
+  group: server-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build and verify container
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#server-v}"
+          ACTUAL=$(node --input-type=module -e "import {SERVER_VERSION} from './server/config.js'; process.stdout.write(SERVER_VERSION)")
+          test "$VERSION" = "$ACTUAL"
+          docker build -f Dockerfile.server -t "gnomeward-server:$VERSION" .
+          docker run -d --name gnomeward-image-check --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --mount type=volume,target=/data -p 127.0.0.1:2567:2567 "gnomeward-server:$VERSION"
+          trap 'docker logs gnomeward-image-check; docker rm -fv gnomeward-image-check' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:2567/readyz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:2567/healthz
+          curl -fsS http://127.0.0.1:2567/readyz
+          npx playwright install --with-deps chromium
+          SERVER_URL=http://127.0.0.1:2567 npm run test:server-browser
+          mkdir -p release
+          docker save "gnomeward-server:$VERSION" | gzip > "release/gnomeward-server-$VERSION-linux-amd64.tar.gz"
+          cd release
+          sha256sum "gnomeward-server-$VERSION-linux-amd64.tar.gz" > SHA256SUMS
+      - name: Publish download and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/*.tar.gz release/SHA256SUMS --title "Gnomeward server ${GITHUB_REF_NAME#server-v}" --notes-file deploy/RELEASE_NOTES.md

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Gnomeward server · Connection check</title>
+    <link rel="stylesheet" href="/check.css">
+    <script src="/vendor/colyseus.js" defer></script>
+    <script src="/check.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Gnomeward server</p>
+        <h1>Connection check</h1>
+        <p class="intro">A small test for your server and Cloudflare Tunnel. Open this page on two devices to check that they can share a room.</p>
+        <p class="note">This is a server diagnostic. Multiplayer controls in the game are a separate step. <a href="http://gnomeward.thekents.org/">Open the single-player playtest ↗</a></p>
+      </header>
+      <section class="health-panel" aria-label="Server status">
+        <span id="health-status" class="status" role="status">Checking server…</span>
+        <span id="server-version"></span>
+        <button id="health-retry" type="button" class="quiet">Check again</button>
+      </section>
+      <p id="notice" role="status" aria-live="polite" hidden></p>
+      <section id="lobby" class="panel" aria-labelledby="lobby-title">
+        <h2 id="lobby-title">Try a two-player room</h2>
+        <label for="player-name">Your name</label>
+        <input id="player-name" autocomplete="nickname" maxlength="24" placeholder="Garden guest" value="Garden guest">
+        <div class="lobby-options">
+          <div><label for="mode">Mode</label><select id="mode"><option value="coop">Co-op · shared garden</option><option value="pvp">PvP · separate gardens</option></select></div>
+          <div><label for="map">Map</label><select id="map"><option value="meadow">Mossy Meadow</option><option value="orchard">Amber Orchard</option><option value="creek">Moonlit Creek</option><option value="quarry">Crystal Quarry</option><option value="hollow">Pumpkin Hollow</option><option value="crossroads">Twinbrook Crossing</option></select></div>
+        </div>
+        <button id="create-room" type="button" disabled>Create test room</button>
+        <div class="join-row"><div><label for="room-code">Have a room code?</label><input id="room-code" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste the code exactly"></div><button id="join-room" class="secondary" type="button" disabled>Join room</button></div>
+        <p class="hint">The first player creates a room and shares its code. On the second device, enter a name and join. Both players press Ready to check that a round starts.</p>
+      </section>
+      <section id="room" class="panel" aria-labelledby="room-title" hidden>
+        <div class="room-heading"><div><p class="eyebrow">Test room</p><h2 id="room-title"></h2></div><button id="copy-code" type="button" class="quiet">Copy code</button></div>
+        <p id="room-details" class="hint"></p>
+        <p id="connection-status" class="status" role="status">Connected</p>
+        <h3>Players</h3><ul id="players" class="players"></ul>
+        <div id="boards" class="boards" aria-label="Garden state"></div>
+        <p id="latest-update" class="hint">Waiting for the first update…</p>
+        <p class="hint">This test has no tower controls. Skeletons can reach the cottage; that is expected. Leave when you have checked both devices.</p>
+        <div class="room-actions"><button id="ready" type="button" disabled>Ready for next round</button><button id="leave" type="button" class="secondary">Leave room</button></div>
+      </section>
+      <footer>Rooms last only while this server is running. A dropped connection has up to 60 seconds to reconnect; keep this tab open.</footer>
+    </main>
+  </body>
+</html>

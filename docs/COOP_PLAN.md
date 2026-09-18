@@ -1,6 +1,6 @@
-# Co-op plan — saved for later
+# Co-op plan and implementation status
 
-Status: deferred at the user's request on 2026-09-17. This records the proposed design; multiplayer has not been implemented or deployed.
+Status: Docker backend implemented on 2026-09-17 at the user's request. It supports private two-player co-op and PvP survival rooms, validated game commands, reconnection, and persisted match results. The game lobby and multiplayer rendering/client integration remain to be built; the published game is still solo. See [Unraid setup](UNRAID.md) and the [implemented protocol](../server/PROTOCOL.md). The design below records the broader plan; features such as gifting gold and durable player accounts are not in the backend's initial release.
 
 ## First release: private two-player online co-op
 
@@ -32,7 +32,7 @@ Keep GitHub Pages and the existing playtest URL for the static client. A separat
 4. Test with two browser contexts, simultaneous placements, slow connections, refresh/rejoin, host departure, upgrades, all route types, summoned allies, and secret abilities.
 5. Playtest privately with two players before considering four players or public matchmaking.
 
-Later possibility: competitive defense with separate gardens and the ability to send skeletons to an opponent. This is outside the first co-op release.
+The initial backend also supports PvP survival races: separate gardens face synchronized rounds, with the last surviving player winning. Sending skeletons to an opponent remains a later feature.
 
 ## References
 

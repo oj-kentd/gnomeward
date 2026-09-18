@@ -14,9 +14,15 @@
     "test:maps": "node scripts/maps-smoke.mjs",
     "test:poison": "node scripts/poison-smoke.mjs",
     "test:necro": "node scripts/necro-smoke.mjs",
-    "test:endless": "node scripts/endless-smoke.mjs"
+    "test:endless": "node scripts/endless-smoke.mjs",
+    "server": "node server/index.js",
+    "test:server-browser": "node scripts/server-browser-smoke.mjs"
   },
   "dependencies": {
+    "@colyseus/core": "0.18.14",
+    "@colyseus/sdk": "0.18.2",
+    "@colyseus/ws-transport": "0.18.2",
+    "express": "5.2.1",
     "three": "^0.183.0"
   },
   "devDependencies": {

@@ -73,6 +73,12 @@ The other secret models and portraits are generated in Blender with `art/generat
 
 Green arrows mark every entrance. Enemies alternate between the two entrances on Creek and Twinbrook. Shared trail mushrooms, gravity wells, and crystal barriers affect enemies from either entrance. Loops are finite routes; skeletons eventually head for the cottage.
 
+## Multiplayer server for Unraid
+
+The Docker backend now supports private two-player co-op and PvP survival rooms. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The service includes a two-browser connection diagnostic; the main game remains solo until its multiplayer lobby and gameplay client are connected.
+
+Run it locally with `npm run server`, then open `http://localhost:2567/`. Match results are stored in `server-data/results.json` by default. `npm test` includes authoritative multiplayer and real WebSocket integration tests; with the server running, `npm run test:server-browser` checks the desktop/phone connection page. See the [server protocol](server/PROTOCOL.md) for client integration and current rules.
+
 ## Art and development
 
 `art/generate_assets.py` creates the original characters, enemies, effects, and portraits. `art/generate_environment.py` creates the matching rounded toy scenery: soft foliage, pebbles, curved-roof cottage, garden props, and pillowy path stones. `art/environment.blend` and `art/gnomeward.blend` are editable source scenes. `art/generate_entry_arrow.py` creates the entrance markers. See [the art notes](art/README.md) for regeneration. The browser arranges those exported meshes into maps and animates them; interface typography and controls use HTML/CSS.
@@ -119,4 +125,4 @@ Useful feedback: map, wave, gnome combination, whether the game felt too easy or
 
 ## Saved future work
 
-The proposed two-player co-op design is saved in [docs/COOP_PLAN.md](docs/COOP_PLAN.md). It is deferred; the current playtest remains single-player.
+The co-op design and implementation status are saved in [docs/COOP_PLAN.md](docs/COOP_PLAN.md). The backend is ready for Unraid setup; the multiplayer game lobby/client and PvP enemy sending remain future work.
