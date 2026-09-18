@@ -1,7 +1,8 @@
 """Blender-authored Gnomeward title illustrations, using only original game assets.
 Run: blender --background --threads 6 --python art/generate_splash.py
 Optional -- --draft renders at half resolution for composition review.
-Writes desktop 1920x1080 and portrait 960x1200 WebPs, plus art/splash.blend.
+Writes gnomeward-splash-wood.webp at 1920x1080 and
+gnomeward-splash-wood-mobile.webp at 960x1200, plus art/splash.blend.
 The saved scene is the landscape composition. Both compositions are reproducible.
 """
 import bpy, math, os, random, sys
@@ -28,7 +29,33 @@ def mat(name,color,rough=.8):
     shader=material.node_tree.nodes.get('Principled BSDF');shader.inputs['Base Color'].default_value=(*color,1);shader.inputs['Roughness'].default_value=rough
     materials[name]=material;return material
 mat('Garden grass',(.26,.46,.13));mat('Soft moss highlight',(.37,.56,.20));mat('Forest background',(.09,.22,.11))
-mat('Logo deep green',(.035,.13,.055));mat('Logo golden edge',(.93,.52,.075));mat('Logo warm cream',(1,.89,.55))
+mat('Timber dark sidewalls',(.040,.012,.004),.88)
+mat('Timber cut edge',(.090,.031,.009),.80)
+mat('Timber knot rings',(.040,.009,.002),.86)
+mat('Timber wooden pegs',(.13,.043,.011),.82)
+
+# Broad, directional walnut grain remains legible when the mobile image shrinks.
+# Generated coordinates follow each individual letter's hand-cut orientation.
+for index, warmth in enumerate([.90, 1.04, .98]):
+    wood=mat('Walnut face '+str(index),(.19*warmth,.071*warmth,.017*warmth),.78)
+    nodes=wood.node_tree.nodes;links=wood.node_tree.links
+    shader=nodes.get('Principled BSDF')
+    tex=nodes.new('ShaderNodeTexCoord')
+    stretch=nodes.new('ShaderNodeVectorMath');stretch.operation='MULTIPLY';stretch.inputs[1].default_value=(1.4,9.0,1.0)
+    links.new(tex.outputs['Generated'],stretch.inputs[0])
+    noise=nodes.new('ShaderNodeTexNoise');noise.inputs['Scale'].default_value=2.3;noise.inputs['Detail'].default_value=2.0;noise.inputs['Roughness'].default_value=.70
+    links.new(stretch.outputs[0],noise.inputs['Vector'])
+    bands=nodes.new('ShaderNodeTexWave');bands.wave_type='BANDS';bands.bands_direction='Y';bands.inputs['Scale'].default_value=3.5;bands.inputs['Distortion'].default_value=5.0;bands.inputs['Detail'].default_value=2.0;bands.inputs['Detail Scale'].default_value=.85
+    links.new(tex.outputs['Generated'],bands.inputs['Vector'])
+    mix=nodes.new('ShaderNodeMixRGB');mix.blend_type='MULTIPLY';mix.inputs[0].default_value=.45
+    links.new(noise.outputs['Fac'],mix.inputs[1]);links.new(bands.outputs['Color'],mix.inputs[2])
+    ramp=nodes.new('ShaderNodeValToRGB')
+    ramp.color_ramp.elements[0].position=.15;ramp.color_ramp.elements[0].color=(.052*warmth,.012*warmth,.003*warmth,1)
+    ramp.color_ramp.elements[1].position=.70;ramp.color_ramp.elements[1].color=(.30*warmth,.135*warmth,.032*warmth,1)
+    middle=ramp.color_ramp.elements.new(.42);middle.color=(.17*warmth,.057*warmth,.011*warmth,1)
+    links.new(mix.outputs[0],ramp.inputs[0]);links.new(ramp.outputs['Color'],shader.inputs['Base Color'])
+    bump=nodes.new('ShaderNodeBump');bump.inputs['Strength'].default_value=.18;bump.inputs['Distance'].default_value=.012
+    links.new(mix.outputs[0],bump.inputs['Height']);links.new(bump.outputs['Normal'],shader.inputs['Normal'])
 mat('Sunlit golden pollen',(1,.71,.20));mat('Magic mushroom green',(.48,.80,.17))
 
 def screen(x,y,z=0):return Vector((x,(y-.8*z)/.6,z))
@@ -74,12 +101,63 @@ sphere('Deep green distant backdrop',(0,0,-2),(70,70,1),materials['Forest backgr
 
 font=bpy.data.fonts.load(os.environ.get('GNOMEWARD_TITLE_FONT', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
 def logo(width,sy):
-    root=bpy.data.objects.new('GNOMEWARD layered title',None);scene.collection.objects.link(root);root.location=screen(0,sy,5.2);root.rotation_euler=cam.rotation_euler;composition.append(root)
-    for name,offset,extrude,bevel,depth,material in [('Dark green outline',.074,.19,.033,-.11,'Logo deep green'),('Golden title bevel',.033,.135,.026,.07,'Logo golden edge'),('Cream letter faces',0,.067,.023,.225,'Logo warm cream')]:
-        curve=bpy.data.curves.new(name,'FONT');curve.body='GNOMEWARD';curve.font=font;curve.align_x='CENTER';curve.align_y='CENTER';curve.size=1;curve.space_character=1.04;curve.offset=offset;curve.extrude=extrude;curve.bevel_depth=bevel;curve.bevel_resolution=4;curve.resolution_u=12
-        obj=bpy.data.objects.new(name,curve);scene.collection.objects.link(obj);obj.parent=root;obj.location.z=depth;curve.materials.append(materials[material])
-    bpy.context.view_layer.update()
-    face=root.children[-1];factor=width/face.dimensions.x
+    root=bpy.data.objects.new('GNOMEWARD handmade walnut lettering',None)
+    scene.collection.objects.link(root);root.location=screen(0,sy,5.2)
+    root.rotation_euler=cam.rotation_euler;composition.append(root)
+    letters=[];cursor=0
+    angles=[-.026,.018,-.020,.025,-.012,.017,-.025,.020,-.018]
+    rises=[.014,-.009,.013,-.016,.008,-.010,.012,-.004,.007]
+    for index,character in enumerate('GNOMEWARD'):
+        curve=bpy.data.curves.new('Cut walnut '+character,'FONT')
+        curve.body=character;curve.font=font;curve.align_x='CENTER';curve.align_y='CENTER'
+        curve.size=1;curve.offset=0;curve.extrude=.125
+        curve.bevel_depth=.008;curve.bevel_resolution=3;curve.resolution_u=12
+        obj=bpy.data.objects.new('Wooden letter '+str(index+1)+' '+character,curve)
+        scene.collection.objects.link(obj)
+        # Convert each zero-offset glyph into a genuine beveled timber mesh.
+        bpy.ops.object.select_all(action='DESELECT');obj.select_set(True)
+        bpy.context.view_layer.objects.active=obj;bpy.ops.object.convert(target='MESH')
+        obj=bpy.context.object;obj.data.materials.clear()
+        for material in [materials['Walnut face '+str(index%3)],materials['Timber dark sidewalls'],materials['Timber cut edge']]:obj.data.materials.append(material)
+        for polygon in obj.data.polygons:
+            polygon.material_index=0 if polygon.normal.z>.92 else 2 if polygon.normal.z>.15 else 1
+        bpy.context.view_layer.update()
+        glyph_width=obj.dimensions.x
+        holder=bpy.data.objects.new('Hand-placed '+character+' '+str(index),None);scene.collection.objects.link(holder)
+        holder.parent=root;holder.location=(cursor+glyph_width/2,rises[index],.08)
+        holder.rotation_euler=(.012 if index%2 else -.012,(-.045 if index%2 else .045),angles[index])
+        obj.parent=holder;obj.location=(0,0,0)
+        cursor+=glyph_width+.045
+        letters.append(holder)
+        # Small wooden pegs and knots sit only on solid letter strokes, verified
+        # by local mesh ray casts so holes in O, A, R and D remain open.
+        xs=[-glyph_width*.31,glyph_width*.31,0,-glyph_width*.17,glyph_width*.17]
+        ys=[.16,-.16,.04,-.04,.24,-.24]
+        def solid(x,y):
+            hit,point,normal,_=obj.ray_cast(Vector((x,y,.6)),Vector((0,0,-1)))
+            return hit and normal.z>.8
+        anchors=[]
+        for y in ys:
+            for x in xs:
+                if all(solid(x+dx,y+dy) for dx,dy in [(0,0),(.024,0),(-.024,0),(0,.024),(0,-.024)]):
+                    if all(math.hypot(x-a,y-b)>.21 for a,b in anchors):anchors.append((x,y))
+        for x,y in anchors[:2]:
+            peg=sphere('Round wooden joinery peg',(0,0,0),(.019,.019,.007),materials['Timber wooden pegs'],12,8)
+            peg.parent=holder;peg.location=(x,y,.139)
+        if index in [0,2,4,7] and anchors:
+            x,y=anchors[-1]
+            for ring in range(3):
+                radius=.023+ring*.008
+                if not all(solid(x+math.cos(a)*radius,y+math.sin(a)*radius*.52) for a in [i*math.tau/12 for i in range(12)]):continue
+                curve=bpy.data.curves.new('Walnut knot growth ring','CURVE');curve.dimensions='3D';curve.bevel_depth=.0017;curve.bevel_resolution=2
+                spline=curve.splines.new('POLY');spline.points.add(23)
+                for i,point in enumerate(spline.points):
+                    a=i*math.tau/24;point.co=(x+math.cos(a)*radius,y+math.sin(a)*radius*.52,.135,1)
+                spline.use_cyclic_u=True
+                knot=bpy.data.objects.new('Dark knot ring in '+character,curve);scene.collection.objects.link(knot);knot.parent=holder;curve.materials.append(materials['Timber knot rings'])
+    total=cursor-.045
+    for holder in letters:holder.location.x-=total/2
+    factor=width/(total+.03)
     root.scale=(factor,)*3
 
 
@@ -99,10 +177,10 @@ def build(portrait=False):
     for i,(x,y) in enumerate(flowers):
         asset('strawberry-bush' if i%3==0 else 'flower',x,y,.9 if i%3==0 else 1.5,rotation=i)
     if portrait:
-        defenders=[('gnome-sprout',-2.25,-2.0,1.7,.47),('gnome-spore',-3.15,-.15,1.55,.48),('gnome-strawberry',-1.45,.75,1.4,.47),('gnome-boom',-3.35,-2.45,1.20,.43)]
+        defenders=[('gnome-gravity',-1.05,-2.70,1.75,.20),('gnome-sprout',-2.65,-2.15,1.35,.47),('gnome-spore',-3.15,-.15,1.55,.48),('gnome-strawberry',-1.45,.75,1.4,.47),('gnome-boom',-3.35,-2.45,1.20,.43)]
         enemies=[('skeleton',1.3,-1.9,1.25,-.6,None),('skeleton',3,-2.4,1.2,-.55,(.93,.37,.12)),('skeleton',2.95,-.25,1.18,-.5,(.43,.77,.90)),('skeleton-boss',2.55,1.05,1.16,-.45,(.52,.22,.72))]
     else:
-        defenders=[('gnome-sprout',-3.9,-2.65,1.9,.55),('gnome-spore',-5.35,-.85,1.7,.50),('gnome-strawberry',-2.3,-.65,1.58,.6),('gnome-boom',-6.25,-2.95,1.30,.5)]
+        defenders=[('gnome-gravity',-2.80,-2.25,1.90,.20),('gnome-sprout',-4.55,-2.95,1.60,.55),('gnome-spore',-5.35,-.85,1.7,.50),('gnome-strawberry',-2.0,-.15,1.58,.6),('gnome-boom',-6.25,-2.95,1.30,.5)]
         enemies=[('skeleton',2.7,-2.55,1.6,-.6,None),('skeleton',4.45,-3.2,1.35,-.55,(.93,.37,.12)),('skeleton',5.9,-1.65,1.35,-.5,(.43,.77,.90)),('skeleton-boss',4.5,-.45,1.35,-.5,(.52,.22,.72))]
     for name,x,y,size,angle in defenders:asset(name,x,y,size,rotation=angle)
     for name,x,y,size,angle,tint in enemies:
@@ -126,10 +204,10 @@ def build(portrait=False):
     bpy.context.view_layer.update()
 
 build(False)
-scene.render.filepath=str(OUT/'gnomeward-splash.webp');bpy.ops.render.render(write_still=True)
+scene.render.filepath=str(OUT/'gnomeward-splash-wood.webp');bpy.ops.render.render(write_still=True)
 # Save editable landscape with all title fonts packed and GLB geometry embedded.
 bpy.ops.file.pack_all()
 bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'art/splash.blend'),compress=True)
 build(True)
-scene.render.filepath=str(OUT/'gnomeward-splash-mobile.webp');bpy.ops.render.render(write_still=True)
+scene.render.filepath=str(OUT/'gnomeward-splash-wood-mobile.webp');bpy.ops.render.render(write_still=True)
 print('GNOMEWARD_SPLASH_COMPLETE')

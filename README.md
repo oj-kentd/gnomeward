@@ -4,7 +4,7 @@ A cozy, original 3D tower defense game made for a parent-and-child playtest. Pro
 
 **Play:** http://gnomeward.thekents.org/
 
-The welcome screen features an original Blender garden battle and a chunky 3D Gnomeward logo, with desktop and portrait artwork. Choose **Play solo** or **Play co-op** to load the game. Reloading during an active co-op session reconnects automatically. `npm run test:splash` checks the landing screen, keyboard entry, responsive layouts, and loading recovery.
+The welcome screen features an original Blender garden battle and a handmade wooden Gnomeward sign, with desktop and portrait artwork. Choose **Play solo** or **Play co-op** to load the game. Reloading during an active co-op session reconnects automatically. `npm run test:splash` checks the landing screen, keyboard entry, responsive layouts, and loading recovery.
 
 ## Play locally
 
