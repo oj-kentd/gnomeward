@@ -27,7 +27,14 @@ async function enter() {
   if (await page.locator('#dismiss-tip').isVisible()) await page.locator('#dismiss-tip').click();
 }
 async function guide(expected) {
-  await page.locator('#help-button').click();
+  // Capture the node synchronously with the real open handler, before the
+  // next HUD refresh can hide an unintended replacement from the assertion.
+  await page.evaluate(() => {
+    document.getElementById('help-button').click();
+    window.__traitsGuideRoot = document.getElementById('enemy-traits-guide');
+  });
+  await settled();
+  assert.equal(await page.evaluate(() => window.__traitsGuideRoot?.isConnected && window.__traitsGuideRoot === document.getElementById('enemy-traits-guide')), true, 'opening a guide must preserve its node across HUD refreshes');
   const panel = page.locator('#enemy-traits-guide');
   await panel.waitFor();
   const ids = await panel.locator('[data-enemy-trait]').evaluateAll(elements => elements.map(element => element.dataset.enemyTrait).sort());
@@ -57,6 +64,7 @@ try {
   const seen = [];
   for (const trait of Object.values(ENEMY_TRAITS)) {
     stage = `first ${trait.id} encounter at round ${trait.startWave}`;
+    await guide(seen);
     const fixture = await page.evaluate(({ wave, trait }) => {
       const { game, state } = gnomeward;
       Object.assign(state, { paused: true, autoStart: false, multiplayer: null, selectedTowerId: null, placingType: null });
@@ -71,6 +79,9 @@ try {
     }, { wave: trait.startWave, trait: trait.id });
     seen.push(trait.id);
     await page.waitForFunction(id => JSON.parse(localStorage.getItem('gnomeward-profile') || '{}').enemyTraits?.includes(id), trait.id);
+    await page.waitForFunction(id => !!document.querySelector(`#enemy-traits-guide [data-enemy-trait="${id}"]`), trait.id);
+    assert.equal(await page.evaluate(() => window.__traitsGuideRoot?.isConnected && window.__traitsGuideRoot === document.getElementById('enemy-traits-guide')), true, 'a discovery updates an open guide without detaching its scrolled section');
+    await closeGuide();
     await settled();
     const visual = await page.evaluate(({ variant, plain, boss, trait }) => {
       const renderer = gnomeward.renderer;

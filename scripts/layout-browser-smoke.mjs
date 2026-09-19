@@ -56,6 +56,9 @@ async function inspect(label, selected) {
   assert.ok(Math.abs(canvas.width - scene.width) <= 1 && Math.abs(canvas.height - scene.height) <= 1, `${label}: WebGL canvas follows reserved viewport`);
   assert.ok(world.vertices > 0 && world.maxX <= 1.005 && world.maxY <= 1.005, `${label}: complete static garden fits camera ${JSON.stringify(world)}`);
   if (selected) {
+    if (viewport.width === 1590 || viewport.width === 1908) {
+      assert.ok(world.maxX >= .74, `${label}: garden fills the reclaimed desktop space`);
+    }
     assert.ok(panel && panel.bottom <= Math.min(shop.top, controls.top) - 3, `${label}: upgrades stay above bottom controls`);
     if (viewport.width > 700) assert.ok(panel.left >= scene.right + 3, `${label}: upgrades dock to the right of the map`);
     else assert.ok(panel.top >= scene.bottom + 3 && panel.height >= 110, `${label}: phone upgrades dock below the map`);
@@ -74,11 +77,11 @@ try {
   const first = await groundPoint(-4.25,-2.25); await page.mouse.click(first.x,first.y);
   await page.waitForFunction(() => gnomeward.game.towers.length === 1 && gnomeward.state.selectedTowerId != null);
   const id = await page.evaluate(() => gnomeward.game.towers[0].id);
-  for (const viewport of [{width:1320,height:850},{width:1080,height:720},{width:390,height:844},{width:320,height:568},{width:844,height:390}]) {
+  for (const viewport of [{width:1590,height:740},{width:1908,height:888},{width:1320,height:850},{width:1080,height:720},{width:390,height:844},{width:320,height:568},{width:844,height:390}]) {
     stage = `${viewport.width}×${viewport.height} selected/closed map fit and picking`;
     await page.setViewportSize(viewport); await settled();
     const selected = await inspect(`${viewport.width} selected`, true);
-    if (viewport.width === 1320 || viewport.width === 390 || viewport.width === 320) await page.screenshot({path:`playtest-results/layout-${viewport.width}-selected.png`});
+    if (viewport.width === 1590 || viewport.width === 1908 || viewport.width === 1320 || viewport.width === 390 || viewport.width === 320) await page.screenshot({path:`playtest-results/layout-${viewport.width}-selected.png`});
     await page.locator('[data-close-upgrades]').click(); await settled();
     const closed = await inspect(`${viewport.width} closed`, false);
     if (viewport.width > 700) assert.ok(closed.scene.width > selected.scene.width + 200);

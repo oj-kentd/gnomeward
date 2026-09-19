@@ -277,11 +277,11 @@ export class GardenRenderer {
     // Keep its map orientation tied to the device viewport, so opening an
     // upgrade panel changes zoom without rotating the whole garden.
     const portrait = window.innerWidth / window.innerHeight < .85;
-    this.camera.position.set(portrait ? 21 : 0, 32, portrait ? 0 : 21);
+    this.camera.position.set(portrait ? 21 : 0, 32, portrait ? 0 : 26);
     this.camera.lookAt(0, 0, 0);
     this.camera.updateMatrixWorld();
     this.world.updateMatrixWorld(true);
-    let fitW = portrait ? 8.85 : 12.85, fitH = portrait ? 11 : 8;
+    let fitW = 0, fitH = 0;
     const corner = new THREE.Vector3();
     // Fit the actual board and static scenery into the reserved #scene area.
     // Bounding boxes are cached on shared meshes; this runs only on resize,
@@ -296,7 +296,9 @@ export class GardenRenderer {
         fitH = Math.max(fitH, Math.abs(corner.y));
       }
     });
-    const halfW = Math.max(fitW + .30, (fitH + .30) * aspect);
+    // Measured scenery bounds avoid a broad empty border on wide screens.
+    if (!fitW || !fitH) { fitW = 12.85; fitH = 8; }
+    const halfW = Math.max(fitW + .12, (fitH + .12) * aspect);
     const halfH = halfW / aspect;
     this.camera.left = -halfW;
     this.camera.right = halfW;

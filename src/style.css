@@ -108,3 +108,18 @@
 .damage-kind{font-size:inherit;color:#fff3c8}.trait-guide-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0}.trait-guide-list article{padding:10px;border:1px solid #b2ae86;border-radius:8px;background:#f6edce}.trait-guide-list h3{margin:0;color:#4c6343;font-size:14px}.trait-guide-list small{display:block;font-size:10px;margin-top:4px;color:#84704e}.trait-guide-list p{display:flex;flex-direction:column;gap:4px;font-size:12px}.trait-guide-list p b{color:#46722e}.trait-guide-list p span{color:#936337}.damage-kind-legend{display:flex;flex-direction:column;gap:5px;margin:12px 0;font-size:11px;line-height:1.4;color:#786343}.damage-kind-legend>b{font-size:12px;color:#566946}
 @media(max-width:1050px) and (min-width:701px){.game-shell{--upgrade-width:290px}}
 @media(max-width:700px){.has-selection #scene{right:8px;bottom:calc(var(--play-bottom) + var(--upgrade-height) + 8px)}.floating-upgrades{top:auto;bottom:var(--play-bottom);left:8px;right:8px;width:auto;height:var(--upgrade-height);max-height:none;padding:0 8px 8px}.floating-upgrades .selected-heading{min-height:51px;margin-bottom:5px;padding-top:3px;padding-bottom:3px}.floating-upgrades .selected-heading>.portrait{width:42px;height:44px}.floating-upgrades .selected-heading h3{font-size:20px}.floating-upgrades .selected-heading span{margin-top:2px;font-size:10px}.round-preview,.is-coop .round-preview{max-width:calc(100vw - 32px);top:calc(var(--play-top) + 5px);left:16px}.trait-guide-list{grid-template-columns:1fr}.trait-guide-list article{padding:9px}.trait-guide-list p{flex-direction:row;justify-content:space-between}}
+
+/* A shallow desktop HUD and shop leave the height to the garden. */
+@media(min-width:701px){
+.game-shell:not(.shop-collapsed) .guardian-dock{padding:5px 6px 6px 55px}
+.guardian-dock .dock-heading{position:absolute;left:5px;top:8px;bottom:8px;width:44px;height:auto;padding:0;justify-content:center}
+.guardian-dock .dock-heading h2{display:none}.guardian-dock .dock-heading>button{margin:0;min-height:44px;padding:3px;font-size:10px}
+.shop-collapsed .guardian-dock .dock-heading{position:static;width:auto;height:24px}.shop-collapsed .guardian-dock .dock-heading h2{display:block}.shop-collapsed .guardian-dock .dock-heading>button{min-height:24px}
+}
+@media(min-width:1051px){
+.resource-panel{display:grid;grid-template-columns:280px 205px;width:491px}
+.hud{padding:7px 5px}.hud-stat strong{font-size:23px}.hud-stat svg{width:25px;height:25px}.hud-stat small{font-size:10px}
+.field-toolbar{border-top:0;border-left:1px solid #bc8c534d;padding:6px 8px;gap:8px}.field-toolbar .brand{display:none}
+.coop-status{grid-column:1/-1}
+.wave-count{display:flex;align-items:center;gap:7px;min-height:53px;padding:6px 9px}.wave-count strong{font-size:27px}.wave-count .round-best{max-width:70px}
+}
