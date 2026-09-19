@@ -10,7 +10,7 @@ concurrency:
 jobs:
   image:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,6 +21,7 @@ jobs:
       - run: npm test
       - run: npm run test:combos
       - run: npm run test:combos-coop
+      - run: npm run test:berry-combo
       - name: Build and verify container
         shell: bash
         run: |
@@ -49,6 +50,7 @@ jobs:
           PLAYTEST_URL=http://127.0.0.1:5175 npm run test:coop-motion-browser
           PLAYTEST_URL=http://127.0.0.1:5175 npm run test:coop-ready-browser
           PLAYTEST_URL=http://127.0.0.1:5175 npm run test:combos-browser
+          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:berry-combo-browser
           PLAYTEST_URL=http://127.0.0.1:5175 node scripts/strawberry-browser-smoke.mjs
           PLAYTEST_URL=http://127.0.0.1:5175 npm run test:echoes
           mkdir -p release

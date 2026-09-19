@@ -219,7 +219,7 @@ function frame(now){
   }
   const events=game.events.splice(0);
   const announcement=events.findLast(event=>['unlock','path-unlock','combo'].includes(event.type))||events.findLast(event=>['wave-start','wave-complete'].includes(event.type));
-  if(announcement)ui.announce?.(announcement.type==='combo'?`${announcement.combo.toUpperCase()}!`:announcement.message,announcement.type==='combo'?announcement.combo:announcement.type==='path-unlock'?'unlock':announcement.type);
+  if(announcement)ui.announce?.(announcement.type==='combo'?`${announcement.combo.toUpperCase().replaceAll('-', ' ')}!`:announcement.message,announcement.type==='combo'?announcement.combo:announcement.type==='path-unlock'?'unlock':announcement.type);
   for(const event of events){
     if(event.message&&!['leak','placed','wave-start','wave-complete','unlock','path-unlock','combo'].includes(event.type))ui.toast(event.message);
     if(event.type==='summoned'&&(!state.multiplayer||game.towers.find(t=>t.id===event.towerId)?.ownerId===state.multiplayer.sessionId)){state.selectedTowerId=event.towerId;state.placingType=null;refreshUI();}
@@ -233,4 +233,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.6'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.7'};

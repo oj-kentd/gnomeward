@@ -74,3 +74,5 @@ This renders `gnomeward-splash-wood.webp` at 1920×1080 and a separately compose
 ## Combo fireworks
 
 `blender --background --python art/generate_combo_assets.py` regenerates `art/combos.blend` and the four small GLB resources for Sporefire pollen/sparks and Prismstorm shards/bursts. The renderer animates these Blender meshes, caps visible bursts/shards, honors reduced motion, and disposes transient fade materials.
+
+`blender --background --python art/generate_berry_singularity.py` regenerates `art/berry-singularity.blend` and three small GLBs for open violet/white ribbons, starlight flecks, and a thin outline around charged seeds. The black seed model remains unchanged. The renderer uses the existing multiplayer presentation clock for both orbit and outward flight, with the shared effect budget and reduced-motion behavior.

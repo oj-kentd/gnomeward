@@ -1,5 +1,5 @@
 import { MAPS, TOWERS, ENEMIES, SECRETS, NECRO_PATH_SECRET, cottagePosition, cottageDoorPosition } from './data.js';
-import { SPOREFIRE, PRISMSTORM } from './combos.js';
+import { SPOREFIRE, PRISMSTORM, BERRY_SINGULARITY } from './combos.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
@@ -396,6 +396,7 @@ export class Game {
   _advanceProjectiles(dt) {
     const flying = this.projectiles;
     this.projectiles = [];
+    let chargedPending = flying.filter(shot => shot.gravityCharged).length;
     for (const shot of flying) {
       if (shot.type === 'prism-shard') {
         this._advancePrismShard(shot, dt);
@@ -404,10 +405,11 @@ export class Game {
       if (shot.type === 'strawberry-mortar') {
         shot.ttl -= dt;
         if (shot.ttl > 0) this.projectiles.push(shot);
-        else this._burstStrawberry(shot);
+        else this._burstStrawberry(shot, chargedPending);
         continue;
       }
       if (shot.type === 'strawberry-seed') {
+        if (shot.gravityCharged) chargedPending--;
         this._advanceSeed(shot, dt);
         continue;
       }
@@ -487,25 +489,51 @@ export class Game {
     if (next) this._launchPrismShard(tower, next, origin, shot.bounces - 1, hitIds);
   }
 
-  _burstStrawberry(shot) {
-    const center = { x: shot.tx, z: shot.tz };
+  _burstStrawberry(shot, chargedPending = 0) {
+    const impact = { x: shot.tx, z: shot.tz };
+    const strawberry = this.towers.find(tower => tower.id === shot.sourceId && tower.type === 'strawberry');
+    const budget = this.projectiles.filter(seed => seed.gravityCharged).length + chargedPending;
+    const hole = strawberry?.levels[1] === 3 && budget + shot.seedCount <= BERRY_SINGULARITY.projectileLimit
+      ? this.holes.filter(well => well.ttl > 0 && well.capture && (well.berryReadyAt || 0) <= this.time &&
+        distance(impact, well) <= well.radius && this.towers.some(tower => tower.id === well.sourceId && tower.type === 'gravity' && tower.levels[0] === 3))
+        .sort((a, b) => distance(impact, a) - distance(impact, b) || a.id - b.id)[0] : null;
+    const center = hole ? { x: hole.x, z: hole.z } : impact;
+    if (hole) {
+      hole.berryReadyAt = this.time + BERRY_SINGULARITY.cooldown;
+      this._announceCombo('berry-singularity', 'BERRY SINGULARITY! A secret combination discovered!');
+      this._effect('berry-singularity', center, center, '#c4afff', 1.1);
+      this.effects.at(-1).radius = 4;
+    }
     for (const enemy of this.enemies) {
-      if (enemy.hp > 0 && distance(center, enemy) <= shot.radius) this._damage(enemy, shot.damage, shot.sourceId);
+      if (enemy.hp > 0 && distance(impact, enemy) <= shot.radius) this._damage(enemy, shot.damage, shot.sourceId);
     }
     for (let i = 0; i < shot.seedCount; i++) {
       const angle = i / shot.seedCount * Math.PI * 2;
+      const range = hole ? BERRY_SINGULARITY.range : shot.seedRange;
+      const duration = hole ? BERRY_SINGULARITY.orbitDuration + BERRY_SINGULARITY.flightDuration : .5;
       this.projectiles.push({
         id: ++this._id, type: 'strawberry-seed', unitType: 'strawberry', sourceId: shot.sourceId,
-        x: center.x, z: center.z, tx: center.x + Math.cos(angle) * shot.seedRange, tz: center.z + Math.sin(angle) * shot.seedRange,
-        ttl: 0.5, maxTtl: 0.5, color: '#111111', damage: shot.seedDamage, pierce: shot.seedPierce, hitIds: [],
+        x: center.x, z: center.z, tx: center.x + Math.cos(angle) * range, tz: center.z + Math.sin(angle) * range,
+        ttl: duration, maxTtl: duration, color: '#111111', damage: shot.seedDamage + (hole ? BERRY_SINGULARITY.damage : 0),
+        pierce: hole ? BERRY_SINGULARITY.pierce : shot.seedPierce, hitIds: [],
+        ...(hole ? { gravityCharged: true, orbitDuration: BERRY_SINGULARITY.orbitDuration, orbitRemaining: BERRY_SINGULARITY.orbitDuration,
+          flightDuration: BERRY_SINGULARITY.flightDuration, orbitRadius: BERRY_SINGULARITY.orbitRadius, orbitTurns: 1, angle, ox: center.x, oz: center.z } : {}),
       });
     }
   }
 
   _advanceSeed(shot, dt) {
-    const before = clamp(1 - shot.ttl / shot.maxTtl, 0, 1);
+    if (shot.gravityCharged && shot.orbitRemaining > 0) {
+      const orbitStep = Math.min(dt, shot.orbitRemaining);
+      shot.orbitRemaining -= orbitStep;
+      shot.ttl -= orbitStep;
+      dt -= orbitStep;
+      if (dt <= 1e-8) { this.projectiles.push(shot); return; }
+    }
+    const duration = shot.flightDuration || shot.maxTtl;
+    const before = clamp(1 - shot.ttl / duration, 0, 1);
     shot.ttl -= dt;
-    const after = clamp(1 - shot.ttl / shot.maxTtl, 0, 1);
+    const after = clamp(1 - shot.ttl / duration, 0, 1);
     const dx = shot.tx - shot.x, dz = shot.tz - shot.z;
     const ax = shot.x + dx * before, az = shot.z + dz * before;
     const sx = dx * (after - before), sz = dz * (after - before);
@@ -517,7 +545,8 @@ export class Game {
     for (const { enemy } of contacts) {
       if (shot.hitIds.length >= shot.pierce) break;
       shot.hitIds.push(enemy.id);
-      this._damage(enemy, shot.damage, shot.sourceId);
+      const bonus = shot.gravityCharged ? enemy.maxHp * (enemy.boss ? BERRY_SINGULARITY.bossFraction : BERRY_SINGULARITY.healthFraction) : 0;
+      this._damage(enemy, shot.damage + bonus, shot.sourceId);
       this._effect('impact', enemy, enemy, shot.color, 0.12);
     }
     if (shot.ttl > 0 && shot.hitIds.length < shot.pierce) this.projectiles.push(shot);

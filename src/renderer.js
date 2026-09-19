@@ -3,9 +3,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CoopMotionBuffer } from './coop-motion.js';
 import { TOWERS, ENEMIES, SECRETS, cottagePosition } from './data.js';
 
-const ASSETS = ['sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
-const COMBO_BURSTS = new Set(['sporefire', 'prism-burst']);
+const ASSETS = ['berry-singularity-seed-ring','berry-singularity-arcs','berry-singularity-stars','sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
+const COMBO_BURSTS = new Set(['sporefire', 'prism-burst', 'berry-singularity']);
 const COMBO_SHOTS = new Set(['prism-shard', 'sporefire-link']);
+const comboShot = effect => COMBO_SHOTS.has(effect.type) || effect.type === 'strawberry-seed' && effect.gravityCharged;
 const palettes = [
   {grass:0x87aa59, edge:0x6c6946, road:0xe2c795, bg:0x183c35},
   {grass:0xa4ad64, edge:0x716147, road:0xe8cc9c, bg:0x293d32},
@@ -62,8 +63,9 @@ export class GardenRenderer {
   }
   comboBurst(type) {
     const object = new THREE.Group();
-    object.add(this.clone(type === 'sporefire' ? 'sporefire-petals' : 'prism-burst'));
+    object.add(this.clone(type === 'sporefire' ? 'sporefire-petals' : type === 'berry-singularity' ? 'berry-singularity-arcs' : 'prism-burst'));
     if (type === 'sporefire') object.add(this.clone('combo-sparks'));
+    if (type === 'berry-singularity') object.add(this.clone('berry-singularity-stars'));
     // Only burst materials fade. Never mutate the shared GLB or tinted cache.
     const materials = new Map();
     object.traverse(child => {
@@ -344,22 +346,41 @@ export class GardenRenderer {
     for (let i = effects.length - 1; i >= 0; i--) {
       const effect = effects[i];
       if (COMBO_BURSTS.has(effect.type) && bursts++ < (this.reducedMotion.matches ? 6 : 12)) comboVisible.add(effect.id);
-      if (COMBO_SHOTS.has(effect.type) && shards++ < 64) comboVisible.add(effect.id);
+      if (comboShot(effect) && shards++ < 64) comboVisible.add(effect.id);
     }
     for (const effect of effects) {
-      if ((COMBO_BURSTS.has(effect.type) || COMBO_SHOTS.has(effect.type)) && !comboVisible.has(effect.id)) continue;
+      if ((COMBO_BURSTS.has(effect.type) || comboShot(effect)) && !comboVisible.has(effect.id)) continue;
       fs.add(effect.id);
       let object = this.fx.get(effect.id);
       if (!object) {
         const berryModel = effect.type === 'strawberry-mortar' ? 'strawberry-fruit' : effect.type === 'strawberry-seed' ? 'strawberry-seed' : null;
         object = COMBO_BURSTS.has(effect.type) ? this.comboBurst(effect.type) : this.clone(berryModel || (effect.type === 'prism-shard' ? 'prism-shard' : ['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type) ? 'soul-puff' : effect.type === 'explosion' ? 'explosion' : 'projectile'), effect.type === 'strawberry-seed' ? '#111111' : berryModel ? undefined : effect.color);
-        if (COMBO_SHOTS.has(effect.type)) object.traverse(child => { if (child.isMesh) child.castShadow = child.receiveShadow = false; });
+        if (effect.type === 'strawberry-seed' && effect.gravityCharged) object.add(this.clone('berry-singularity-seed-ring'));
+        if (comboShot(effect)) object.traverse(child => { if (child.isMesh) child.castShadow = child.receiveShadow = false; });
         this.actors.add(object);
         this.fx.set(effect.id, object);
       }
       const progress = THREE.MathUtils.clamp(1 - effect.ttl / effect.maxTtl, 0, 1);
       object.position.set(effect.x, .65, effect.z);
-      if (COMBO_BURSTS.has(effect.type)) {
+      if (effect.type === 'berry-singularity') {
+        // Violet/white open ribbons contract around the black seed spiral,
+        // then unfurl with its radial release. The trail stays fully visible.
+        const radius = effect.radius || 4;
+        const age = effect.maxTtl - effect.ttl;
+        const charge = THREE.MathUtils.clamp(age / .45, 0, 1);
+        const release = THREE.MathUtils.clamp((age - .45) / Math.max(.01, effect.maxTtl - .45), 0, 1);
+        const outward = 1 - (1 - release) ** 3;
+        const reduced = this.reducedMotion.matches;
+        object.position.y = .19;
+        const arcs = object.children[0], stars = object.children[1];
+        arcs.scale.setScalar(radius * (.31 - .08 * charge + .77 * outward));
+        arcs.rotation.y = reduced ? 0 : -charge * Math.PI * 2 + release * Math.PI * .6;
+        arcs.position.y = reduced ? 0 : Math.sin(progress * Math.PI) * .20;
+        stars.scale.setScalar(radius * (.30 + .80 * outward));
+        stars.rotation.y = reduced ? 0 : charge * Math.PI + release;
+        stars.position.y = Math.sin(progress * Math.PI) * (reduced ? .15 : .7);
+        for (const material of object.userData.fadeMaterials) material.opacity = (1 - release) ** .8;
+      } else if (COMBO_BURSTS.has(effect.type)) {
         const radius = effect.radius || 3.3;
         const expansion = 1 - (1 - progress) ** 3;
         const reduced = this.reducedMotion.matches;
@@ -399,6 +420,32 @@ export class GardenRenderer {
       } else if (effect.type === 'impact') {
         object.scale.setScalar(.08 + .18 * (1 - progress));
       } else if (effect.type === 'strawberry-mortar' || effect.type === 'strawberry-seed') {
+        if (effect.type === 'strawberry-seed' && effect.gravityCharged) {
+          // TTL is already interpolated by the co-op presentation buffer.
+          // Derive both phases from that clock rather than stepped packet
+          // orbitRemaining values. Only the server decides collision/damage.
+          const age = Math.max(0, effect.maxTtl - effect.ttl);
+          const duration = effect.orbitDuration || .45;
+          const ox = effect.ox ?? effect.x, oz = effect.oz ?? effect.z;
+          const dx = effect.tx - ox, dz = effect.tz - oz;
+          if (age < duration) {
+            const phase = age / duration;
+            const angle = (effect.angle || 0) + phase * Math.PI * 2 * (effect.orbitTurns ?? 1);
+            // Briefly bloom outward, then whip inward to the real collision
+            // launch point at the center before the outgoing seed flight.
+            const growth = Math.min(1, phase / .12);
+            const shrink = 1 - Math.max(0, (phase - .7) / .3) ** 2;
+            const radius = (effect.orbitRadius || 1.05) * growth * shrink;
+            object.position.set(ox + Math.cos(angle) * radius, .27 + (this.reducedMotion.matches ? 0 : Math.sin(phase * Math.PI) * .45), oz + Math.sin(angle) * radius);
+            object.rotation.set(Math.PI / 2, 0, angle);
+          } else {
+            const flight = THREE.MathUtils.clamp((age - duration) / Math.max(.001, effect.maxTtl - duration), 0, 1);
+            object.position.set(ox + dx * flight, .27, oz + dz * flight);
+            object.rotation.set(Math.PI / 2, 0, -Math.atan2(dx, dz));
+          }
+          object.scale.setScalar(.25);
+          continue;
+        }
         // Mortar fruit and its seed rays follow fixed destinations; the server
         // owns their impact time and damage. This is display animation only.
         const dx = effect.tx - effect.x, dz = effect.tz - effect.z;

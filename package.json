@@ -1,6 +1,6 @@
 {
   "name": "gnomeward",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "type": "module",
   "scripts": {
@@ -25,7 +25,9 @@
     "test:coop-ready-browser": "node scripts/coop-ready-browser-smoke.mjs",
     "test:combos": "node scripts/combos-balance.mjs",
     "test:combos-browser": "node scripts/combos-browser-smoke.mjs",
-    "test:combos-coop": "node scripts/combos-coop-balance.mjs"
+    "test:combos-coop": "node scripts/combos-coop-balance.mjs",
+    "test:berry-combo": "node scripts/berry-singularity-balance.mjs",
+    "test:berry-combo-browser": "node scripts/berry-singularity-browser.mjs"
   },
   "dependencies": {
     "@colyseus/core": "0.18.14",

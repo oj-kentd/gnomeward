@@ -96,3 +96,5 @@
 @media(max-width:700px){.is-coop .battle-controls{grid-template-rows:auto 38px}.is-coop .auto-button{grid-row:2}.is-coop .start-button{grid-row:2}.readiness-player{padding:3px 6px;font-size:10px}.readiness-player small{font-size:10px}.is-coop .toast-stack{bottom:204px}.is-coop.shop-collapsed .toast-stack{bottom:140px}}
 
 .round-announcement[data-kind=sporefire]{background:#d9ee91;color:#4a5826;border-color:#859545}.round-announcement[data-kind=prismstorm]{background:#c6edee;color:#415085;border-color:#8598ca}
+
+.round-announcement[data-kind=berry-singularity]{background:#ded3f3;color:#483565;border-color:#aa8fc5}
