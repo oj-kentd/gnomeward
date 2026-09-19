@@ -4,8 +4,8 @@ import { pathToFileURL } from 'node:url';
 import { Game } from '../src/game.js';
 
 export const COMBO_BUILDS = {
-  sporefire: [['spore', [0, 3]], ['boom', [1, 2]]],
-  prismstorm: [['multi', [0]], ['crystal', [0, 1]]],
+  sporefire: [['spore', [3]], ['boom', [1]]],
+  prismstorm: [['multi', [0]], ['crystal', [1]]],
 };
 const placements = new Map();
 export function nextSpot(game, type) {

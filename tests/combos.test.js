@@ -39,7 +39,6 @@ function directHit(game, attacker, target) {
 
 test('ordinary Bramble hits do not ignite incomplete Morel and blast combinations', () => {
   for (const [morelLevels, brambleLevels] of [
-    [[2, 0, 0, 3], [0, 3, 0, 0]],
     [[3, 0, 0, 2], [0, 3, 0, 0]],
     [[3, 0, 0, 3], [0, 2, 0, 0]],
   ]) {
@@ -72,7 +71,7 @@ test('maximal Bramble alone still requires active Morel poison on the hit victim
 const comboDamage = (combo, target) => combo.damage + target.maxHp * (target.boss ? combo.bossFraction : combo.healthFraction);
 function sporefireGarden() {
   const game = garden();
-  const morel = tower(game, 'spore', [3, 0, 0, 3]);
+  const morel = tower(game, 'spore', [0, 0, 0, 3]);
   const bramble = tower(game, 'boom', [0, 3, 0, 0], -4, 2);
   const target = poisonFromMushroom(game, morel, enemy(game));
   return { game, morel, bramble, target };
@@ -80,11 +79,11 @@ function sporefireGarden() {
 function prismGarden() {
   const game = garden();
   const tumble = tower(game, 'multi', [3]);
-  const prism = tower(game, 'crystal', [3, 3, 0, 0], -3, 0);
+  const prism = tower(game, 'crystal', [0, 3, 0, 0], -3, 0);
   return { game, tumble, prism };
 }
 
-test('Sporefire ignites real volatile mushrooms and hits only living enemies inside its radius', () => {
+test('Sporefire needs only Wild Garden and Big Bang, and hits living enemies inside its radius', () => {
   const { game, bramble, target } = sporefireGarden();
   assert.equal(target.poison.volatile, true);
   const neighbor = enemy(game, target.progress + .5);
@@ -159,11 +158,10 @@ test('a dense Sporefire kill chain rewards each enemy once and does not recursiv
   assert.equal(game.kills - kills, victims.length);
 });
 
-test('Prismstorm requires all three maximum tiers and a nearby partner', () => {
-  for (const invalid of ['multi', 'durability', 'volatile', 'range', 'missing']) {
+test('Prismstorm requires one completed path per partner and nearby placement', () => {
+  for (const invalid of ['multi', 'volatile', 'range', 'missing']) {
     const { game, tumble, prism } = prismGarden();
     if (invalid === 'multi') tumble.levels[0] = 2;
-    if (invalid === 'durability') prism.levels[0] = 2;
     if (invalid === 'volatile') prism.levels[1] = 2;
     if (invalid === 'range') prism.x = tumble.x + PRISMSTORM.partnerRange + .01;
     if (invalid === 'missing') game.towers = [tumble];
@@ -180,7 +178,7 @@ test('Prismstorm accepts the exact partner range and chooses the closest eligibl
   const { game, tumble, prism } = prismGarden();
   prism.x = tumble.x + PRISMSTORM.partnerRange;
   assert.equal(game.prismPartner(tumble), prism);
-  const nearer = tower(game, 'crystal', [3, 3, 0, 0], tumble.x + 2, tumble.z);
+  const nearer = tower(game, 'crystal', [0, 3, 0, 0], tumble.x + 2, tumble.z);
   assert.equal(game.prismPartner(tumble), nearer);
   assert.equal(game.prismPartner(prism), null);
 });
@@ -310,7 +308,7 @@ test('co-op teammates can form Prismstorm and snapshots retain independent proje
   const game = match.board();
   Object.assign(game, { status: 'wave', wave: 1, _spawnTimer: 999 });
   const tumble = tower(game, 'multi', [3]);
-  const prism = tower(game, 'crystal', [3, 3, 0, 0], -3, 0);
+  const prism = tower(game, 'crystal', [0, 3, 0, 0], -3, 0);
   tumble.ownerId = 'a';
   prism.ownerId = 'b';
   const first = enemy(game);
@@ -358,7 +356,7 @@ test('co-op snapshots retain volatile infection and shared reaction cooldown wit
   match.addPlayer('b', 'Two');
   const game = match.board();
   Object.assign(game, { status: 'wave', wave: 1, _spawnTimer: 999 });
-  const morel = tower(game, 'spore', [3, 0, 0, 3]);
+  const morel = tower(game, 'spore', [0, 0, 0, 3]);
   const bramble = tower(game, 'boom', [0, 3, 0, 0]);
   morel.ownerId = 'a';
   bramble.ownerId = 'b';

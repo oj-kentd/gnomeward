@@ -303,7 +303,7 @@ export class Game {
     let stats;
     switch (tower.type) {
       case 'sprout': stats = { damage: [5, 11, 22, 42][a] + d * (3 + Math.min(35, tower.kills || 0) * 0.7), interval: 0.95 * 0.73 ** b, range: 3.4 + c * 1.0 }; break;
-      case 'spore': stats = { damage: 0, interval: 2.5 * 0.68 ** c, range: 3.9 + d * 1.1, poisonDps: [6, 11, 19, 32][a], poisonDuration: 4 + b * 2, charges: 1 + b, trapRadius: 0.62 + d * 0.32, poisonSpreadRadius: d > 0 ? 0.7 + d * 0.6 : 0, poisonSpreadInterval: 1, poisonSpreadTargets: d, poisonSpreadMultiplier: 0.65, volatileSpores: a === 3 && d === 3 }; break;
+      case 'spore': stats = { damage: 0, interval: 2.5 * 0.68 ** c, range: 3.9 + d * 1.1, poisonDps: [6, 11, 19, 32][a], poisonDuration: 4 + b * 2, charges: 1 + b, trapRadius: 0.62 + d * 0.32, poisonSpreadRadius: d > 0 ? 0.7 + d * 0.6 : 0, poisonSpreadInterval: 1, poisonSpreadTargets: d, poisonSpreadMultiplier: 0.65, volatileSpores: d === 3 }; break;
       case 'boom': stats = { damage: [13, 24, 42, 70][a], interval: 1.4 * 0.73 ** c, range: 3.7 + d * 1.0, explosionDamage: [18, 30, 48, 75][b], explosionRadius: 1.5 + b * 0.5 }; break;
       case 'stun': stats = { damage: [3, 10, 22, 40][c], interval: 1.7 * 0.73 ** b, range: 3.8 + d * 1.0, slowDuration: 2 + a * 0.8, slowMultiplier: 0.5 }; break;
       case 'multi': stats = { damage: [8, 15, 26, 42][a], interval: 1.3 * 0.72 ** a, range: 4, shots: 3 + a }; break;
@@ -440,7 +440,7 @@ export class Game {
     const tower = this.towers.find(t => t.id === sourceId);
     if (!tower || tower.type !== 'boom' || tower.levels[1] !== 3 || target.hp <= 0 ||
         !target.poison?.volatile || target.poison.remaining <= 0 || (target.sporefireReadyAt || 0) > this.time) return false;
-    this._announceCombo('sporefire', 'SPOREFIRE! Morel’s mature spores ignite under Bramble’s Big Bang.');
+    this._announceCombo('sporefire', 'SPOREFIRE! A secret combination discovered!');
     this._effect('sporefire', target, target, '#b8ed58', .85);
     this.effects.at(-1).radius = SPOREFIRE.radius;
     // Every victim shares the same recovery across all Brambles. Only a direct
@@ -455,7 +455,7 @@ export class Game {
 
   prismPartner(tower) {
     if (tower.type !== 'multi' || tower.levels[0] !== 3) return null;
-    return this.towers.filter(partner => partner.type === 'crystal' && partner.levels[0] === 3 && partner.levels[1] === 3 && distance(tower, partner) <= PRISMSTORM.partnerRange)
+    return this.towers.filter(partner => partner.type === 'crystal' && partner.levels[1] === 3 && distance(tower, partner) <= PRISMSTORM.partnerRange)
       .sort((a, b) => distance(tower, a) - distance(tower, b) || a.id - b.id)[0] || null;
   }
 
@@ -840,7 +840,7 @@ export class Game {
       const prism = tower.prismCooldown <= 0 ? this.prismPartner(tower) : null;
       if (prism) {
         tower.prismCooldown = PRISMSTORM.cooldown;
-        this._announceCombo('prismstorm', 'PRISMSTORM! Prism turns Tumble’s flurry into bouncing crystal stars.');
+        this._announceCombo('prismstorm', 'PRISMSTORM! A secret combination discovered!');
         this._effect('prism-burst', prism, prism, '#a4edff', .75);
         this.effects.at(-1).radius = 2;
       }

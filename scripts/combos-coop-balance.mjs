@@ -56,11 +56,18 @@ export function playCoopCombo(name, { maxWave = 75, cap = 18 } = {}) {
         const paths = tower.type === 'sprout' ? [3, 1] : name === 'prismstorm' && tower.type === 'boom' ? [0, 1] : COMBO_BUILDS[name].find(([type]) => tower.type === type)?.[1];
         if (!paths) continue;
         let affordable = true;
-        for (let tier = 1; tier <= 3 && affordable; tier++) for (const path of paths) {
-          const level = tower.levels[path];
-          if (level >= tier) continue;
-          if (match.players.get(owner).points < TOWERS[tower.type].paths[path].costs[level]) { affordable = false; break; }
-          command(owner, { action: 'upgrade', towerId: tower.id, path });
+        // Optional fire/planting speed supports dense endless waves, but it
+        // is bought only after this gnome's single combo path reaches tier 3.
+        const stages = name === 'sporefire' ? [paths, [2]] : [paths];
+        for (const stage of stages) {
+          if (!affordable) break;
+          for (let tier = 1; tier <= 3 && affordable; tier++) for (const path of stage) {
+            const level = tower.levels[path];
+            if (level >= tier) continue;
+            if (match.players.get(owner).points < TOWERS[tower.type].paths[path].costs[level]) { affordable = false; break; }
+            if (name === 'sporefire' && path === 2) assert.ok(paths.every(core => tower.levels[core] === 3), 'optional speed follows the completed combo path');
+            command(owner, { action: 'upgrade', towerId: tower.id, path });
+          }
         }
         if (!affordable) break;
       }
@@ -82,6 +89,7 @@ export function playCoopCombo(name, { maxWave = 75, cap = 18 } = {}) {
   }
   return { name, mode: 'coop', map: game.map.id, cap, step: .05, cleared: game.completedWaves, failed: match.result ? game.wave : null,
     lives: game.lives, longestRound: Math.max(...rounds.map(round => round.seconds)), discovered: game.comboDiscoveries, unlocks: game.profile.unlocks,
+    optionalPaths: name === 'sporefire' ? { spore: 'Fast Harvest after Wild Garden 3', boom: 'Quick Fuse after Big Bang 3' } : {},
     commands, unlockedAfterRound, comboFirstRound, towers: game.towers.map(({ type, ownerId, x, z, levels, kills }) => ({ type, ownerId, x, z, levels, kills })), rounds };
 }
 

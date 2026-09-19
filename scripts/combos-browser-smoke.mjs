@@ -45,11 +45,29 @@ async function currencyFits() {
   assert.equal(Number(hud.title.replace(/[^0-9.]/g, '')), hud.value, 'exact gold remains available in the tooltip');
   assert.equal(hud.fits, true, `gold does not overlap the points icon: ${JSON.stringify(hud)}`);
 }
+async function hiddenRecipes(scope) {
+  assert.equal(await page.locator('.combo-guide, .combo-note, [data-combo]').count(), 0, 'pairing recipes and active-combo panels stay hidden');
+  assert.doesNotMatch(await scope.innerText(), /sporefire|prismstorm|late-game pairings/i, 'ordinary game UI does not disclose hidden combo names or recipes');
+}
 try {
   await page.goto(process.env.PLAYTEST_URL || 'http://127.0.0.1:5180');
   await enterGarden(page);
   await page.waitForFunction(() => window.gnomeward?.ready && gnomeward.renderer.renderer.info.render.frame > 0);
   if (await page.locator('#dismiss-tip').isVisible()) await page.locator('#dismiss-tip').click();
+  stage = 'desktop field guide keeps combinations secret';
+  await page.locator('#help-button').click();
+  await hiddenRecipes(page.locator('#game-dialog'));
+  await page.locator('[aria-label="Close field guide"]').click();
+  stage = 'legacy server discovery messages remain secret';
+  await page.evaluate(() => {
+    gnomeward.state.paused = true;
+    // A previous server may still include its recipe in the discovery payload.
+    // Keep the celebratory name while refusing to display that legacy message.
+    gnomeward.game.events.push({ type: 'combo', combo: 'sporefire', message: 'LEGACY_RECIPE_FIXTURE: Morel tier 3 and Bramble tier 3 reveal this recipe.' });
+  });
+  await page.waitForFunction(() => document.querySelector('.round-announcement')?.textContent.includes('SPOREFIRE'));
+  await settled();
+  assert.doesNotMatch(await page.locator('.toast-stack').innerText(), /LEGACY_RECIPE_FIXTURE|reveal this recipe/);
   for (const name of ['sporefire', 'prismstorm']) {
     stage = `earned ${name} round 71 combat`;
     combat[name] = await page.evaluate(({ fixture, name }) => {
@@ -88,24 +106,23 @@ try {
     assert.ok(rendered > 0, 'actual combat effects rendered');
     await page.screenshot({ path: `playtest-results/combo-${name}-round71.png` });
     await select(name === 'sporefire' ? 'spore' : 'multi');
-    assert.match(await page.locator('.upgrade-path.invested small').first().innerText(), new RegExp(name, 'i'), 'maxed path retains finalTierHint');
+    await hiddenRecipes(page.locator('#selection-panel'));
+    assert.match(await page.locator('.upgrade-path.invested small').first().innerText(), /Maximum upgrade reached/i, 'maxed paths describe their tier without giving away recipes');
     if (name === 'prismstorm') {
-      assert.equal(await page.locator('[data-combo="prismstorm"]').getAttribute('data-active'), 'true');
       await page.setViewportSize({ width: 390, height: 844 }); await settled();
       await currencyFits();
+      await hiddenRecipes(page.locator('#selection-panel'));
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-      const bounds = await page.locator('[data-combo="prismstorm"]').boundingBox();
-      assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 391, 'combo note fits phone');
+      const bounds = await page.locator('#selection-panel').boundingBox();
+      assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 391, 'selected upgrades fit phone');
       await page.screenshot({ path: 'playtest-results/combo-prismstorm-phone-upgrades.png' });
     }
     await page.locator('[data-close-upgrades]').click();
     if (name === 'prismstorm') {
-      stage = 'phone field guide';
+      stage = 'phone field guide keeps combinations secret after activation';
       await page.locator('#help-button').click();
-      const guide = page.locator('.combo-guide');
-      const text = await guide.innerText();
-      for (const phrase of ['Sporefire', 'Prismstorm', '7 range', 'server 0.2.5']) assert.ok(text.includes(phrase));
-      await guide.scrollIntoViewIfNeeded(); await settled();
+      await hiddenRecipes(page.locator('#game-dialog'));
+      await page.locator('.help-steps').scrollIntoViewIfNeeded(); await settled();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await page.screenshot({ path: 'playtest-results/combo-phone-guide.png' });
       await page.locator('[aria-label="Close field guide"]').click();
@@ -145,7 +162,7 @@ try {
     models: [...gnomeward.renderer.fx.values()].filter(object => object.getObjectByName('prism-shard')).length }));
   assert.equal(coop.supported, true); assert.equal(coop.partner, true); assert.ok(coop.frames > 1);
   assert.ok(coop.models > 0, 'real shard projectiles survive the co-op presentation buffer');
-  await select('multi'); assert.equal(await page.locator('[data-combo="prismstorm"]').getAttribute('data-active'), 'true');
+  await select('multi'); await hiddenRecipes(page.locator('#selection-panel'));
   await page.locator('[data-close-upgrades]').click(); await settled();
   await page.screenshot({ path: 'playtest-results/combo-prismstorm-coop.png' });
 

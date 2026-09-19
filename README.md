@@ -81,7 +81,7 @@ Green arrows mark every entrance. Enemies alternate between the two entrances on
 
 ## Multiplayer server for Unraid
 
-The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and coordinate rounds with Ready controls or shared auto rounds. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.5 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
+The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and coordinate rounds with Ready controls or shared auto rounds. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.6 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
 
 Run it locally with `npm run server`, then open `http://localhost:2567/`. Match results are stored in `server-data/results.json` by default. `npm test` includes authoritative multiplayer and real WebSocket integration tests; with the server running, `npm run test:server-browser` checks the desktop/phone connection page. See the [server protocol](server/PROTOCOL.md) for client integration and current rules.
 
@@ -148,13 +148,8 @@ Run `npm run test:coop` with a running game and multiplayer server to exercise t
 
 Run `npm run test:coop-ready-browser` against a running game preview to check readiness feedback, shared auto, countdown cancellation, pause/resume, and phone controls through a private WebSocket server fixture.
 
-## Spectacular late-game combos (0.2.5)
+## Hidden combinations (0.2.6)
 
-- **Sporefire:** Morel with Potent Spores 3 and Wild Garden 3 makes volatile poison. Bramble with Big Bang 3 ignites it on a direct acorn hit, bursting into green/violet pollen and amber sparks. Overlap their coverage. Burst damage scales with enemy toughness, with reduced boss scaling and a shared reaction cooldown. Secondary poison can carry the primer; explosions cannot recursively ignite it.
-- **Prismstorm:** Tumble with Whirling Wonders 3, within 7 range of a Prism with Diamond Walls 3 and Shattering Light 3, periodically fires homing crystal volleys. Each shard can ricochet twice through distinct enemies. Prism’s aura works even without a live barrier; additional Prisms do not multiply a Tumble’s volley frequency.
+Some completed upgrade paths interact in surprising ways. Discoveries celebrate their first activation without revealing recipes in the field guide or upgrade panels. Cross-player interactions require server **0.2.6**.
 
-Recipes appear in the field guide, final-tier upgrades, and selected-gnome panel. First activation gets a named celebration. The original Orbit/Strawberry and Aster builds are unchanged. Co-op requires server **0.2.5**; players can supply different halves of either pairing.
-
-See the [playtest results and reproduction guide](docs/COMBOS_PLAYTEST.md) for all seven maps, co-op results, and placement notes.
-
-`npm run test:combos` checks round-70+ solo progression using earned currency and legal upgrades, plus a control run without combo effects. `npm run test:combos-coop` checks separate co-op wallets and natural run unlocks. `npm run test:combos-browser` checks actual earned-army effects, UI, and rendering in a running preview. Exact endless records depend on map, placement, timing, and purchases.
+`npm run test:combos` checks earned-resource endless progression. `npm run test:combos-coop` checks separate co-op wallets and natural unlocks. `npm run test:combos-browser` checks effects, spoiler-free UI, and rendering in a running preview.
