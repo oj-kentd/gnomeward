@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [coop, combos, berry, traits, layout, secrets]
+        group: [coop, motion, readiness, combos, berry, traits, layout, secrets]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -67,9 +67,9 @@ jobs:
             coop)
               SERVER_URL=http://127.0.0.1:2567 npm run test:server-browser
               npm run test:coop
-              npm run test:coop-motion-browser
-              npm run test:coop-ready-browser
               ;;
+            motion) npm run test:coop-motion-browser ;;
+            readiness) npm run test:coop-ready-browser ;;
             combos) npm run test:combos-browser ;;
             berry) npm run test:berry-combo-browser ;;
             traits) npm run test:traits-browser ;;

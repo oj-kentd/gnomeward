@@ -239,6 +239,9 @@ try {
     await page.waitForTimeout(50);
   }
   await page.waitForFunction(() => gnomeward.renderer.motion.frames.length > 1);
+  // Capturing packets above does not render them. Wait for actual presentation
+  // before inspecting models, especially on a software-rendered CI browser.
+  await settled();
   const coop = await page.evaluate(() => ({ supported: gnomeward.state.multiplayer.combosSupported, frames: gnomeward.renderer.motion.frames.length,
     partner: !!gnomeward.game.prismPartner(gnomeward.game.towers.find(t => t.type === 'multi')),
     models: [...gnomeward.renderer.fx.values()].filter(object => object.getObjectByName('prism-shard')).length }));

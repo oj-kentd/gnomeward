@@ -21,6 +21,9 @@ async function ready() {
   await page.locator('#splash-screen').waitFor({ state: 'hidden' });
 }
 async function clickWorld(x, y, z) {
+  // Opening/closing the dock resizes the canvas. Let ResizeObserver update the
+  // camera before projecting a world position into clickable screen space.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const point = await page.evaluate(({ x, y, z }) => {
     const world = gnomeward.renderer, p = world.camera.position.clone().set(x, y, z).project(world.camera);
     const r = world.renderer.domElement.getBoundingClientRect();
@@ -35,6 +38,7 @@ async function pumpkin(id) {
 async function selectMap(id) {
   await page.locator('#map-button').click();
   await page.locator(`[data-map="${id}"]`).click();
+  await page.waitForFunction(id => gnomeward.game.map.id === id && !document.querySelector('#game-dialog').open, id);
 }
 async function placeMorrow(x, z) {
   if (await page.locator('#shop-toggle').getAttribute('aria-expanded') === 'false') await page.locator('#shop-toggle').click();
@@ -54,6 +58,7 @@ try {
   await page.locator('[data-close-upgrades]').click();
   const cottage = cottagePosition(MAPS.find(map => map.id === 'hollow'));
   await clickWorld(cottage.x, 1.5, cottage.z);
+  await page.locator('[aria-label="Close cottage clue"]').waitFor({ state: 'visible' });
   assert.match(await page.locator('dialog').innerText(), /10|ten/i);
   await page.locator('[aria-label="Close cottage clue"]').click();
   await pumpkin(NECRO_PATH_SECRET.order[0]);
@@ -75,6 +80,7 @@ try {
   });
   assert.deepEqual(earned, { kills: 10, ready: true, unlocked: false });
   await clickWorld(cottage.x, 1.5, cottage.z);
+  await page.locator('[aria-label="Close cottage clue"]').waitFor({ state: 'visible' });
   const clue = await page.locator('dialog').innerText();
   for (const word of ['flame', 'leaf', 'star', 'moon']) assert.match(clue, new RegExp(word, 'i'));
   await page.screenshot({ path: 'playtest-results/echoes-clue.png' });
