@@ -44,6 +44,86 @@ async function settled() {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.waitForTimeout(220);
 }
+
+async function assertParticipantMarkers(kind, types) {
+  const report = await page.evaluate(kind => {
+    const { game, renderer } = gnomeward;
+    return { count: renderer.comboMarkers.size, participants: [...renderer.comboMarkers].filter(([, marker]) => marker.userData.comboKind === kind).map(([id, marker]) => {
+      const tower = game.towers.find(tower => tower.id === id);
+      return { id, type: tower?.type, actualTrigger: tower?.comboActive?.kind === kind, attached: !!marker.parent,
+        position: marker.position.toArray(), materials: marker.userData.fadeMaterials?.length || 0 };
+    }) };
+  }, kind);
+  assert.ok(report.count <= 64, 'participant markers remain bounded');
+  for (const type of types) assert.ok(report.participants.some(marker => marker.type === type && marker.actualTrigger && marker.attached), `${kind} identifies its ${type} participant after actual combat: ${JSON.stringify(report)}`);
+  assert.ok(report.participants.every(marker => marker.materials > 0 && marker.position.every(Number.isFinite)));
+  return report;
+}
+
+async function markerLifecycle(kind) {
+  return page.evaluate(kind => {
+    const { game, state, renderer } = gnomeward;
+    state.multiplayer = null; state.paused = true;
+    for (const tower of game.towers) delete tower.comboActive;
+    renderer.setMap(game.map, 0);
+    const tower = game.towers[0], base = game.time, received = performance.now() / 1000;
+    const metadata = { roomId: 'marker-clock-fixture', sessionId: 'one', connected: true, started: true, paused: false,
+      snapshotTick: 0, snapshotSequence: 900001, snapshotReceivedAt: received };
+    renderer.motion.capture(game, metadata);
+    game.time = base + 1;
+    tower.comboActive = { kind, startedAt: base + .95, until: base + 3.95 };
+    Object.assign(metadata, { snapshotTick: 20, snapshotSequence: 900002, snapshotReceivedAt: received + 1 });
+    renderer.motion.capture(game, metadata);
+    renderer.render(game, { ...state, multiplayer: metadata }, received + 1.1);
+    const early = renderer.comboMarkers.size;
+    renderer.render(game, { ...state, multiplayer: metadata }, received + 1.3);
+    const arrived = renderer.comboMarkers.has(tower.id);
+    // Repeated real hits refresh the end timestamp. A newer server start must
+    // not hide a marker already introduced on the presentation timeline.
+    tower.comboActive = { kind, startedAt: base + 1.2, until: base + 4.2 };
+    renderer.render(game, { ...state, multiplayer: metadata }, received + 1.31);
+    const retained = renderer.comboMarkers.has(tower.id);
+    function disposalProbe(marker) {
+      const result = { expected: marker?.userData.fadeMaterials?.length || 0, disposed: 0 };
+      for (const material of marker?.userData.fadeMaterials || []) material.addEventListener('dispose', () => result.disposed++);
+      return result;
+    }
+    const expiry = disposalProbe(renderer.comboMarkers.get(tower.id));
+    game.time = base + 5;
+    renderer.render(game, state, received + 2);
+    const expired = renderer.comboMarkers.size === 0;
+    tower.comboActive = { kind, startedAt: game.time - .1, until: game.time + 3 };
+    renderer.render(game, state, received + 2.1);
+    const sale = disposalProbe(renderer.comboMarkers.get(tower.id));
+    const reducedY = renderer.comboMarkers.get(tower.id)?.position.y;
+    game.time += .1; renderer.render(game, state, received + 2.15);
+    const reducedMotionStable = renderer.reducedMotion.matches && renderer.comboMarkers.get(tower.id)?.position.y === reducedY;
+    const sold = game.sellTower(tower.id);
+    renderer.render(game, state, received + 2.2);
+    const removedOnSale = !renderer.comboMarkers.has(tower.id);
+    const other = game.towers[0];
+    other.comboActive = { kind, startedAt: game.time - .1, until: game.time + 3 };
+    renderer.render(game, state, received + 2.3);
+    const reset = disposalProbe(renderer.comboMarkers.get(other.id));
+    renderer.setMap(game.map, 0);
+    const resetEmpty = renderer.comboMarkers.size === 0;
+    renderer.updateComboMarkers({ time: game.time, towers: Array.from({ length: 80 }, (_, index) => ({ ...other, id: `marker-budget-${index}` })) });
+    const markerCap = renderer.comboMarkers.size;
+    renderer.setMap(game.map, 0);
+    return { early, arrived, retained, expired, sold: !!sold, removedOnSale, resetEmpty, reducedMotionStable, markerCap, expiry, sale, reset };
+  }, kind);
+}
+
+function assertMarkerLifecycle(report) {
+  assert.equal(report.early, 0, 'new co-op markers wait for buffered presentation time');
+  for (const key of ['arrived', 'retained', 'expired', 'sold', 'removedOnSale', 'resetEmpty', 'reducedMotionStable']) assert.equal(report[key], true, key);
+  assert.equal(report.markerCap, 64, 'marker rendering has a hard cap');
+  for (const key of ['expiry', 'sale', 'reset']) {
+    assert.ok(report[key].expected > 0, `${key} exercises material cleanup`);
+    assert.equal(report[key].disposed, report[key].expected, `${key} disposes every cloned marker material`);
+  }
+}
+
 async function hiddenRecipes(scope) {
   assert.equal(await page.locator('.combo-guide, .combo-note, [data-combo]').count(), 0);
   assert.doesNotMatch(await scope.innerText(), /berry singularity|berry-singularity|pair.*Orbit|pair.*Strawberry/i);
@@ -53,6 +133,7 @@ try {
   await enterGarden(page);
   await page.waitForFunction(() => window.gnomeward?.ready && gnomeward.renderer.renderer.info.render.frame > 0);
   if (await page.locator('#dismiss-tip').isVisible()) await page.locator('#dismiss-tip').click();
+  assert.equal(await page.evaluate(() => gnomeward.renderer.comboMarkers.size), 0, 'no markers appear before a combination actually triggers');
   for (const phase of ['orbit', 'flight']) {
     stage = `earned round 71 ${phase} rendering`;
     await page.evaluate(fixture => {
@@ -81,6 +162,7 @@ try {
       return { wave: game.wave, cleared: game.completedWaves, seeds, bursts, assets: ['berry-singularity-arcs', 'berry-singularity-stars', 'berry-singularity-seed-ring', 'strawberry-seed'].every(key => !!renderer.models[key]) };
     }, phase);
     const observed = combat[phase];
+    observed.markers = await assertParticipantMarkers('berry-singularity', ['gravity', 'strawberry']);
     assert.equal(observed.wave, 71); assert.equal(observed.cleared, 70); assert.equal(observed.assets, true);
     assert.ok(observed.seeds.length > 0 && observed.bursts.length > 0);
     for (const seed of observed.seeds) {
@@ -130,12 +212,15 @@ try {
     if (i) { match.board().update(.05); match.tick++; }
     const adapted = applyCoopSnapshot(adapterGame, match.snapshot('berry-fixture'), 'one');
     adapterGame = adapted.game;
-    await page.evaluate(({ game, multiplayer }) => {
+    await page.evaluate(({ game, multiplayer, first }) => {
       Object.assign(gnomeward.game, game);
+      // Reset atomically with the earlier save; an intervening RAF of the old
+      // flight frame would otherwise recreate marker timestamps in the future.
+      if (first) gnomeward.renderer.setMap(gnomeward.game.map, 0);
       multiplayer.snapshotReceivedAt = performance.now() / 1000;
       Object.assign(gnomeward.state, { multiplayer, paused: false, selectedTowerId: null });
       gnomeward.renderer.motion.capture(gnomeward.game, multiplayer);
-    }, JSON.parse(JSON.stringify({ game: adapted.game, multiplayer: adapted.multiplayer })));
+    }, JSON.parse(JSON.stringify({ game: adapted.game, multiplayer: adapted.multiplayer, first: i === 0 })));
     await page.waitForTimeout(50);
   }
   await settled();
@@ -149,6 +234,7 @@ try {
   });
   assert.ok(coop.frames > 1 && coop.preserved && coop.rendered > 0);
   assert.deepEqual(coop.owners.sort(), ['one', 'two']);
+  coop.markers = await assertParticipantMarkers('berry-singularity', ['gravity', 'strawberry']);
   await page.screenshot({ path: 'playtest-results/berry-singularity-coop.png' });
 
   stage = 'synthetic rendering budgets and cleanup';
@@ -165,12 +251,16 @@ try {
   assert.deepEqual(budget, { displayed: 76, authoritative: 228 });
   await page.emulateMedia({ reducedMotion: 'reduce' }); await settled();
   assert.equal(await page.evaluate(() => gnomeward.renderer.fx.size), 70);
+  await assertParticipantMarkers('berry-singularity', ['gravity', 'strawberry']);
   await page.evaluate(() => { gnomeward.game.effects = []; gnomeward.game.projectiles = []; }); await settled();
   assert.equal(await page.evaluate(() => gnomeward.renderer.fx.size), 0);
+  stage = 'participant marker timing, sale and material cleanup';
+  const markerCleanup = await markerLifecycle('berry-singularity');
+  assertMarkerLifecycle(markerCleanup);
   assert.deepEqual(errors, []);
-  const summary = { ok: true, earned: { cleared: result.cleared, lives: result.lives, cap: result.cap }, combat, coop, budget, errors };
+  const summary = { ok: true, earned: { cleared: result.cleared, lives: result.lives, cap: result.cap }, combat, coop, budget, markerCleanup, errors };
   await writeFile('playtest-results/berry-singularity-browser.json', JSON.stringify(summary, null, 2));
-  console.log(JSON.stringify({ ok: true, earned: summary.earned, phases: Object.keys(combat), coop, budget, errors }, null, 2));
+  console.log(JSON.stringify({ ok: true, earned: summary.earned, phases: Object.keys(combat), coop, budget, markerCleanup, errors }, null, 2));
 } catch (error) {
   console.error('Berry browser check failed at:', stage, error);
   await page.screenshot({ path: 'playtest-results/berry-singularity-browser-failure.png' }).catch(() => {});

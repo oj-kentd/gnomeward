@@ -98,3 +98,13 @@
 .round-announcement[data-kind=sporefire]{background:#d9ee91;color:#4a5826;border-color:#859545}.round-announcement[data-kind=prismstorm]{background:#c6edee;color:#415085;border-color:#8598ca}
 
 .round-announcement[data-kind=berry-singularity]{background:#ded3f3;color:#483565;border-color:#aa8fc5}
+
+/* The battlefield has its own viewport; shop and upgrades never cover it. */
+.game-shell{--play-top:112px;--play-bottom:120px;--upgrade-width:310px;--upgrade-height:220px}
+#scene{top:var(--play-top);bottom:var(--play-bottom);left:8px;right:8px;width:auto;height:auto;border-radius:12px;overflow:hidden;background:#304c3f}
+.has-selection #scene{right:calc(var(--upgrade-width) + 16px)}
+.floating-upgrades{top:var(--play-top);right:8px;bottom:var(--play-bottom);left:auto;width:var(--upgrade-width);height:auto;max-height:none;max-width:none;border-radius:12px}
+.round-preview,.is-coop .round-preview{top:calc(var(--play-top) + 7px);left:16px;max-width:calc(100vw - 350px)}
+.damage-kind{font-size:inherit;color:#fff3c8}.trait-guide-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0}.trait-guide-list article{padding:10px;border:1px solid #b2ae86;border-radius:8px;background:#f6edce}.trait-guide-list h3{margin:0;color:#4c6343;font-size:14px}.trait-guide-list small{display:block;font-size:10px;margin-top:4px;color:#84704e}.trait-guide-list p{display:flex;flex-direction:column;gap:4px;font-size:12px}.trait-guide-list p b{color:#46722e}.trait-guide-list p span{color:#936337}.damage-kind-legend{display:flex;flex-direction:column;gap:5px;margin:12px 0;font-size:11px;line-height:1.4;color:#786343}.damage-kind-legend>b{font-size:12px;color:#566946}
+@media(max-width:1050px) and (min-width:701px){.game-shell{--upgrade-width:290px}}
+@media(max-width:700px){.has-selection #scene{right:8px;bottom:calc(var(--play-bottom) + var(--upgrade-height) + 8px)}.floating-upgrades{top:auto;bottom:var(--play-bottom);left:8px;right:8px;width:auto;height:var(--upgrade-height);max-height:none;padding:0 8px 8px}.floating-upgrades .selected-heading{min-height:51px;margin-bottom:5px;padding-top:3px;padding-bottom:3px}.floating-upgrades .selected-heading>.portrait{width:42px;height:44px}.floating-upgrades .selected-heading h3{font-size:20px}.floating-upgrades .selected-heading span{margin-top:2px;font-size:10px}.round-preview,.is-coop .round-preview{max-width:calc(100vw - 32px);top:calc(var(--play-top) + 5px);left:16px}.trait-guide-list{grid-template-columns:1fr}.trait-guide-list article{padding:9px}.trait-guide-list p{flex-direction:row;justify-content:space-between}}

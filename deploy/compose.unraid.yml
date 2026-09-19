@@ -1,6 +1,6 @@
 services:
   gnomeward-server:
-    image: gnomeward-server:0.2.7
+    image: gnomeward-server:0.2.8
     pull_policy: never
     container_name: gnomeward-server
     restart: unless-stopped

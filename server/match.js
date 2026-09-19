@@ -225,7 +225,7 @@ export class Match {
       speed: this.speed, started: this.started, autoStart: this.autoStart, autoCountdown: this.autoCountdown, tick: this.tick, result: this.result,
       boards: [...this.boards.entries()].map(([playerId, game]) => ({ playerId, state: {
         ...Object.fromEntries(BOARD_FIELDS.map(field => [field, game[field]])),
-        profile: { unlocks: [...game.profile.unlocks], pathUnlocks: [...game.profile.pathUnlocks], bestRounds: { ...game.profile.bestRounds } },
+        profile: { enemyTraits: [...game.profile.enemyTraits], unlocks: [...game.profile.unlocks], pathUnlocks: [...game.profile.pathUnlocks], bestRounds: { ...game.profile.bestRounds } },
         bestRound: game.bestRound,
         events: game.events.slice(-12).map(event => {
           if (!this.eventIds.has(event)) this.eventIds.set(event, ++this.nextEventId);

@@ -102,12 +102,14 @@ try {
           display: { x: object.position.x, z: object.position.z }, expected: { x: expected.x, z: expected.z, progress: expected.progress }, speed: enemy.speed });
       }
       if (now - started < 9000) requestAnimationFrame(frame);
-      else { removeListener(); resolve({ records, packets: packets.size }); }
+      else { removeListener(); resolve({ records, packets: packets.size, elapsed: (performance.now() - started) / 1000 }); }
     }
     requestAnimationFrame(frame);
   }));
   await writeFile('playtest-results/coop-motion-raw.json', JSON.stringify({ synthetic, ...measured }, null, 2));
-  const packetRate = measured.packets / measured.records.at(-1)?.elapsed;
+  // Count network packets over the actual listener window. A slow GPU may
+  // leave the final render record earlier than the final received packet.
+  const packetRate = measured.packets / measured.elapsed;
   assert.ok(packetRate > 3 && packetRate < 7, `observe roughly 5 Hz server updates, received ${packetRate.toFixed(2)}Hz`);
   assert.ok(measured.records.length >= 12, 'collect enough real rendered positions without requiring a particular FPS');
   const warmed = measured.records.filter(record => record.elapsed > 1);

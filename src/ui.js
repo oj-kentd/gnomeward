@@ -1,4 +1,5 @@
 import { MAPS, TOWERS, ENEMIES, NECRO_PATH_SECRET } from './data.js';
+import { ENEMY_TRAITS, damageKindForTower } from './enemy-traits.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const n = (value) => Math.round(Number(value) || 0).toLocaleString();
@@ -58,6 +59,16 @@ function upgradeBenefit(game, tower, index, stats) {
   if (next.capture && !stats.capture) benefits.push('Captures enemies in the hole');
   if (tower.type === 'strawberry' && next.flightDuration < stats.flightDuration) benefits.push(`Flight ${precise(stats.flightDuration)}s → ${precise(next.flightDuration)}s`);
   return benefits.join(' · ') || TOWERS[tower.type].paths[index].description;
+}
+
+const damageKindLabels = { physical: 'Physical', magic: 'Magic', poison: 'Poison' };
+function enemyTraitGuide(game) {
+  const known = (game?.profile?.enemyTraits || []).filter(id => Object.hasOwn(ENEMY_TRAITS, id));
+  if (!known.length) return '<div class="help-note" id="enemy-traits-guide"><strong>Beyond the familiar garden</strong><p>Endless mode brings unfamiliar threats after the campaign. Watch what reaches your garden; this guide records the new enemies you discover.</p></div>';
+  return `<div class="help-note" id="enemy-traits-guide"><strong>Discovered endless threats</strong><p>A skeleton’s color still shows its usual health. Its extra equipment reveals a weakness and a resistance.</p><div class="trait-guide-list">${known.map(id => {
+    const trait = ENEMY_TRAITS[id];
+    return `<article data-enemy-trait="${id}"><h3>${esc(trait.name)}</h3><small>Appears from round ${trait.startWave}</small><p><b>${damageKindLabels[trait.weak]} ×2</b><span>${damageKindLabels[trait.resist]} ×0.5</span></p></article>`;
+  }).join('')}</div><div class="damage-kind-legend"><b>Attack types</b><span>Physical · pebbles, acorns, berries and ordinary shots</span><span>Magic · spells, slowing shots, gravity and crystals</span><span>Poison · Morel’s mushrooms</span></div><p>Bring a mix of defenders. Other damage types deal their usual damage.</p></div>`;
 }
 
 function cottageClueSignature(game) {
@@ -196,6 +207,10 @@ export class UI {
       actions.onMusicVolume?.(Number(event.target.value) / 100);
       this.syncAudioSettings(this.last?.state || {});
     });
+    this.layoutObserver = new ResizeObserver(() => this.layoutBattlefield());
+    for (const selector of ['.topbar', '.guardian-dock', '.battle-controls']) this.layoutObserver.observe(document.querySelector(selector));
+    window.addEventListener('resize', () => this.layoutBattlefield());
+    this.layoutBattlefield();
   }
 
   dismissTip() { document.getElementById('welcome-tip').hidden = true; }
@@ -208,6 +223,14 @@ export class UI {
 
   update(game, state = {}) {
     this.last = { game, state };
+    if (this.modalType === 'help') {
+      const signature = JSON.stringify(game.profile?.enemyTraits || []);
+      if (signature !== this.traitGuideSignature) {
+        const guide = document.getElementById('enemy-traits-guide');
+        if (guide) guide.outerHTML = enemyTraitGuide(game);
+        this.traitGuideSignature = signature;
+      }
+    }
     if (this.modalType === 'clue' && this.clueSignature !== cottageClueSignature(game)) this.showCottageClue();
     const multiplayer = state.multiplayer;
     const players = multiplayer?.players || [];
@@ -341,6 +364,8 @@ export class UI {
     if (selectionChanged) {
       this.selectedTowerId = selectedId;
       panel.hidden = !selected;
+      document.querySelector('.game-shell').classList.toggle('has-selection', !!selected);
+      this.layoutBattlefield();
       if (selected) {
         panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'false');
         panel.setAttribute('aria-label', `Upgrade ${TOWERS[selected.type].name}`);
@@ -368,7 +393,6 @@ export class UI {
         if (value) value.textContent = counts[key];
       }
     }
-    if (selected) this.positionUpgrades(state.selectionAnchor);
     const resultKey = `${map?.id}-${game.status}-${multiplayer?.roomId || ''}-${multiplayer?.result?.reason || ''}`;
     if ((finished || multiplayer?.result) && this.resultShown !== resultKey) {
       this.resultShown = resultKey;
@@ -382,35 +406,28 @@ export class UI {
     }
   }
 
-  positionUpgrades(anchor) {
-    const board = document.querySelector('.board-wrap');
-    const panel = document.getElementById('selection-panel');
-    const margin = 10;
-    const width = panel.offsetWidth;
-    const x = Number.isFinite(anchor?.x) ? anchor.x : board.clientWidth / 2;
-    const y = Number.isFinite(anchor?.y) ? anchor.y : board.clientHeight / 2;
-    const beside = x + 22 + width <= board.clientWidth - margin ? x + 22 : x - width - 22;
-    const left = Math.max(margin, Math.min(beside, board.clientWidth - width - margin));
-    const rect = board.getBoundingClientRect();
-    let top = margin;
-    let bottom = board.clientHeight - margin;
-    for (const selector of ['.resource-panel', '.round-tools', '.round-preview', '.guardian-dock', '.battle-controls']) {
-      const overlay = document.querySelector(selector);
-      if (overlay.hidden) continue;
-      const r = overlay.getBoundingClientRect();
-      if (r.right <= rect.left + left || r.left >= rect.left + left + width) continue;
-      if (selector === '.guardian-dock' || selector === '.battle-controls') bottom = Math.min(bottom, r.top - rect.top - 8);
-      else top = Math.max(top, r.bottom - rect.top + 8);
+  layoutBattlefield() {
+    const shell = document.querySelector('.game-shell');
+    if (!shell) return;
+    const height = shell.clientHeight;
+    const header = document.querySelector('.topbar').getBoundingClientRect();
+    const dock = document.querySelector('.guardian-dock').getBoundingClientRect();
+    const controls = document.querySelector('.battle-controls').getBoundingClientRect();
+    const top = Math.ceil(header.bottom + 8);
+    const bottom = Math.ceil(height - Math.min(dock.top, controls.top) + 8);
+    const available = Math.max(0, height - top - bottom);
+    const panelHeight = Math.round(Math.min(240, Math.max(112, available * .46)));
+    for (const [name, value] of [['--play-top', top], ['--play-bottom', bottom], ['--upgrade-height', panelHeight]]) {
+      const next = `${value}px`;
+      if (shell.style.getPropertyValue(name) !== next) shell.style.setProperty(name, next);
     }
-    panel.style.maxHeight = `${Math.max(88, Math.min(560, bottom - top))}px`;
-    panel.style.left = `${left}px`;
-    panel.style.top = `${Math.max(top, Math.min(y - 75, bottom - panel.offsetHeight))}px`;
   }
 
   renderSelection(game, tower) {
     const container = document.getElementById('selection-panel');
     if (!tower) { container.replaceChildren(); return; }
     const def = TOWERS[tower.type];
+    const damageKind = damageKindForTower(tower.type);
     const multiplayer = this.last?.state.multiplayer;
     const currency = multiplayer ? wallet : n;
     const owned = !multiplayer || tower.ownerId === multiplayer.sessionId;
@@ -433,7 +450,7 @@ export class UI {
         ? `<span><b>${n(stats.barrierHp)}</b> barrier HP</span><span><b>${n(stats.barrierLimit)}</b> max barriers</span><span><b>${precise(stats.interval)}s</b> cooldown</span><span><b>${range}</b> range</span>`
         : `<span><b>${precise(tower.type === 'spore' ? stats.poisonDps : stats.damage)}</b> ${tower.type === 'spore' ? 'poison/s' : tower.type === 'necro' ? 'spell damage' : 'damage'}</span><span><b>${precise(stats.attackSpeed)}</b> attacks/s</span><span><b>${range}</b> range</span>`;
     const automaticNote = tower.type === 'gravity' ? `Creates holes automatically · ${stats.capture ? 'captures enemies in the hole' : 'pulls nearby enemies inward'}` : tower.type === 'crystal' ? `Places barriers automatically · ${stats.explosionDamage > 0 ? `destroyed barriers deal ${n(stats.explosionDamage)} blast damage` : 'upgrade the blast path for on-destruction explosions'}` : stats.poisonSpreadRadius > 0 ? `Wild Garden: each mushroom infection can spread to ${n(stats.poisonSpreadTargets)} nearby ${stats.poisonSpreadTargets === 1 ? 'enemy' : 'enemies'} within ${precise(stats.poisonSpreadRadius)} range, one every ${precise(stats.poisonSpreadInterval)}s, at ${n(stats.poisonSpreadMultiplier * 100)}% damage. Spread poison cannot spread again.` : 'Mushrooms poison passing enemies · Wild Garden unlocks poison spread';
-    container.innerHTML = `<div class="selected-heading">${portrait(tower.type)}<div><h3>${esc(def.name)}</h3><span>${tower.starting ? 'Free field guardian · ' : tower.starting ? 'Free starting guardian · ' : tower.purchaseCost === 0 ? 'Summoned guardian · ' : ''}${n(tower.kills)} defeated</span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
+    container.innerHTML = `<div class="selected-heading">${portrait(tower.type)}<div><h3>${esc(def.name)}</h3><span>${tower.starting ? 'Free field guardian · ' : tower.starting ? 'Free starting guardian · ' : tower.purchaseCost === 0 ? 'Summoned guardian · ' : ''}${n(tower.kills)} defeated · <b class="damage-kind" data-damage-kind="${damageKind}" title="Base attack damage type">${damageKindLabels[damageKind]}</b></span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
       ${multiplayer ? `<div class="tower-owner-note">${owned ? 'Your gnome · you choose its upgrades' : `${esc(owner?.name || 'Teammate')}’s gnome · upgrades controlled by your teammate`}</div>` : ''}
       <div class="unit-summary ${terrain ? 'terrain-summary' : ''}">${summary}</div>
       ${!automatic ? `<button class="targeting-button" data-targeting ${!canEdit ? 'disabled' : ''} title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : `<div class="targeting-note ${tower.type === 'spore' && stats.poisonSpreadRadius > 0 ? 'poison-spread-note' : ''}">${automaticNote}</div>`}
@@ -543,7 +560,7 @@ export class UI {
   }
   showHelp(focusSection = null) {
     const state = this.last?.state || {};
-    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Effects: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><section class="music-settings" id="music-settings" aria-labelledby="music-heading" tabindex="-1"><div class="music-heading"><h3 id="music-heading">♪ Music</h3><span>Original garden soundtracks</span></div><div class="music-choices" role="group" aria-label="Music style"><button class="music-choice" data-music="rock" aria-pressed="false"><strong>Rock</strong><span>Upbeat & energetic</span></button><button class="music-choice" data-music="chill" aria-pressed="false"><strong>Chill</strong><span>Relaxed & mellow</span></button><button class="music-choice" data-music="jazz" aria-pressed="false"><strong>Jazz</strong><span>Easygoing swing</span></button><button class="music-choice music-off" data-music="off" aria-pressed="true"><strong>Off</strong><span>No background music</span></button></div><div class="music-volume-row"><label for="music-volume">Music volume</label><input id="music-volume" type="range" min="0" max="100" step="1" value="35" aria-valuetext="35%"><output id="music-volume-value" for="music-volume">35%</output></div><p class="music-status" id="music-status" role="status" aria-live="polite">Music is off.</p><p class="music-hint">Choose a style to preview its loop. Music and game effects have separate controls.</p></section><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes. Some gardens have two entrances—defend both routes. Loops and spirals bring enemies past your defenses again.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break. In co-op, both players press Ready for the first round. Shared auto then gives you five seconds between rounds; ready together to skip the wait. Either player can turn auto off to keep building. Click your Ready check to return to building; auto must be off to hold the next round. Pausing or a disconnected teammate freezes the countdown.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note"><strong>Keep going in endless mode</strong><p>After round 20, choose Continue in endless mode to keep your gnomes, upgrades, gold, and lives. Each round brings tougher enemies until the garden falls. Your highest fully cleared round is saved for each garden in this browser. Auto rounds still works; you can pause or build between rounds.</p></div>${this.last?.game.isUnlocked('necro') ? '<div class="help-note"><strong>Morrow’s reborn crew</strong><p>Morrow can choose two upgrade paths. The cottage in Pumpkin Hollow may reveal another. His spell kills queue melee guardians at the cottage. They march toward the skeletons and fight until defeated or their time runs out. Helper upgrades improve new summons. Helper kills never summon more helpers.</p></div>' : '<div class="help-note"><strong>A quieter rumor</strong><p>Pumpkin Hollow keeps a quiet secret. Its cottage may have a story to tell.</p></div>'}<div class="help-note secret-rumors"><strong>Garden rumors</strong><p>Three discoveries in Mossy Meadow and three in Crystal Quarry may reveal hidden guardians. Look closely at the scenery! One guardian’s final power upgrade makes its holes capture enemies. Another grows barriers that can explode when enemies destroy them.</p></div><div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Morel’s Wild Garden upgrade spreads poison to nearby skeletons at 65% damage. Spread poison cannot spread again. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
+    this.openModal('help', `<div class="modal-heading"><div><span class="eyebrow">GNOMEWARD</span><h2>Settings & field guide</h2></div><button class="modal-close" data-close aria-label="Close field guide">×</button></div><div class="settings-row"><button data-setting="pause">${state.paused ? '▶ Resume' : 'Ⅱ Pause'}</button><button data-setting="sound">Effects: ${state.sound ? 'on' : 'off'}</button><button data-setting="auto">Auto rounds: ${state.autoStart ? 'on' : 'off'}</button></div><section class="music-settings" id="music-settings" aria-labelledby="music-heading" tabindex="-1"><div class="music-heading"><h3 id="music-heading">♪ Music</h3><span>Original garden soundtracks</span></div><div class="music-choices" role="group" aria-label="Music style"><button class="music-choice" data-music="rock" aria-pressed="false"><strong>Rock</strong><span>Upbeat & energetic</span></button><button class="music-choice" data-music="chill" aria-pressed="false"><strong>Chill</strong><span>Relaxed & mellow</span></button><button class="music-choice" data-music="jazz" aria-pressed="false"><strong>Jazz</strong><span>Easygoing swing</span></button><button class="music-choice music-off" data-music="off" aria-pressed="true"><strong>Off</strong><span>No background music</span></button></div><div class="music-volume-row"><label for="music-volume">Music volume</label><input id="music-volume" type="range" min="0" max="100" step="1" value="35" aria-valuetext="35%"><output id="music-volume-value" for="music-volume">35%</output></div><p class="music-status" id="music-status" role="status" aria-live="polite">Music is off.</p><p class="music-hint">Choose a style to preview its loop. Music and game effects have separate controls.</p></section><div class="help-steps"><article><span>1</span><div><h3>Build your defense</h3><p>Pick a gnome from the shop, then click clear ground beside the path. Their ring shows attack range. Gold buys more gnomes. Some gardens have two entrances—defend both routes. Loops and spirals bring enemies past your defenses again.</p></div></article><article><span>2</span><div><h3>Start a round</h3><p>Hit the big green play button when you're ready. During a round, it cycles the speed. Auto rounds starts the next round after a short break. In co-op, both players press Ready for the first round. Shared auto then gives you five seconds between rounds; ready together to skip the wait. Either player can turn auto off to keep building. Click your Ready check to return to building; auto must be off to hold the next round. Pausing or a disconnected teammate freezes the countdown.</p></div></article><article><span>3</span><div><h3>Upgrade & aim</h3><p>Click a planted gnome to spend purple points on upgrades. Choose up to two paths per gnome. Cycle targeting between First, Last, Strong, and Close.</p></div></article><article><span>4</span><div><h3>Unlock the crew</h3><p>Beat the round 10 boss for Poppy's pink slowing gun. Clear round 15 for Tumble, and beat round 20 for Aster. Unlocks stay in this browser.</p></div></article></div><div class="help-note"><strong>Keep going in endless mode</strong><p>After round 20, choose Continue in endless mode to keep your gnomes, upgrades, gold, and lives. Each round brings tougher enemies until the garden falls. Your highest fully cleared round is saved for each garden in this browser. Auto rounds still works; you can pause or build between rounds.</p></div>${this.last?.game.isUnlocked('necro') ? '<div class="help-note"><strong>Morrow’s reborn crew</strong><p>Morrow can choose two upgrade paths. The cottage in Pumpkin Hollow may reveal another. His spell kills queue melee guardians at the cottage. They march toward the skeletons and fight until defeated or their time runs out. Helper upgrades improve new summons. Helper kills never summon more helpers.</p></div>' : '<div class="help-note"><strong>A quieter rumor</strong><p>Pumpkin Hollow keeps a quiet secret. Its cottage may have a story to tell.</p></div>'}<div class="help-note secret-rumors"><strong>Garden rumors</strong><p>Three discoveries in Mossy Meadow and three in Crystal Quarry may reveal hidden guardians. Look closely at the scenery! One guardian’s final power upgrade makes its holes capture enemies. Another grows barriers that can explode when enemies destroy them.</p></div>${enemyTraitGuide(this.last?.game)}<div class="help-note"><strong>Know your skeletons</strong><div class="enemy-guide">${Object.values(ENEMIES).filter((enemy) => !enemy.boss).map((enemy) => `<span><i style="background:${enemy.color}"></i>${esc(enemy.name.replace(' skeleton', ''))}: ${enemy.hp} base HP</span>`).join('')}</div><p>Health grows after round 5. Morel’s Wild Garden upgrade spreads poison to nearby skeletons at 65% damage. Spread poison cannot spread again. Poison and explosions help with groups. Press Esc to cancel placement or close upgrades.</p></div><button class="primary-button" data-close>BACK TO THE GARDEN ▶</button>`);
     this.syncAudioSettings(state);
     if (focusSection === 'music') {
       const section = document.getElementById('music-settings');
@@ -605,7 +622,7 @@ export class UI {
       const together = multiplayer.connected && multiplayer.players?.length === 2 && multiplayer.players.every((player) => player.connected);
       const reason = multiplayer.result?.reason;
       const interrupted = ended && !['defeat', 'campaign-cleared'].includes(reason);
-      const message = cleared ? 'You saved the garden together! Both players can choose endless mode to keep this defense growing.' : interrupted ? reason === 'server-closed' ? 'The server closed this match. You can join a new lobby when it is back online.' : reason === 'idle-timeout' ? 'This garden closed after being idle. Start a new lobby whenever you are ready.' : 'Your co-op match has ended because a player left or could not reconnect.' : `Together, you survived through round ${n(survived)}. Start a new garden and try another strategy!`;
+      const message = cleared ? 'You saved the garden together! Both players can choose endless mode to keep this defense growing. Unknown threats await beyond round 20.' : interrupted ? reason === 'server-closed' ? 'The server closed this match. You can join a new lobby when it is back online.' : reason === 'idle-timeout' ? 'This garden closed after being idle. Start a new lobby whenever you are ready.' : 'Your co-op match has ended because a player left or could not reconnect.' : `Together, you survived through round ${n(survived)}. Start a new garden and try another strategy!`;
       this.openModal('result', `<div class="result-card"><span class="eyebrow">${cleared ? 'GARDEN SAVED TOGETHER!' : 'CO-OP MATCH COMPLETE'}</span><h2>${cleared ? 'TEAM VICTORY!' : interrupted ? 'Garden closed' : 'What a team!'}</h2><p>${message}</p><div class="result-stats"><span><strong>${n(survived)}</strong><small>ROUNDS SURVIVED</small></span><span><strong>${game.towers.length}</strong><small>TEAM GNOMES</small></span><span><strong>${n(game.lives)}</strong><small>SHARED LIVES</small></span></div>${cleared ? `<button class="primary-button" data-continue-endless ${voted || !together || multiplayer.paused ? 'disabled' : ''}>${voted ? 'WAITING FOR TEAMMATE…' : 'CONTINUE IN ENDLESS MODE ∞'}</button>` : ''}<button class="${cleared ? 'text-button' : 'primary-button'}" data-coop-leave>LEAVE CO-OP</button><button class="text-button" data-close>View the battlefield</button></div>`);
       return;
     }

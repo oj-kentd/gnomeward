@@ -1,5 +1,6 @@
 import { MAPS, TOWERS, ENEMIES, SECRETS, NECRO_PATH_SECRET, cottagePosition, cottageDoorPosition } from './data.js';
 import { SPOREFIRE, PRISMSTORM, BERRY_SINGULARITY } from './combos.js';
+import { ENEMY_TRAITS, traitForSpawn, damageMultiplier, damageKindForTower } from './enemy-traits.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
@@ -33,6 +34,7 @@ export class Game {
     this.profile = profile && typeof profile === 'object' ? profile : {};
     if (!Array.isArray(this.profile.unlocks)) this.profile.unlocks = [];
     this.profile.pathUnlocks = [...new Set((Array.isArray(this.profile.pathUnlocks) ? this.profile.pathUnlocks : []).filter(id => id === NECRO_PATH_SECRET.id))];
+    this.profile.enemyTraits = [...new Set((Array.isArray(this.profile.enemyTraits) ? this.profile.enemyTraits : []).filter(id => typeof id === 'string' && Object.hasOwn(ENEMY_TRAITS, id)))];
     const records = this.profile.bestRounds;
     this.profile.bestRounds = Object.fromEntries(MAPS.map(map => [map.id,
       Number.isSafeInteger(records?.[map.id]) && records[map.id] > 0 ? records[map.id] : 0]));
@@ -65,6 +67,7 @@ export class Game {
     this._queue = [];
     this._spawnTimer = 0;
     this._spawnCount = 0;
+    this._traitSpawnCount = 0;
     this.routes = (this.map.paths || [this.map.path]).map(path => {
       const segments = [];
       let length = 0;
@@ -352,6 +355,7 @@ export class Game {
     this.wave++;
     this.status = 'wave';
     this._queue = wavePlan(this.wave, this.endless);
+    this._traitSpawnCount = 0;
     this._spawnTimer = 0;
     this._event('wave-start', `Wave ${this.wave}${this._queue.some(type => ENEMIES[type].boss) ? ' · Boss incoming!' : ' has begun.'}`, { wave: this.wave });
     return true;
@@ -361,9 +365,15 @@ export class Game {
     if (!Number.isInteger(routeIndex) || !this.routes[routeIndex]) routeIndex = 0;
     const spec = ENEMIES[type];
     const extra = this.endless ? Math.max(0, this.wave - this.maxWaves) : 0;
+    const trait = traitForSpawn(this.wave, this.endless, !!spec.boss, spec.boss ? 0 : this._traitSpawnCount++);
     const hp = spec.hp * (spec.boss ? 1 : 1 + Math.max(0, Math.min(this.wave, 20) - 5) * 0.075) * (1 + extra * 0.14) ** 2;
-    const enemy = { id: ++this._id, type, routeIndex, ...this.pointAt(0, routeIndex), hp, maxHp: hp, progress: 0, slowRemaining: 0, slowMultiplier: 1, capturedBy: null, poison: null, speed: spec.speed * (1 + extra * 0.018), attackDamage: spec.attackDamage * (1 + extra * 0.08), boss: !!spec.boss, isBoss: !!spec.boss, color: spec.color };
+    const enemy = { id: ++this._id, type, trait, routeIndex, ...this.pointAt(0, routeIndex), hp, maxHp: hp, progress: 0, slowRemaining: 0, slowMultiplier: 1, capturedBy: null, poison: null, speed: spec.speed * (1 + extra * 0.018), attackDamage: spec.attackDamage * (1 + extra * 0.08), boss: !!spec.boss, isBoss: !!spec.boss, color: spec.color };
     this.enemies.push(enemy);
+    if (trait && !this.profile.enemyTraits.includes(trait)) {
+      this.profile.enemyTraits.push(trait);
+      const found = ENEMY_TRAITS[trait];
+      this._event('trait-discovered', `${found.name} skeletons discovered! ${found.weak} deals double damage; ${found.resist} deals half. Added to your field guide.`, { trait });
+    }
     return enemy;
   }
 
@@ -386,7 +396,7 @@ export class Game {
     const duration = clamp(distance(tower, target) / 14, 0.16, 1.8);
     this.projectiles.push({
       id: ++this._id, type: tower.type === 'stun' ? 'stun' : 'shot',
-      unitType: tower.type, sourceId: tower.id, targetId: target.id,
+      unitType: tower.type, damageKind: damageKindForTower(tower.type), sourceId: tower.id, targetId: target.id,
       x: tower.x, z: tower.z, tx: target.x, tz: target.z,
       ttl: duration, maxTtl: duration, color: TOWERS[tower.type].color,
       damage: stats.damage, slowDuration: stats.slowDuration, slowMultiplier: stats.slowMultiplier, summonOnKill: tower.type === 'necro',
@@ -423,12 +433,19 @@ export class Game {
         continue;
       }
       if (shot.unitType === 'boom') this._igniteSpores(target, shot.sourceId);
-      this._damage(target, shot.damage, shot.sourceId, { summon: shot.summonOnKill === true });
+      this._damage(target, shot.damage, shot.sourceId, { summon: shot.summonOnKill === true, damageKind: shot.damageKind || damageKindForTower(shot.unitType) });
       if (target.hp > 0 && shot.slowDuration > 0) {
         target.slowRemaining = Math.max(target.slowRemaining, shot.slowDuration);
         target.slowMultiplier = shot.slowMultiplier;
       }
       this._effect('impact', target, target, shot.color, 0.12);
+    }
+  }
+
+  _markCombo(kind, ...towerIds) {
+    for (const id of new Set(towerIds)) {
+      const tower = this.towers.find(unit => unit.id === id);
+      if (tower) tower.comboActive = { kind, startedAt: this.time, until: this.time + 3 };
     }
   }
 
@@ -442,6 +459,7 @@ export class Game {
     const tower = this.towers.find(t => t.id === sourceId);
     if (!tower || tower.type !== 'boom' || tower.levels[1] !== 3 || target.hp <= 0 ||
         !target.poison?.volatile || target.poison.remaining <= 0 || (target.sporefireReadyAt || 0) > this.time) return false;
+    this._markCombo('sporefire', tower.id, target.poison.sourceId);
     this._announceCombo('sporefire', 'SPOREFIRE! A secret combination discovered!');
     this._effect('sporefire', target, target, '#b8ed58', .85);
     this.effects.at(-1).radius = SPOREFIRE.radius;
@@ -450,7 +468,7 @@ export class Game {
     const victims = this.enemies.filter(enemy => enemy.hp > 0 && distance(target, enemy) <= SPOREFIRE.radius && (enemy.sporefireReadyAt || 0) <= this.time);
     for (const enemy of victims) enemy.sporefireReadyAt = this.time + SPOREFIRE.cooldown;
     for (const enemy of victims) {
-      this._damage(enemy, SPOREFIRE.damage + enemy.maxHp * (enemy.boss ? SPOREFIRE.bossFraction : SPOREFIRE.healthFraction), tower.id);
+      this._damage(enemy, SPOREFIRE.damage + enemy.maxHp * (enemy.boss ? SPOREFIRE.bossFraction : SPOREFIRE.healthFraction), tower.id, { damageKind: 'poison' });
     }
     return true;
   }
@@ -477,7 +495,7 @@ export class Game {
     if (target) {
       shot.tx = target.x; shot.tz = target.z; shot.ttl -= dt;
       if (shot.ttl > 0) { this.projectiles.push(shot); return; }
-      this._damage(target, PRISMSTORM.damage + target.maxHp * (target.boss ? PRISMSTORM.bossFraction : PRISMSTORM.healthFraction), tower.id);
+      this._damage(target, PRISMSTORM.damage + target.maxHp * (target.boss ? PRISMSTORM.bossFraction : PRISMSTORM.healthFraction), tower.id, { damageKind: 'magic' });
       this._effect('impact', target, target, shot.color, .12);
     }
     // A missed/dead target also consumes a hop, so retargeting has a finite cost.
@@ -500,12 +518,13 @@ export class Game {
     const center = hole ? { x: hole.x, z: hole.z } : impact;
     if (hole) {
       hole.berryReadyAt = this.time + BERRY_SINGULARITY.cooldown;
+      this._markCombo('berry-singularity', strawberry.id, hole.sourceId);
       this._announceCombo('berry-singularity', 'BERRY SINGULARITY! A secret combination discovered!');
       this._effect('berry-singularity', center, center, '#c4afff', 1.1);
       this.effects.at(-1).radius = 4;
     }
     for (const enemy of this.enemies) {
-      if (enemy.hp > 0 && distance(impact, enemy) <= shot.radius) this._damage(enemy, shot.damage, shot.sourceId);
+      if (enemy.hp > 0 && distance(impact, enemy) <= shot.radius) this._damage(enemy, shot.damage, shot.sourceId, { damageKind: 'physical' });
     }
     for (let i = 0; i < shot.seedCount; i++) {
       const angle = i / shot.seedCount * Math.PI * 2;
@@ -546,7 +565,7 @@ export class Game {
       if (shot.hitIds.length >= shot.pierce) break;
       shot.hitIds.push(enemy.id);
       const bonus = shot.gravityCharged ? enemy.maxHp * (enemy.boss ? BERRY_SINGULARITY.bossFraction : BERRY_SINGULARITY.healthFraction) : 0;
-      this._damage(enemy, shot.damage + bonus, shot.sourceId);
+      this._damage(enemy, shot.damage + bonus, shot.sourceId, { damageKind: shot.gravityCharged ? 'magic' : 'physical' });
       this._effect('impact', enemy, enemy, shot.color, 0.12);
     }
     if (shot.ttl > 0 && shot.hitIds.length < shot.pierce) this.projectiles.push(shot);
@@ -558,9 +577,10 @@ export class Game {
     this._event('unlock', `${TOWERS[type].name} unlocked! Available in every garden.`, { tower: type, typeId: type });
   }
 
-  _damage(enemy, amount, sourceId, { summon = false } = {}) {
+  _damage(enemy, amount, sourceId, { summon = false, damageKind } = {}) {
     if (enemy.hp <= 0 || amount <= 0) return;
     const tower = this.towers.find(t => t.id === sourceId);
+    amount *= damageMultiplier(enemy.trait, damageKind || damageKindForTower(tower?.type));
     const dealt = Math.min(enemy.hp, amount);
     enemy.hp -= amount;
     if (tower) tower.damageDone += dealt;
@@ -584,7 +604,7 @@ export class Game {
       this._effect('explosion', enemy, enemy, TOWERS.boom.color, 0.48);
       this.effects.at(-1).radius = stats.explosionRadius;
       for (const other of this.enemies) {
-        if (other.hp > 0 && distance(enemy, other) <= stats.explosionRadius) this._damage(other, stats.explosionDamage, tower.id);
+        if (other.hp > 0 && distance(enemy, other) <= stats.explosionRadius) this._damage(other, stats.explosionDamage, tower.id, { damageKind: 'physical' });
       }
     }
   }
@@ -642,7 +662,7 @@ export class Game {
     if (!candidates.length) return enemy.progress + forward;
     const { hole, progress: anchorProgress } = candidates[0];
     const activeTime = Math.min(dt, hole.ttl);
-    this._damage(enemy, hole.dps * activeTime, hole.sourceId);
+    this._damage(enemy, hole.dps * activeTime, hole.sourceId, { damageKind: 'magic' });
     if (enemy.hp <= 0) return enemy.progress;
     const resistance = enemy.boss ? 0.35 : 1;
     const pull = hole.pullSpeed * resistance * activeTime;
@@ -680,7 +700,7 @@ export class Game {
     this._effect('explosion', barrier, barrier, TOWERS.crystal.color, 0.48);
     this.effects.at(-1).radius = barrier.explosionRadius;
     for (const enemy of this.enemies) {
-      if (enemy.hp > 0 && distance(enemy, barrier) <= barrier.explosionRadius) this._damage(enemy, barrier.explosionDamage, barrier.sourceId);
+      if (enemy.hp > 0 && distance(enemy, barrier) <= barrier.explosionRadius) this._damage(enemy, barrier.explosionDamage, barrier.sourceId, { damageKind: 'magic' });
     }
   }
 
@@ -780,7 +800,7 @@ export class Game {
       ally.phase = target ? 'fighting' : 'marching';
       if (!target || ally.cooldown > 1e-8) continue;
       ally.cooldown = ally.interval;
-      this._damage(target, ally.damage, ally.sourceId, { summon: false });
+      this._damage(target, ally.damage, ally.sourceId, { summon: false, damageKind: 'physical' });
       this._effect('reborn-hit', target, target, TOWERS.necro.color, 0.18);
     }
   }
@@ -838,7 +858,7 @@ export class Game {
       if (enemy.hp <= 0) continue;
       if (enemy.poison) {
         const tick = Math.min(dt, enemy.poison.remaining);
-        this._damage(enemy, enemy.poison.dps * tick, enemy.poison.sourceId);
+        this._damage(enemy, enemy.poison.dps * tick, enemy.poison.sourceId, { damageKind: 'poison' });
         enemy.poison.remaining -= dt;
         if (enemy.poison.remaining <= 0) enemy.poison = null;
       }
@@ -866,9 +886,10 @@ export class Game {
       const targets = this.enemies.filter(e => e.hp > 0 && distance(tower, e) <= stats.range).sort((a, b) => this._targetPriority(tower, a, b)).slice(0, stats.shots);
       if (!targets.length) continue;
       tower.cooldown = stats.interval;
-      const prism = tower.prismCooldown <= 0 ? this.prismPartner(tower) : null;
+      const prism = tower.prismCooldown <= 0 && this.projectiles.filter(shot => shot.type === 'prism-shard').length < PRISMSTORM.projectileLimit ? this.prismPartner(tower) : null;
       if (prism) {
         tower.prismCooldown = PRISMSTORM.cooldown;
+        this._markCombo('prismstorm', tower.id, prism.id);
         this._announceCombo('prismstorm', 'PRISMSTORM! A secret combination discovered!');
         this._effect('prism-burst', prism, prism, '#a4edff', .75);
         this.effects.at(-1).radius = 2;

@@ -1,12 +1,14 @@
-Gnomeward 0.2.7 adds another hidden combination to discover, with a new Blender-made effect and orbiting black-seed shrapnel.
+Gnomeward 0.2.8 adds discoverable endless-mode enemies, combo activation indicators, and a clearer battlefield layout.
 
-- Each hidden interaction needs one completed upgrade path per character; other paths are optional.
-- Recipes stay out of the field guide, upgrade panels, and discovery messages.
-- New projectiles briefly orbit before flying outward. The server owns their timing, damage, collision, and piercing.
-- Shared cooldowns and projectile limits keep the interaction bounded in solo and co-op.
+- Three enemy traits appear gradually after the campaign. Each has one weakness (2× damage) and one resistance (½ damage). Discovered traits are recorded in the field guide; skeleton colors still indicate toughness.
+- Upgrade controls dock beside the table, and the map fits above the gnome shop.
+- Both participating gnomes glow after the interaction fires. Indicators fade after three seconds and refresh on another activation.
+- Indicators reveal nothing before a combination actually happens. Recipes remain absent from upgrade panels, the field guide, and discovery messages.
+- Co-op uses the server’s activation state, so both players see the same participants.
+- Includes the third hidden interaction and the one-completed-path-per-character requirements from the previous releases.
 
-**[Unraid installation and update instructions](https://github.com/oj-kentd/gnomeward/blob/server-v0.2.7/docs/UNRAID.md)**
+**[Unraid installation and update instructions](https://github.com/oj-kentd/gnomeward/blob/server-v0.2.8/docs/UNRAID.md)**
 
-Download the image and `SHA256SUMS`, verify the checksum, then load it with Docker. Set the Unraid container’s Repository to `gnomeward-server:0.2.7` and Apply. Keep the same data mount, port, environment variables, and Cloudflare route. Finish active games before restarting.
+Download the image and `SHA256SUMS`, verify the checksum, then load it with Docker. Set the Unraid container’s Repository to `gnomeward-server:0.2.8` and Apply. Keep the same data mount, port, environment variables, and Cloudflare route. Finish active games before restarting.
 
-Verify `/healthz` reports 0.2.7, refresh both browsers, and start a new room. This release includes the hidden-recipe changes from 0.2.6; you can update directly from an older version.
+Verify `/healthz` reports 0.2.8, refresh both browsers, and start a new room. You can update directly from an older release.

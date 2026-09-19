@@ -3,7 +3,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CoopMotionBuffer } from './coop-motion.js';
 import { TOWERS, ENEMIES, SECRETS, cottagePosition } from './data.js';
 
-const ASSETS = ['berry-singularity-seed-ring','berry-singularity-arcs','berry-singularity-stars','sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
+const ASSETS = ['trait-armored','trait-runed','trait-toxic','combo-marker-sporefire','combo-marker-prismstorm','combo-marker-berry-singularity','berry-singularity-seed-ring','berry-singularity-arcs','berry-singularity-stars','sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
+const ENEMY_TRAIT_MODELS = { armored: 'trait-armored', runed: 'trait-runed', toxic: 'trait-toxic' };
+const COMBO_MARKER_MODELS = { sporefire: 'combo-marker-sporefire', prismstorm: 'combo-marker-prismstorm', 'berry-singularity': 'combo-marker-berry-singularity' };
 const COMBO_BURSTS = new Set(['sporefire', 'prism-burst', 'berry-singularity']);
 const COMBO_SHOTS = new Set(['prism-shard', 'sporefire-link']);
 const comboShot = effect => COMBO_SHOTS.has(effect.type) || effect.type === 'strawberry-seed' && effect.gravityCharged;
@@ -19,6 +21,8 @@ const palettes = [
 export class GardenRenderer {
   constructor(container, handlers) {
     this.motion = new CoopMotionBuffer();
+    this.comboMarkers = new Map();
+    this.comboMarkerStarts = new Map();
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.container=container; this.handlers=handlers; this.models={}; this.entities=new Map(); this.traps=new Map(); this.fx=new Map(); this.holes=new Map(); this.barriers=new Map(); this.secrets=new Map(); this.clues=new Map(); this.allies=new Map(); this.tintMaterials=new Map(); this.cluePlaque=null;
     this.scene=new THREE.Scene(); this.scene.background=new THREE.Color(0x183c35);
@@ -66,7 +70,10 @@ export class GardenRenderer {
     object.add(this.clone(type === 'sporefire' ? 'sporefire-petals' : type === 'berry-singularity' ? 'berry-singularity-arcs' : 'prism-burst'));
     if (type === 'sporefire') object.add(this.clone('combo-sparks'));
     if (type === 'berry-singularity') object.add(this.clone('berry-singularity-stars'));
-    // Only burst materials fade. Never mutate the shared GLB or tinted cache.
+    return this.fadingObject(object);
+  }
+  fadingObject(object) {
+    // Never mutate the shared GLB or tinted cache when a local object fades.
     const materials = new Map();
     object.traverse(child => {
       if (!child.isMesh) return;
@@ -86,12 +93,71 @@ export class GardenRenderer {
   disposeEffect(object) {
     for (const material of object.userData.fadeMaterials || []) material.dispose();
   }
+  setEnemyTrait(object, enemy) {
+    const kind = !enemy.boss && !enemy.isBoss && Object.hasOwn(ENEMY_TRAIT_MODELS, enemy.trait) ? enemy.trait : null;
+    if ((object.userData.enemyTrait ?? null) === kind) return;
+    const previous = object.getObjectByName('enemy-trait-accessory');
+    if (previous) object.remove(previous);
+    object.userData.enemyTrait = kind;
+    if (!kind) return;
+    // Each Blender accessory is a single vertex-colored primitive. Its shared
+    // material/geometry stay pooled; the attached object follows capture scale
+    // and disappears with its skeleton, without allocating particles or fades.
+    const accessory = this.clone(ENEMY_TRAIT_MODELS[kind]);
+    accessory.name = 'enemy-trait-accessory';
+    accessory.userData.trait = kind;
+    accessory.traverse(child => { if (child.isMesh) child.castShadow = child.receiveShadow = false; });
+    object.add(accessory);
+  }
+  updateComboMarkers(game) {
+    const activeIds = new Set(), shownIds = new Set();
+    for (const tower of game.towers) {
+      const active = tower.comboActive;
+      if (!active || !Object.hasOwn(COMBO_MARKER_MODELS, active.kind) || !Number.isFinite(active.until) || active.until <= game.time || activeIds.size >= 64) continue;
+      activeIds.add(tower.id);
+      const startedAt = Number.isFinite(active.startedAt) ? active.startedAt : active.until - 3;
+      let episode = this.comboMarkerStarts.get(tower.id);
+      if (!episode || episode.kind !== active.kind || episode.until < startedAt) {
+        episode = { kind: active.kind, startedAt, until: active.until };
+        this.comboMarkerStarts.set(tower.id, episode);
+      } else {
+        // Repeated shots extend the same participation episode. Preserve its
+        // first trigger so each delayed co-op snapshot cannot blink it off.
+        episode.until = active.until;
+      }
+      if (game.time + 1e-8 < episode.startedAt) continue;
+      shownIds.add(tower.id);
+      let object = this.comboMarkers.get(tower.id);
+      if (object && object.userData.comboKind !== active.kind) {
+        this.actors.remove(object); this.disposeEffect(object); object = null;
+      }
+      if (!object) {
+        object = this.fadingObject(this.clone(COMBO_MARKER_MODELS[active.kind]));
+        object.userData.comboKind = active.kind;
+        object.userData.startedAt = episode.startedAt;
+        object.userData.towerId = tower.id;
+        object.scale.setScalar(.36);
+        this.actors.add(object); this.comboMarkers.set(tower.id, object);
+      }
+      const levelScale = 1 + Math.min(tower.levels.reduce((sum, level) => sum + level, 0), 6) * .035;
+      const bob = this.reducedMotion.matches ? 0 : Math.sin(game.time * 2.8 + tower.id) * .035;
+      object.position.set(tower.x, 1.5 * levelScale + .55 + bob, tower.z);
+      object.quaternion.copy(this.camera.quaternion);
+      for (const material of object.userData.fadeMaterials) material.opacity = Math.min(1, (active.until - game.time) / .6);
+    }
+    for (const [id, object] of this.comboMarkers) if (!shownIds.has(id)) {
+      this.actors.remove(object); this.disposeEffect(object); this.comboMarkers.delete(id);
+    }
+    for (const id of this.comboMarkerStarts.keys()) if (!activeIds.has(id)) this.comboMarkerStarts.delete(id);
+  }
   add(name,x,y,z,sx=1,sy=sx,sz=sx,color,rotation=0) {const obj=this.clone(name,color);obj.position.set(x,y,z);obj.scale.set(sx,sy,sz);obj.rotation.y=rotation;this.world.add(obj);return obj;}
   setMap(map,index) {
     this.motion.reset();
     if (this.cluePlaque) this.cluePlaque.traverse(child => { if (child.isMesh) for (const material of Array.isArray(child.material) ? child.material : [child.material]) material.dispose(); });
     this.cluePlaque = null;
     for (const object of this.fx.values()) this.disposeEffect(object);
+    for (const object of this.comboMarkers.values()) this.disposeEffect(object);
+    this.comboMarkers.clear(); this.comboMarkerStarts.clear();
     for(const object of this.secrets.values())object.traverse(child=>{if(child.isMesh)for(const material of Array.isArray(child.material)?child.material:[child.material])material.dispose();});
     this.world.clear();this.actors.clear();this.entities.clear();this.traps.clear();this.fx.clear();this.holes.clear();this.barriers.clear();this.secrets.clear();this.clues.clear();this.allies.clear();if(this.ghost){this.scene.remove(this.ghost);this.ghost=null;this.ghostType=null;}
     const p=palettes[index%palettes.length];this.scene.background.set(p.bg);this.range.visible=false;
@@ -206,11 +272,31 @@ export class GardenRenderer {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h);
-    const aspect = w / h, portrait = aspect < .85;
-    // Fit the garden tightly; on phones its long side runs vertically.
+    const aspect = w / h;
+    // Docked controls can make a phone's remaining canvas wide and short.
+    // Keep its map orientation tied to the device viewport, so opening an
+    // upgrade panel changes zoom without rotating the whole garden.
+    const portrait = window.innerWidth / window.innerHeight < .85;
     this.camera.position.set(portrait ? 21 : 0, 32, portrait ? 0 : 21);
     this.camera.lookAt(0, 0, 0);
-    const halfW = portrait ? Math.max(9.2, 11 * aspect) : Math.max(13.1, 8 * aspect);
+    this.camera.updateMatrixWorld();
+    this.world.updateMatrixWorld(true);
+    let fitW = portrait ? 8.85 : 12.85, fitH = portrait ? 11 : 8;
+    const corner = new THREE.Vector3();
+    // Fit the actual board and static scenery into the reserved #scene area.
+    // Bounding boxes are cached on shared meshes; this runs only on resize,
+    // not on every combat frame. Actor effects never make the camera pump.
+    this.world.traverse(object => {
+      if (!object.isMesh) return;
+      if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+      const { min, max } = object.geometry.boundingBox;
+      for (const x of [min.x, max.x]) for (const y of [min.y, max.y]) for (const z of [min.z, max.z]) {
+        corner.set(x, y, z).applyMatrix4(object.matrixWorld).applyMatrix4(this.camera.matrixWorldInverse);
+        fitW = Math.max(fitW, Math.abs(corner.x));
+        fitH = Math.max(fitH, Math.abs(corner.y));
+      }
+    });
+    const halfW = Math.max(fitW + .30, (fitH + .30) * aspect);
     const halfH = halfW / aspect;
     this.camera.left = -halfW;
     this.camera.right = halfW;
@@ -256,7 +342,8 @@ export class GardenRenderer {
     }
     const seen=new Set();
     for(const t of game.towers){const key='t'+t.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone('gnome-'+t.type);o.userData.towerId=t.id;this.actors.add(o);this.entities.set(key,o)}o.position.set(t.x,.07,t.z);this.ownershipRing(o,t,state.multiplayer);const nearest=game.enemies.reduce((best,e)=>!best||Math.hypot(e.x-t.x,e.z-t.z)<Math.hypot(best.x-t.x,best.z-t.z)?e:best,null);if(nearest)o.rotation.y=Math.atan2(nearest.x-t.x,nearest.z-t.z);o.scale.setScalar(1+Math.min(t.levels.reduce((a,b)=>a+b,0),6)*.035);}
-    for(const e of game.enemies){const key='e'+e.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone(e.boss||e.isBoss?'skeleton-boss':'skeleton');const color=e.color||ENEMIES[e.type]?.color; if(color)o.traverse(m=>{if(!m.isMesh)return;const tint=mat=>{if(!/cream|purple|bone|skull|rib/i.test(mat.name))return mat;const k=mat.uuid+color;if(!this.tintMaterials.has(k)){const copy=mat.clone();copy.color.set(color);this.tintMaterials.set(k,copy)}return this.tintMaterials.get(k)};m.material=Array.isArray(m.material)?m.material.map(tint):tint(m.material)});this.actors.add(o);this.entities.set(key,o);const hp=this.clone('path',0xd5f395);hp.name='health';hp.scale.set(.8,.055,.065);hp.position.set(0,1.65,0);o.add(hp);}o.position.set(e.x,.1+Math.sin(time*10+e.id)*.035,e.z);if(o.userData.lastX!==undefined){const dx=e.x-o.userData.lastX,dz=e.z-o.userData.lastZ;if(Math.abs(dx)+Math.abs(dz)>.001)o.rotation.y=Math.atan2(dx,dz)}o.userData.lastX=e.x;o.userData.lastZ=e.z;const hp=o.getObjectByName('health');if(hp){hp.scale.x=.8*Math.max(.01,e.hp/e.maxHp);hp.visible=e.hp<e.maxHp;}if(e.slowRemaining>0)o.rotation.z=Math.sin(time*5)*.025;else o.rotation.z=0;
+    this.updateComboMarkers(game);
+    for(const e of game.enemies){const key='e'+e.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone(e.boss||e.isBoss?'skeleton-boss':'skeleton');const color=e.color||ENEMIES[e.type]?.color; if(color)o.traverse(m=>{if(!m.isMesh)return;const tint=mat=>{if(!/cream|purple|bone|skull|rib/i.test(mat.name))return mat;const k=mat.uuid+color;if(!this.tintMaterials.has(k)){const copy=mat.clone();copy.color.set(color);this.tintMaterials.set(k,copy)}return this.tintMaterials.get(k)};m.material=Array.isArray(m.material)?m.material.map(tint):tint(m.material)});this.actors.add(o);this.entities.set(key,o);const hp=this.clone('path',0xd5f395);hp.name='health';hp.scale.set(.8,.055,.065);hp.position.set(0,1.65,0);o.add(hp);}this.setEnemyTrait(o,e);o.position.set(e.x,.1+Math.sin(time*10+e.id)*.035,e.z);if(o.userData.lastX!==undefined){const dx=e.x-o.userData.lastX,dz=e.z-o.userData.lastZ;if(Math.abs(dx)+Math.abs(dz)>.001)o.rotation.y=Math.atan2(dx,dz)}o.userData.lastX=e.x;o.userData.lastZ=e.z;const hp=o.getObjectByName('health');if(hp){hp.scale.x=.8*Math.max(.01,e.hp/e.maxHp);hp.visible=e.hp<e.maxHp;}if(e.slowRemaining>0)o.rotation.z=Math.sin(time*5)*.025;else o.rotation.z=0;
       if(!e.capturedBy&&game.barriers.some(b=>b.hp>0&&Math.hypot(e.x-b.x,e.z-b.z)<.4)){o.rotation.z=Math.sin(time*12+e.id)*.1;o.position.y+=Math.abs(Math.sin(time*12+e.id))*.04;}
       if(e.allyTargetId&&!e.capturedBy){const ally=game.allies.find(a=>a.id===e.allyTargetId);if(ally)o.rotation.y=Math.atan2(ally.x-e.x,ally.z-e.z);o.rotation.z=Math.sin(game.time*12+e.id)*.1;}
       if(e.capturedBy){o.position.y=-.06;o.position.x+=Math.sin(time*5+e.id)*.16;o.position.z+=Math.cos(time*5+e.id)*.16;o.rotation.y=time*5+e.id;o.rotation.z=.25;}o.scale.setScalar(THREE.MathUtils.lerp(o.scale.x,e.capturedBy?.52:1,.25));}

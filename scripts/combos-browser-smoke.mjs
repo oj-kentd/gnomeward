@@ -45,6 +45,86 @@ async function currencyFits() {
   assert.equal(Number(hud.title.replace(/[^0-9.]/g, '')), hud.value, 'exact gold remains available in the tooltip');
   assert.equal(hud.fits, true, `gold does not overlap the points icon: ${JSON.stringify(hud)}`);
 }
+
+async function assertParticipantMarkers(kind, types) {
+  const report = await page.evaluate(kind => {
+    const { game, renderer } = gnomeward;
+    return { count: renderer.comboMarkers.size, participants: [...renderer.comboMarkers].filter(([, marker]) => marker.userData.comboKind === kind).map(([id, marker]) => {
+      const tower = game.towers.find(tower => tower.id === id);
+      return { id, type: tower?.type, actualTrigger: tower?.comboActive?.kind === kind, attached: !!marker.parent,
+        position: marker.position.toArray(), materials: marker.userData.fadeMaterials?.length || 0 };
+    }) };
+  }, kind);
+  assert.ok(report.count <= 64, 'participant markers remain bounded');
+  for (const type of types) assert.ok(report.participants.some(marker => marker.type === type && marker.actualTrigger && marker.attached), `${kind} identifies its ${type} participant after actual combat: ${JSON.stringify(report)}`);
+  assert.ok(report.participants.every(marker => marker.materials > 0 && marker.position.every(Number.isFinite)));
+  return report;
+}
+
+async function markerLifecycle(kind) {
+  return page.evaluate(kind => {
+    const { game, state, renderer } = gnomeward;
+    state.multiplayer = null; state.paused = true;
+    for (const tower of game.towers) delete tower.comboActive;
+    renderer.setMap(game.map, 0);
+    const tower = game.towers[0], base = game.time, received = performance.now() / 1000;
+    const metadata = { roomId: 'marker-clock-fixture', sessionId: 'one', connected: true, started: true, paused: false,
+      snapshotTick: 0, snapshotSequence: 900001, snapshotReceivedAt: received };
+    renderer.motion.capture(game, metadata);
+    game.time = base + 1;
+    tower.comboActive = { kind, startedAt: base + .95, until: base + 3.95 };
+    Object.assign(metadata, { snapshotTick: 20, snapshotSequence: 900002, snapshotReceivedAt: received + 1 });
+    renderer.motion.capture(game, metadata);
+    renderer.render(game, { ...state, multiplayer: metadata }, received + 1.1);
+    const early = renderer.comboMarkers.size;
+    renderer.render(game, { ...state, multiplayer: metadata }, received + 1.3);
+    const arrived = renderer.comboMarkers.has(tower.id);
+    // Repeated real hits refresh the end timestamp. A newer server start must
+    // not hide a marker already introduced on the presentation timeline.
+    tower.comboActive = { kind, startedAt: base + 1.2, until: base + 4.2 };
+    renderer.render(game, { ...state, multiplayer: metadata }, received + 1.31);
+    const retained = renderer.comboMarkers.has(tower.id);
+    function disposalProbe(marker) {
+      const result = { expected: marker?.userData.fadeMaterials?.length || 0, disposed: 0 };
+      for (const material of marker?.userData.fadeMaterials || []) material.addEventListener('dispose', () => result.disposed++);
+      return result;
+    }
+    const expiry = disposalProbe(renderer.comboMarkers.get(tower.id));
+    game.time = base + 5;
+    renderer.render(game, state, received + 2);
+    const expired = renderer.comboMarkers.size === 0;
+    tower.comboActive = { kind, startedAt: game.time - .1, until: game.time + 3 };
+    renderer.render(game, state, received + 2.1);
+    const sale = disposalProbe(renderer.comboMarkers.get(tower.id));
+    const reducedY = renderer.comboMarkers.get(tower.id)?.position.y;
+    game.time += .1; renderer.render(game, state, received + 2.15);
+    const reducedMotionStable = renderer.reducedMotion.matches && renderer.comboMarkers.get(tower.id)?.position.y === reducedY;
+    const sold = game.sellTower(tower.id);
+    renderer.render(game, state, received + 2.2);
+    const removedOnSale = !renderer.comboMarkers.has(tower.id);
+    const other = game.towers[0];
+    other.comboActive = { kind, startedAt: game.time - .1, until: game.time + 3 };
+    renderer.render(game, state, received + 2.3);
+    const reset = disposalProbe(renderer.comboMarkers.get(other.id));
+    renderer.setMap(game.map, 0);
+    const resetEmpty = renderer.comboMarkers.size === 0;
+    renderer.updateComboMarkers({ time: game.time, towers: Array.from({ length: 80 }, (_, index) => ({ ...other, id: `marker-budget-${index}` })) });
+    const markerCap = renderer.comboMarkers.size;
+    renderer.setMap(game.map, 0);
+    return { early, arrived, retained, expired, sold: !!sold, removedOnSale, resetEmpty, reducedMotionStable, markerCap, expiry, sale, reset };
+  }, kind);
+}
+
+function assertMarkerLifecycle(report) {
+  assert.equal(report.early, 0, 'new co-op markers wait for buffered presentation time');
+  for (const key of ['arrived', 'retained', 'expired', 'sold', 'removedOnSale', 'resetEmpty', 'reducedMotionStable']) assert.equal(report[key], true, key);
+  assert.equal(report.markerCap, 64, 'marker rendering has a hard cap');
+  for (const key of ['expiry', 'sale', 'reset']) {
+    assert.ok(report[key].expected > 0, `${key} exercises material cleanup`);
+    assert.equal(report[key].disposed, report[key].expected, `${key} disposes every cloned marker material`);
+  }
+}
+
 async function hiddenRecipes(scope) {
   assert.equal(await page.locator('.combo-guide, .combo-note, [data-combo]').count(), 0, 'pairing recipes and active-combo panels stay hidden');
   assert.doesNotMatch(await scope.innerText(), /sporefire|prismstorm|late-game pairings/i, 'ordinary game UI does not disclose hidden combo names or recipes');
@@ -54,6 +134,7 @@ try {
   await enterGarden(page);
   await page.waitForFunction(() => window.gnomeward?.ready && gnomeward.renderer.renderer.info.render.frame > 0);
   if (await page.locator('#dismiss-tip').isVisible()) await page.locator('#dismiss-tip').click();
+  assert.equal(await page.evaluate(() => gnomeward.renderer.comboMarkers.size), 0, 'no markers appear before a combination actually triggers');
   stage = 'desktop field guide keeps combinations secret';
   await page.locator('#help-button').click();
   await hiddenRecipes(page.locator('#game-dialog'));
@@ -104,6 +185,7 @@ try {
       return [...game.effects, ...game.projectiles].filter(e => e.type === wanted && gnomeward.renderer.fx.has(e.id)).length;
     }, name);
     assert.ok(rendered > 0, 'actual combat effects rendered');
+    combat[name].markers = await assertParticipantMarkers(name, name === 'sporefire' ? ['spore', 'boom'] : ['multi', 'crystal']);
     await page.screenshot({ path: `playtest-results/combo-${name}-round71.png` });
     await select(name === 'sporefire' ? 'spore' : 'multi');
     await hiddenRecipes(page.locator('#selection-panel'));
@@ -162,6 +244,7 @@ try {
     models: [...gnomeward.renderer.fx.values()].filter(object => object.getObjectByName('prism-shard')).length }));
   assert.equal(coop.supported, true); assert.equal(coop.partner, true); assert.ok(coop.frames > 1);
   assert.ok(coop.models > 0, 'real shard projectiles survive the co-op presentation buffer');
+  coop.markers = await assertParticipantMarkers('prismstorm', ['multi', 'crystal']);
   await select('multi'); await hiddenRecipes(page.locator('#selection-panel'));
   await page.locator('[data-close-upgrades]').click(); await settled();
   await page.screenshot({ path: 'playtest-results/combo-prismstorm-coop.png' });
@@ -177,10 +260,14 @@ try {
   assert.deepEqual(await page.evaluate(() => ({ visible: gnomeward.renderer.fx.size, authoritative: gnomeward.game.effects.length + gnomeward.game.projectiles.length })), { visible: 76, authoritative: 400 });
   await page.emulateMedia({ reducedMotion: 'reduce' }); await settled();
   assert.equal(await page.evaluate(() => gnomeward.renderer.fx.size), 70);
+  await assertParticipantMarkers('prismstorm', ['multi', 'crystal']);
   await page.evaluate(() => { gnomeward.game.effects = []; gnomeward.game.projectiles = []; }); await settled();
   assert.equal(await page.evaluate(() => gnomeward.renderer.fx.size), 0);
+  stage = 'participant marker timing, sale and material cleanup';
+  const markerCleanup = await markerLifecycle('prismstorm');
+  assertMarkerLifecycle(markerCleanup);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, combat, coop, budget: { normal: 76, reducedMotion: 70 }, errors }, null, 2));
+  console.log(JSON.stringify({ ok: true, combat, coop, markerCleanup, budget: { normal: 76, reducedMotion: 70 }, errors }, null, 2));
 } catch (error) {
   console.error('Combo browser check failed at:', stage, error);
   await page.screenshot({ path: 'playtest-results/combo-browser-failure.png' }).catch(() => {});

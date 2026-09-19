@@ -15,13 +15,9 @@ const preferredVolume = Number.isFinite(audioPreferences.volume) ? Math.max(0, M
 let game=new Game(MAPS[0].id,profile),world,ready=false;
 const state={selectedTowerId:null,placingType:null,paused:false,speed:1,sound:audioPreferences.effects === true,autoStart:false,autoCountdown:null,music:preferredMusic,musicVolume:preferredVolume,musicStatus:preferredMusic === 'off' ? 'off' : 'ready'};
 function refreshUI() {
-  const tower = game.towers.find(t => t.id === state.selectedTowerId);
-  if (world && tower) {
-    const p = world.camera.position.clone().set(tower.x, .8, tower.z).project(world.camera);
-    state.selectionAnchor = { x: (p.x + 1) * world.container.clientWidth / 2, y: (1 - p.y) * world.container.clientHeight / 2 };
-  } else state.selectionAnchor = null;
   ui.update(game, state);
 }
+
 const music = new MusicPlayer({
   baseUrl: import.meta.env.BASE_URL, track: state.music, volume: state.musicVolume,
   onStatus: status => { state.musicStatus = status; refreshUI(); }
@@ -83,6 +79,14 @@ const multiplayer=new CoopClient({
       soloRun.game.profile.pathUnlocks??=[];
       soloRun.game.profile.pathUnlocks.push('necro-echoes');
       try{localStorage.setItem('gnomeward-profile',JSON.stringify(soloRun.game.profile));}catch{}
+    }
+    if (soloRun && game.profile.enemyTraits?.length) {
+      const known = soloRun.game.profile.enemyTraits ||= [];
+      const discoveries = game.profile.enemyTraits.filter(id => !known.includes(id));
+      if (discoveries.length) {
+        known.push(...discoveries);
+        try { localStorage.setItem('gnomeward-profile', JSON.stringify(soloRun.game.profile)); } catch {}
+      }
     }
     if(previousStatus==='won'&&game.status==='planning'&&ui.modalType==='result')ui.closeModal();
     if(pendingPlacement){
@@ -218,12 +222,17 @@ function frame(now){
     while(remaining>0){const step=Math.min(remaining,1/30);game.update(step);remaining-=step;}
   }
   const events=game.events.splice(0);
-  const announcement=events.findLast(event=>['unlock','path-unlock','combo'].includes(event.type))||events.findLast(event=>['wave-start','wave-complete'].includes(event.type));
-  if(announcement)ui.announce?.(announcement.type==='combo'?`${announcement.combo.toUpperCase().replaceAll('-', ' ')}!`:announcement.message,announcement.type==='combo'?announcement.combo:announcement.type==='path-unlock'?'unlock':announcement.type);
+  const announcement=events.findLast(event=>['unlock','path-unlock','combo','trait-discovered'].includes(event.type))||events.findLast(event=>['wave-start','wave-complete'].includes(event.type));
+  if (announcement) {
+    const title = announcement.type === 'combo' ? `${announcement.combo.toUpperCase().replaceAll('-', ' ')}!`
+      : announcement.type === 'trait-discovered' ? `${announcement.trait.toUpperCase()} SKELETONS!` : announcement.message;
+    const kind = announcement.type === 'combo' ? announcement.combo : ['path-unlock', 'trait-discovered'].includes(announcement.type) ? 'unlock' : announcement.type;
+    ui.announce?.(title, kind);
+  }
   for(const event of events){
     if(event.message&&!['leak','placed','wave-start','wave-complete','unlock','path-unlock','combo'].includes(event.type))ui.toast(event.message);
     if(event.type==='summoned'&&(!state.multiplayer||game.towers.find(t=>t.id===event.towerId)?.ownerId===state.multiplayer.sessionId)){state.selectedTowerId=event.towerId;state.placingType=null;refreshUI();}
-    if(event.type==='secret-found'||event.type==='summoned')save();
+    if(['secret-found','summoned','trait-discovered'].includes(event.type))save();
     if(['unlock','path-unlock','wave-complete','victory'].includes(event.type)){save();beep(920,.2);}
     else if(event.type==='defeat'){save();beep(140,.4);}
     else if(event.type==='combo'){beep(880,.18);beep(1320,.12);}
@@ -233,4 +242,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.7'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.8'};

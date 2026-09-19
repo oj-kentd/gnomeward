@@ -1,12 +1,12 @@
 FROM node:24-bookworm-slim
 LABEL org.opencontainers.image.title="Gnomeward multiplayer server" \
       org.opencontainers.image.source="https://github.com/oj-kentd/gnomeward" \
-      org.opencontainers.image.version="0.2.7"
+      org.opencontainers.image.version="0.2.8"
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=2567 DATA_DIR=/data
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
-COPY src/game.js src/data.js src/combos.js ./src/
+COPY src/game.js src/data.js src/combos.js src/enemy-traits.js ./src/
 COPY server ./server/
 RUN mkdir /data && chown node:node /data
 USER node
