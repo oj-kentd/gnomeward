@@ -130,7 +130,14 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#map-button').click();
   await page.locator('[data-map="strawberry"]').click();
-  await page.waitForFunction(() => gnomeward.game.wave === 0 && gnomeward.game.towers.length === 1 && gnomeward.renderer.entities.has('t' + gnomeward.game.towers[0].id) && document.querySelector('canvas').getBoundingClientRect().width === innerWidth);
+  await page.waitForFunction(() => {
+    const scene = document.querySelector('#scene').getBoundingClientRect();
+    const canvas = gnomeward.renderer.renderer.domElement.getBoundingClientRect();
+    return gnomeward.game.wave === 0 && gnomeward.game.towers.length === 1
+      && gnomeward.renderer.entities.has('t' + gnomeward.game.towers[0].id)
+      && scene.width > 300 && Math.abs(canvas.width - scene.width) < 1
+      && Math.abs(canvas.height - scene.height) < 1;
+  });
   await page.locator('[data-tower="strawberry"]').evaluate(element => element.scrollIntoView({ block: 'nearest', inline: 'end' }));
   const phone = await page.evaluate(() => ({
     noHorizontalScroll: document.documentElement.scrollWidth <= innerWidth,
@@ -138,11 +145,13 @@ try {
     map: gnomeward.game.map.id,
     entrances: gnomeward.renderer.world.children.filter(object => object.userData.entrance).length,
     freeGnomeRendered: !!gnomeward.renderer.entities.get('t' + gnomeward.game.towers[0].id),
+    mapAboveShop: document.querySelector('#scene').getBoundingClientRect().bottom < document.querySelector('.guardian-dock').getBoundingClientRect().top,
   }));
   assert.equal(phone.noHorizontalScroll, true);
   assert.equal(phone.noVerticalScroll, true);
   assert.equal(phone.entrances, 2);
   assert.equal(phone.freeGnomeRendered, true);
+  assert.equal(phone.mapAboveShop, true);
   await page.screenshot({ path: 'playtest-results/strawberry-phone.png' });
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ initial, flight, burst, phone, errors }, null, 2));

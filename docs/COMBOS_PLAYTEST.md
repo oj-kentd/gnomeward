@@ -1,4 +1,4 @@
-# Hidden combination verification — 0.2.9
+# Hidden combination verification — 0.2.10
 
 The combinations are intentionally undocumented in player-facing instructions. Each requires one completed upgrade path per character; other paths remain optional. First activation celebrates discovery without explaining its recipe.
 

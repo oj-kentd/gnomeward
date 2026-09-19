@@ -81,7 +81,7 @@ Green arrows mark every entrance. Enemies alternate between the two entrances on
 
 ## Multiplayer server for Unraid
 
-The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and coordinate rounds with Ready controls or shared auto rounds. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.9 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
+The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and coordinate rounds with Ready controls or shared auto rounds. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.10 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
 
 Run it locally with `npm run server`, then open `http://localhost:2567/`. Match results are stored in `server-data/results.json` by default. `npm test` includes authoritative multiplayer and real WebSocket integration tests; with the server running, `npm run test:server-browser` checks the desktop/phone connection page. See the [server protocol](server/PROTOCOL.md) for client integration and current rules.
 
@@ -148,9 +148,9 @@ Run `npm run test:coop` with a running game and multiplayer server to exercise t
 
 Run `npm run test:coop-ready-browser` against a running game preview to check readiness feedback, shared auto, countdown cancellation, pause/resume, and phone controls through a private WebSocket server fixture.
 
-## Hidden combinations (0.2.9)
+## Hidden combinations (0.2.10)
 
-Some completed upgrade paths interact in surprising ways. Discoveries celebrate their first activation without revealing recipes in the field guide or upgrade panels. Cross-player interactions require server **0.2.9**.
+Some completed upgrade paths interact in surprising ways. Discoveries celebrate their first activation without revealing recipes in the field guide or upgrade panels. Cross-player interactions require server **0.2.10**.
 
 `npm run test:combos` checks earned-resource endless progression. `npm run test:combos-coop` checks separate co-op wallets and natural unlocks. `npm run test:combos-browser` checks effects, spoiler-free UI, and rendering in a running preview.
 

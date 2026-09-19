@@ -8,9 +8,9 @@ concurrency:
   group: server-release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  image:
+  gameplay:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,8 +22,26 @@ jobs:
       - run: npm run test:combos
       - run: npm run test:combos-coop
       - run: npm run test:berry-combo
+  browser:
+    name: Browser checks (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [coop, combos, berry, traits, layout, secrets]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - name: Build and verify container
         shell: bash
+        env:
+          CHECK_GROUP: ${{ matrix.group }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#server-v}"
@@ -38,23 +56,50 @@ jobs:
           done
           curl -fsS http://127.0.0.1:2567/healthz
           curl -fsS http://127.0.0.1:2567/readyz
-          npx playwright install --with-deps chromium
-          SERVER_URL=http://127.0.0.1:2567 npm run test:server-browser
           VITE_MULTIPLAYER_URL=http://127.0.0.1:2567 npm run build
           npm run preview -- --host 127.0.0.1 --port 5175 > /tmp/gnomeward-preview.log 2>&1 &
           for attempt in {1..30}; do
             if curl -fsS http://127.0.0.1:5175/ > /dev/null; then break; fi
             sleep 1
           done
-          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:coop
-          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:coop-motion-browser
-          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:coop-ready-browser
-          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:combos-browser
-          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:berry-combo-browser
-          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:traits-browser
-          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:layout-browser
-          PLAYTEST_URL=http://127.0.0.1:5175 node scripts/strawberry-browser-smoke.mjs
-          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:echoes
+          export PLAYTEST_URL=http://127.0.0.1:5175
+          case "$CHECK_GROUP" in
+            coop)
+              SERVER_URL=http://127.0.0.1:2567 npm run test:server-browser
+              npm run test:coop
+              npm run test:coop-motion-browser
+              npm run test:coop-ready-browser
+              ;;
+            combos) npm run test:combos-browser ;;
+            berry) npm run test:berry-combo-browser ;;
+            traits) npm run test:traits-browser ;;
+            layout) npm run test:layout-browser ;;
+            secrets)
+              npm run test:strawberry
+              npm run test:echoes
+              ;;
+            *) exit 1 ;;
+          esac
+      - name: Save browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-${{ matrix.group }}
+          path: playtest-results/
+          retention-days: 7
+          if-no-files-found: ignore
+  image:
+    needs: [gameplay, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package verified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#server-v}"
+          docker build -f Dockerfile.server -t "gnomeward-server:$VERSION" .
           mkdir -p release
           docker save "gnomeward-server:$VERSION" | gzip > "release/gnomeward-server-$VERSION-linux-amd64.tar.gz"
           cd release
