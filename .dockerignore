@@ -4,5 +4,6 @@
 !src/
 !src/game.js
 !src/data.js
+!src/combos.js
 !server/
 !server/**

@@ -19,6 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:combos
+      - run: npm run test:combos-coop
       - name: Build and verify container
         shell: bash
         run: |
@@ -46,6 +48,7 @@ jobs:
           PLAYTEST_URL=http://127.0.0.1:5175 npm run test:coop
           PLAYTEST_URL=http://127.0.0.1:5175 npm run test:coop-motion-browser
           PLAYTEST_URL=http://127.0.0.1:5175 npm run test:coop-ready-browser
+          PLAYTEST_URL=http://127.0.0.1:5175 npm run test:combos-browser
           PLAYTEST_URL=http://127.0.0.1:5175 node scripts/strawberry-browser-smoke.mjs
           PLAYTEST_URL=http://127.0.0.1:5175 npm run test:echoes
           mkdir -p release

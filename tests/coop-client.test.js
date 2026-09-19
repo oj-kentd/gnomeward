@@ -22,12 +22,14 @@ test('the updated browser still accepts 0.2.2 snapshots before an Unraid upgrade
   delete board.profile.pathUnlocks;
   delete snapshot.autoStart;
   delete snapshot.autoCountdown;
+  delete snapshot.comboVersion;
   const client = applyCoopSnapshot(null, snapshot, 'host', 0, 10);
   assert.equal(client.game.isPathUnlocked('necro', 3), false);
   assert.equal(client.game.canDiscoverNecroPath(), false);
   assert.equal(client.multiplayer.snapshotTick, snapshot.tick);
   assert.equal(client.multiplayer.snapshotReceivedAt, 10);
   assert.equal(client.multiplayer.autoSupported, false);
+  assert.equal(client.multiplayer.combosSupported, false);
   assert.equal(coopCountdown(client.multiplayer, 11), null);
 });
 test('shared countdown is display-only, unscaled and frozen during pause or connection loss', () => {
@@ -52,6 +54,7 @@ test('co-op rendering uses personal wallets and cannot change server state or so
   m.command('host',{action:'place',type:'sprout',x:-4,z:0});
   const s=m.snapshot('garden');
   const host=applyCoopSnapshot(null,s,'host');
+  assert.equal(host.multiplayer.combosSupported,true);
   assert.equal(host.game.gold,225);assert.equal(host.game.towers.length,1);
   assert.equal(host.game.towers[0].ownerId,'host');
   assert.equal(host.game.getStats(host.game.towers[0]).range>0,true);

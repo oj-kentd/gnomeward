@@ -218,18 +218,19 @@ function frame(now){
     while(remaining>0){const step=Math.min(remaining,1/30);game.update(step);remaining-=step;}
   }
   const events=game.events.splice(0);
-  const announcement=events.findLast(event=>['unlock','path-unlock'].includes(event.type))||events.findLast(event=>['wave-start','wave-complete'].includes(event.type));
-  if(announcement)ui.announce?.(announcement.message,announcement.type==='path-unlock'?'unlock':announcement.type);
+  const announcement=events.findLast(event=>['unlock','path-unlock','combo'].includes(event.type))||events.findLast(event=>['wave-start','wave-complete'].includes(event.type));
+  if(announcement)ui.announce?.(announcement.type==='combo'?`${announcement.combo.toUpperCase()}!`:announcement.message,announcement.type==='combo'?announcement.combo:announcement.type==='path-unlock'?'unlock':announcement.type);
   for(const event of events){
     if(event.message&&!['leak','placed','wave-start','wave-complete','unlock','path-unlock'].includes(event.type))ui.toast(event.message);
     if(event.type==='summoned'&&(!state.multiplayer||game.towers.find(t=>t.id===event.towerId)?.ownerId===state.multiplayer.sessionId)){state.selectedTowerId=event.towerId;state.placingType=null;refreshUI();}
     if(event.type==='secret-found'||event.type==='summoned')save();
     if(['unlock','path-unlock','wave-complete','victory'].includes(event.type)){save();beep(920,.2);}
     else if(event.type==='defeat'){save();beep(140,.4);}
+    else if(event.type==='combo'){beep(880,.18);beep(1320,.12);}
   }
   world.render(game,state,now/1000);
   uiElapsed+=dt;if(uiElapsed>.15){refreshUI();uiElapsed=0;}
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.4'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.5'};

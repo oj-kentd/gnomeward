@@ -1,6 +1,6 @@
 # Co-op plan and implementation status
 
-Status: Docker backend implemented on 2026-09-17 at the user's request. It supports public two-player co-op and PvP survival rooms, validated game commands, reconnection, and persisted match results. The main game now includes public co-op lobbies, shared battlefield rendering, player ownership controls, ready synchronization, optional shared five-second auto rounds, and reconnection. PvP remains backend-only. See [Unraid setup](UNRAID.md) and the [implemented protocol](../server/PROTOCOL.md). The design below records the broader plan; features such as gifting gold and durable player accounts are not in the backend's initial release.
+Status: Docker backend implemented on 2026-09-17 at the user's request. It supports public two-player co-op and PvP survival rooms, validated game commands, reconnection, and persisted match results. The main game now includes public co-op lobbies, shared battlefield rendering, player ownership controls, ready synchronization, optional shared five-second auto rounds, cross-player Sporefire/Prismstorm combinations, and reconnection. PvP remains backend-only. See [Unraid setup](UNRAID.md) and the [implemented protocol](../server/PROTOCOL.md). The design below records the broader plan; features such as gifting gold and durable player accounts are not in the backend's initial release.
 
 ## First release: public two-player online co-op
 

@@ -1,4 +1,5 @@
 import { MAPS, TOWERS, ENEMIES, SECRETS, NECRO_PATH_SECRET, cottagePosition, cottageDoorPosition } from './data.js';
+import { SPOREFIRE, PRISMSTORM } from './combos.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
@@ -54,6 +55,7 @@ export class Game {
     this._necroPathHinted = false;
     this._pendingSummon = null;
     this.effects = [];
+    this.comboDiscoveries = [];
     this.projectiles = [];
     this.events = [];
     this.status = 'planning';
@@ -301,7 +303,7 @@ export class Game {
     let stats;
     switch (tower.type) {
       case 'sprout': stats = { damage: [5, 11, 22, 42][a] + d * (3 + Math.min(35, tower.kills || 0) * 0.7), interval: 0.95 * 0.73 ** b, range: 3.4 + c * 1.0 }; break;
-      case 'spore': stats = { damage: 0, interval: 2.5 * 0.68 ** c, range: 3.9 + d * 1.1, poisonDps: [6, 11, 19, 32][a], poisonDuration: 4 + b * 2, charges: 1 + b, trapRadius: 0.62 + d * 0.32, poisonSpreadRadius: d > 0 ? 0.7 + d * 0.6 : 0, poisonSpreadInterval: 1, poisonSpreadTargets: d, poisonSpreadMultiplier: 0.65 }; break;
+      case 'spore': stats = { damage: 0, interval: 2.5 * 0.68 ** c, range: 3.9 + d * 1.1, poisonDps: [6, 11, 19, 32][a], poisonDuration: 4 + b * 2, charges: 1 + b, trapRadius: 0.62 + d * 0.32, poisonSpreadRadius: d > 0 ? 0.7 + d * 0.6 : 0, poisonSpreadInterval: 1, poisonSpreadTargets: d, poisonSpreadMultiplier: 0.65, volatileSpores: a === 3 && d === 3 }; break;
       case 'boom': stats = { damage: [13, 24, 42, 70][a], interval: 1.4 * 0.73 ** c, range: 3.7 + d * 1.0, explosionDamage: [18, 30, 48, 75][b], explosionRadius: 1.5 + b * 0.5 }; break;
       case 'stun': stats = { damage: [3, 10, 22, 40][c], interval: 1.7 * 0.73 ** b, range: 3.8 + d * 1.0, slowDuration: 2 + a * 0.8, slowMultiplier: 0.5 }; break;
       case 'multi': stats = { damage: [8, 15, 26, 42][a], interval: 1.3 * 0.72 ** a, range: 4, shots: 3 + a }; break;
@@ -395,6 +397,10 @@ export class Game {
     const flying = this.projectiles;
     this.projectiles = [];
     for (const shot of flying) {
+      if (shot.type === 'prism-shard') {
+        this._advancePrismShard(shot, dt);
+        continue;
+      }
       if (shot.type === 'strawberry-mortar') {
         shot.ttl -= dt;
         if (shot.ttl > 0) this.projectiles.push(shot);
@@ -414,6 +420,7 @@ export class Game {
         this.projectiles.push(shot);
         continue;
       }
+      if (shot.unitType === 'boom') this._igniteSpores(target, shot.sourceId);
       this._damage(target, shot.damage, shot.sourceId, { summon: shot.summonOnKill === true });
       if (target.hp > 0 && shot.slowDuration > 0) {
         target.slowRemaining = Math.max(target.slowRemaining, shot.slowDuration);
@@ -421,6 +428,63 @@ export class Game {
       }
       this._effect('impact', target, target, shot.color, 0.12);
     }
+  }
+
+  _announceCombo(id, message) {
+    if (this.comboDiscoveries.includes(id)) return;
+    this.comboDiscoveries.push(id);
+    this._event('combo', message, { combo: id });
+  }
+
+  _igniteSpores(target, sourceId) {
+    const tower = this.towers.find(t => t.id === sourceId);
+    if (!tower || tower.type !== 'boom' || tower.levels[1] !== 3 || target.hp <= 0 ||
+        !target.poison?.volatile || target.poison.remaining <= 0 || (target.sporefireReadyAt || 0) > this.time) return false;
+    this._announceCombo('sporefire', 'SPOREFIRE! Morel’s mature spores ignite under Bramble’s Big Bang.');
+    this._effect('sporefire', target, target, '#b8ed58', .85);
+    this.effects.at(-1).radius = SPOREFIRE.radius;
+    // Every victim shares the same recovery across all Brambles. Only a direct
+    // acorn can ignite spores; explosion kills never recursively ignite them.
+    const victims = this.enemies.filter(enemy => enemy.hp > 0 && distance(target, enemy) <= SPOREFIRE.radius && (enemy.sporefireReadyAt || 0) <= this.time);
+    for (const enemy of victims) enemy.sporefireReadyAt = this.time + SPOREFIRE.cooldown;
+    for (const enemy of victims) {
+      this._damage(enemy, SPOREFIRE.damage + enemy.maxHp * (enemy.boss ? SPOREFIRE.bossFraction : SPOREFIRE.healthFraction), tower.id);
+    }
+    return true;
+  }
+
+  prismPartner(tower) {
+    if (tower.type !== 'multi' || tower.levels[0] !== 3) return null;
+    return this.towers.filter(partner => partner.type === 'crystal' && partner.levels[0] === 3 && partner.levels[1] === 3 && distance(tower, partner) <= PRISMSTORM.partnerRange)
+      .sort((a, b) => distance(tower, a) - distance(tower, b) || a.id - b.id)[0] || null;
+  }
+
+  _launchPrismShard(tower, target, origin = tower, bounces = PRISMSTORM.bounces, hitIds = []) {
+    if (this.projectiles.filter(shot => shot.type === 'prism-shard').length >= PRISMSTORM.projectileLimit) return false;
+    const duration = clamp(distance(origin, target) / 22, .12, .45);
+    this.projectiles.push({ id: ++this._id, type: 'prism-shard', unitType: 'multi', sourceId: tower.id,
+      targetId: target.id, x: origin.x, z: origin.z, tx: target.x, tz: target.z,
+      ttl: duration, maxTtl: duration, color: ['#7be9fa', '#efabff', '#ffe29b'][this._id % 3], bounces, hitIds: [...hitIds] });
+    return true;
+  }
+
+  _advancePrismShard(shot, dt) {
+    const tower = this.towers.find(t => t.id === shot.sourceId);
+    if (!tower) return;
+    const target = this.enemies.find(enemy => enemy.id === shot.targetId && enemy.hp > 0);
+    if (target) {
+      shot.tx = target.x; shot.tz = target.z; shot.ttl -= dt;
+      if (shot.ttl > 0) { this.projectiles.push(shot); return; }
+      this._damage(target, PRISMSTORM.damage + target.maxHp * (target.boss ? PRISMSTORM.bossFraction : PRISMSTORM.healthFraction), tower.id);
+      this._effect('impact', target, target, shot.color, .12);
+    }
+    // A missed/dead target also consumes a hop, so retargeting has a finite cost.
+    if (shot.bounces <= 0) return;
+    const hitIds = [...shot.hitIds, shot.targetId];
+    const origin = { x: shot.tx, z: shot.tz };
+    const next = this.enemies.filter(enemy => enemy.hp > 0 && !hitIds.includes(enemy.id) && distance(origin, enemy) <= PRISMSTORM.ricochetRange)
+      .sort((a, b) => distance(origin, a) - distance(origin, b) || a.id - b.id)[0];
+    if (next) this._launchPrismShard(tower, next, origin, shot.bounces - 1, hitIds);
   }
 
   _burstStrawberry(shot) {
@@ -510,7 +574,7 @@ export class Game {
     const ahead = approaching && candidates.filter(p => p.routeIndex === (approaching.routeIndex ?? 0) && p.progress >= approaching.progress + 0.5);
     const available = ahead?.length ? ahead : candidates;
     const point = available[(tower.planted++) % Math.min(available.length, 5)];
-    this.traps.push({ id: ++this._id, ...point, sourceId: tower.id, ttl: 28, charges: stats.charges, poisonDps: stats.poisonDps, poisonDuration: stats.poisonDuration, radius: stats.trapRadius, spreadRadius: stats.poisonSpreadRadius, spreadInterval: stats.poisonSpreadInterval, spreadTargets: stats.poisonSpreadTargets, spreadMultiplier: stats.poisonSpreadMultiplier });
+    this.traps.push({ id: ++this._id, ...point, sourceId: tower.id, ttl: 28, charges: stats.charges, poisonDps: stats.poisonDps, poisonDuration: stats.poisonDuration, radius: stats.trapRadius, spreadRadius: stats.poisonSpreadRadius, spreadInterval: stats.poisonSpreadInterval, spreadTargets: stats.poisonSpreadTargets, spreadMultiplier: stats.poisonSpreadMultiplier, volatile: !!stats.volatileSpores });
   }
 
   _spreadPoison(enemy, dt) {
@@ -521,7 +585,7 @@ export class Game {
     poison.spreadCooldown += poison.spreadInterval;
     const target = this.enemies.filter(other => other.id !== enemy.id && other.hp > 0 && !other.poison && distance(enemy, other) <= poison.spreadRadius).sort((a, b) => distance(enemy, a) - distance(enemy, b) || a.id - b.id)[0];
     if (!target) return;
-    target.poison = { dps: poison.dps * poison.spreadMultiplier, remaining: poison.remaining, sourceId: poison.sourceId, spreadTargetsLeft: 0, secondary: true };
+    target.poison = { dps: poison.dps * poison.spreadMultiplier, remaining: poison.remaining, sourceId: poison.sourceId, spreadTargetsLeft: 0, secondary: true, volatile: !!poison.volatile };
     poison.spreadTargetsLeft--;
     this._effect('poison-spread', enemy, target, '#a6e675', 0.3);
     this.effects.at(-1).targetId = target.id;
@@ -756,6 +820,7 @@ export class Game {
     this._moveReborn(dt);
     for (const tower of this.towers) {
       tower.cooldown = Math.max(0, tower.cooldown - dt);
+      tower.prismCooldown = Math.max(0, (tower.prismCooldown || 0) - dt);
       if (tower.cooldown > 0) continue;
       const stats = this.getStats(tower);
       if (tower.type === 'spore') {
@@ -772,8 +837,16 @@ export class Game {
       const targets = this.enemies.filter(e => e.hp > 0 && distance(tower, e) <= stats.range).sort((a, b) => this._targetPriority(tower, a, b)).slice(0, stats.shots);
       if (!targets.length) continue;
       tower.cooldown = stats.interval;
+      const prism = tower.prismCooldown <= 0 ? this.prismPartner(tower) : null;
+      if (prism) {
+        tower.prismCooldown = PRISMSTORM.cooldown;
+        this._announceCombo('prismstorm', 'PRISMSTORM! Prism turns Tumble’s flurry into bouncing crystal stars.');
+        this._effect('prism-burst', prism, prism, '#a4edff', .75);
+        this.effects.at(-1).radius = 2;
+      }
       for (const target of targets) {
         if (target.hp <= 0) continue;
+        if (prism && this._launchPrismShard(tower, target)) continue;
         this._launch(tower, target, stats);
       }
     }
@@ -813,7 +886,7 @@ export class Game {
       const touched = this.enemies.filter(e => e.hp > 0 && distance(trap, e) <= trap.radius);
       if (!touched.length) continue;
       for (const enemy of touched) {
-        if (!enemy.poison || trap.poisonDps >= enemy.poison.dps) enemy.poison = { dps: trap.poisonDps, remaining: trap.poisonDuration, sourceId: trap.sourceId, spreadRadius: trap.spreadRadius || 0, spreadInterval: trap.spreadInterval || 1, spreadCooldown: trap.spreadInterval || 1, spreadTargetsLeft: trap.spreadTargets || 0, spreadMultiplier: trap.spreadMultiplier || 0.65 };
+        if (!enemy.poison || trap.poisonDps >= enemy.poison.dps) enemy.poison = { dps: trap.poisonDps, remaining: trap.poisonDuration, sourceId: trap.sourceId, spreadRadius: trap.spreadRadius || 0, spreadInterval: trap.spreadInterval || 1, spreadCooldown: trap.spreadInterval || 1, spreadTargetsLeft: trap.spreadTargets || 0, spreadMultiplier: trap.spreadMultiplier || 0.65, volatile: !!trap.volatile };
         else enemy.poison.remaining = Math.max(enemy.poison.remaining, trap.poisonDuration);
       }
       this._effect('poison', trap, trap, '#9fda62', 0.45);

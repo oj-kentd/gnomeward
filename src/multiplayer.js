@@ -32,6 +32,7 @@ export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0, re
     snapshotTick: snapshot.tick, snapshotReceivedAt: receivedAt, snapshotSequence: ++snapshotSequence,
     roomId: snapshot.roomId, sessionId, hostId: snapshot.hostId, players: snapshot.players,
     connected: true, reconnecting: false, ready: player.ready, endlessReady: player.endlessReady,
+    combosSupported: snapshot.comboVersion === 1,
     paused: snapshot.paused, manualPause: snapshot.manualPause, started: snapshot.started,
     autoSupported: typeof snapshot.autoStart === 'boolean',
     autoStart: snapshot.autoStart === true,

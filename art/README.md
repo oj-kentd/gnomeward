@@ -70,3 +70,7 @@ blender --background --threads 6 --python art/generate_splash.py
 ```
 
 This renders `gnomeward-splash-wood.webp` at 1920×1080 and a separately composed `gnomeward-splash-wood-mobile.webp` at 960×1200. Both use the original Blender gnomes, colorful skeletons and rounded garden assets, together with individual hand-placed wooden GNOMEWARD letter meshes. The dark walnut faces have procedural directional grain, knots and wooden pegs; the beveled sidewalls are dark brown. Each zero-offset glyph is converted to a mesh, avoiding positive font-offset artifacts. Orbit joins the foreground crew with his original grey hat and red coat. The flying strawberry retains its cream details; the impact seeds are black. The center below the battle is left open for the game's Play controls. `art/splash.blend` contains the editable desktop composition and individually editable wooden letter meshes. The title uses DejaVu Sans Bold; its notice is in `art/DEJAVU-LICENSE.txt`. Set `GNOMEWARD_TITLE_FONT` to that font file if it is installed outside the generator’s default Linux path. Add `-- --draft` for half-resolution composition previews; run again without it before publishing. No existing game models are regenerated.
+
+## Combo fireworks
+
+`blender --background --python art/generate_combo_assets.py` regenerates `art/combos.blend` and the four small GLB resources for Sporefire pollen/sparks and Prismstorm shards/bursts. The renderer animates these Blender meshes, caps visible bursts/shards, honors reduced motion, and disposes transient fade materials.

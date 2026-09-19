@@ -3,7 +3,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CoopMotionBuffer } from './coop-motion.js';
 import { TOWERS, ENEMIES, SECRETS, cottagePosition } from './data.js';
 
-const ASSETS = ['strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
+const ASSETS = ['sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
+const COMBO_BURSTS = new Set(['sporefire', 'prism-burst']);
+const COMBO_SHOTS = new Set(['prism-shard', 'sporefire-link']);
 const palettes = [
   {grass:0x87aa59, edge:0x6c6946, road:0xe2c795, bg:0x183c35},
   {grass:0xa4ad64, edge:0x716147, road:0xe8cc9c, bg:0x293d32},
@@ -16,6 +18,7 @@ const palettes = [
 export class GardenRenderer {
   constructor(container, handlers) {
     this.motion = new CoopMotionBuffer();
+    this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.container=container; this.handlers=handlers; this.models={}; this.entities=new Map(); this.traps=new Map(); this.fx=new Map(); this.holes=new Map(); this.barriers=new Map(); this.secrets=new Map(); this.clues=new Map(); this.allies=new Map(); this.tintMaterials=new Map(); this.cluePlaque=null;
     this.scene=new THREE.Scene(); this.scene.background=new THREE.Color(0x183c35);
     this.camera=new THREE.OrthographicCamera(-16,16,12,-12,.1,150); this.camera.position.set(0,26,21); this.camera.lookAt(0,0,0);
@@ -57,11 +60,36 @@ export class GardenRenderer {
     if(color!==undefined)obj.traverse(o=>{if(!o.isMesh)return;const mats=Array.isArray(o.material)?o.material:[o.material];const tinted=mats.map(m=>{const key=m.uuid+color;if(!this.tintMaterials.has(key)){const c=m.clone();c.color.set(color);this.tintMaterials.set(key,c)}return this.tintMaterials.get(key)});o.material=Array.isArray(o.material)?tinted:tinted[0]});
     return obj;
   }
+  comboBurst(type) {
+    const object = new THREE.Group();
+    object.add(this.clone(type === 'sporefire' ? 'sporefire-petals' : 'prism-burst'));
+    if (type === 'sporefire') object.add(this.clone('combo-sparks'));
+    // Only burst materials fade. Never mutate the shared GLB or tinted cache.
+    const materials = new Map();
+    object.traverse(child => {
+      if (!child.isMesh) return;
+      child.castShadow = child.receiveShadow = false;
+      const fade = material => {
+        if (!materials.has(material)) {
+          const copy = material.clone(); copy.transparent = true; copy.depthWrite = false;
+          materials.set(material, copy);
+        }
+        return materials.get(material);
+      };
+      child.material = Array.isArray(child.material) ? child.material.map(fade) : fade(child.material);
+    });
+    object.userData.fadeMaterials = [...materials.values()];
+    return object;
+  }
+  disposeEffect(object) {
+    for (const material of object.userData.fadeMaterials || []) material.dispose();
+  }
   add(name,x,y,z,sx=1,sy=sx,sz=sx,color,rotation=0) {const obj=this.clone(name,color);obj.position.set(x,y,z);obj.scale.set(sx,sy,sz);obj.rotation.y=rotation;this.world.add(obj);return obj;}
   setMap(map,index) {
     this.motion.reset();
     if (this.cluePlaque) this.cluePlaque.traverse(child => { if (child.isMesh) for (const material of Array.isArray(child.material) ? child.material : [child.material]) material.dispose(); });
     this.cluePlaque = null;
+    for (const object of this.fx.values()) this.disposeEffect(object);
     for(const object of this.secrets.values())object.traverse(child=>{if(child.isMesh)for(const material of Array.isArray(child.material)?child.material:[child.material])material.dispose();});
     this.world.clear();this.actors.clear();this.entities.clear();this.traps.clear();this.fx.clear();this.holes.clear();this.barriers.clear();this.secrets.clear();this.clues.clear();this.allies.clear();if(this.ghost){this.scene.remove(this.ghost);this.ghost=null;this.ghostType=null;}
     const p=palettes[index%palettes.length];this.scene.background.set(p.bg);this.range.visible=false;
@@ -308,18 +336,56 @@ export class GardenRenderer {
       object.traverse(child => { if (!child.isMesh) return; for (const material of Array.isArray(child.material) ? child.material : [child.material]) material.emissiveIntensity = pumpkin ? (material.name === 'pumpkin-rune' && found ? 1.6 : 0) : found ? 1.5 : .65; });
     }
     const fs = new Set();
-    for (const effect of [...game.effects, ...game.projectiles]) {
+    const effects = [...game.effects, ...game.projectiles];
+    // Keep the newest fireworks when dense endless rounds produce many hits.
+    // This is a presentation budget only; every hit still resolves in Game.
+    const comboVisible = new Set();
+    let bursts = 0, shards = 0;
+    for (let i = effects.length - 1; i >= 0; i--) {
+      const effect = effects[i];
+      if (COMBO_BURSTS.has(effect.type) && bursts++ < (this.reducedMotion.matches ? 6 : 12)) comboVisible.add(effect.id);
+      if (COMBO_SHOTS.has(effect.type) && shards++ < 64) comboVisible.add(effect.id);
+    }
+    for (const effect of effects) {
+      if ((COMBO_BURSTS.has(effect.type) || COMBO_SHOTS.has(effect.type)) && !comboVisible.has(effect.id)) continue;
       fs.add(effect.id);
       let object = this.fx.get(effect.id);
       if (!object) {
         const berryModel = effect.type === 'strawberry-mortar' ? 'strawberry-fruit' : effect.type === 'strawberry-seed' ? 'strawberry-seed' : null;
-        object = this.clone(berryModel || (['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type) ? 'soul-puff' : effect.type === 'explosion' ? 'explosion' : 'projectile'), effect.type === 'strawberry-seed' ? '#111111' : berryModel ? undefined : effect.color);
+        object = COMBO_BURSTS.has(effect.type) ? this.comboBurst(effect.type) : this.clone(berryModel || (effect.type === 'prism-shard' ? 'prism-shard' : ['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type) ? 'soul-puff' : effect.type === 'explosion' ? 'explosion' : 'projectile'), effect.type === 'strawberry-seed' ? '#111111' : berryModel ? undefined : effect.color);
+        if (COMBO_SHOTS.has(effect.type)) object.traverse(child => { if (child.isMesh) child.castShadow = child.receiveShadow = false; });
         this.actors.add(object);
         this.fx.set(effect.id, object);
       }
       const progress = THREE.MathUtils.clamp(1 - effect.ttl / effect.maxTtl, 0, 1);
       object.position.set(effect.x, .65, effect.z);
-      if (['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type)) {
+      if (COMBO_BURSTS.has(effect.type)) {
+        const radius = effect.radius || 3.3;
+        const expansion = 1 - (1 - progress) ** 3;
+        const reduced = this.reducedMotion.matches;
+        object.position.y = .16;
+        const petals = object.children[0];
+        petals.scale.setScalar(radius * (.15 + .85 * expansion));
+        petals.position.y = Math.sin(progress * Math.PI) * (reduced ? .12 : .48);
+        petals.rotation.y = reduced ? 0 : progress * (effect.type === 'sporefire' ? .8 : -1.2);
+        const sparks = object.children[1];
+        if (sparks) {
+          sparks.scale.setScalar(radius * (.22 + expansion));
+          sparks.position.y = Math.sin(progress * Math.PI) * (reduced ? .2 : 1.1);
+          sparks.rotation.y = reduced ? 0 : -.6 * progress;
+        }
+        for (const material of object.userData.fadeMaterials) material.opacity = (1 - progress) ** .65;
+      } else if (COMBO_SHOTS.has(effect.type)) {
+        // Shards are compact solid projectiles, including ricochet flights.
+        // Homing endpoints use the same buffered enemy positions as co-op.
+        const target = game.enemies.find(enemy => enemy.id === effect.targetId);
+        const tx = target?.x ?? effect.tx, tz = target?.z ?? effect.tz;
+        const dx = tx - effect.x, dz = tz - effect.z;
+        object.position.set(effect.x + dx * progress, .65 + Math.sin(progress * Math.PI) * (this.reducedMotion.matches ? .12 : .7), effect.z + dz * progress);
+        object.scale.setScalar(effect.type === 'prism-shard' ? .34 : .15);
+        object.rotation.set(Math.PI / 2, 0, -Math.atan2(dx, dz));
+        if (!this.reducedMotion.matches) object.rotateY(progress * Math.PI * 3);
+      } else if (['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type)) {
         object.position.y = .3 + progress * .7;
         object.rotation.y = progress * Math.PI;
         object.scale.setScalar(.3 + Math.sin(progress * Math.PI) * .5);
@@ -355,7 +421,7 @@ export class GardenRenderer {
       }
     }
     for (const [id, object] of this.fx) {
-      if (!fs.has(id)) { this.actors.remove(object); this.fx.delete(id); }
+      if (!fs.has(id)) { this.actors.remove(object); this.disposeEffect(object); this.fx.delete(id); }
     }
     if(!state.placingType){if(this.ghost)this.ghost.visible=false;const t=game.towers.find(t=>t.id===state.selectedTowerId);if(t)this.showRange(t.x,t.z,game.getStats(t).range);else this.range.visible=false;}
     this.renderer.render(this.scene,this.camera);
