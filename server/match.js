@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Game } from '../src/game.js';
 import { MAPS, TOWERS, SECRETS, NECRO_PATH_SECRET } from '../src/data.js';
 
@@ -12,7 +13,17 @@ export function validateIdentity(options) {
   return options.name.trim();
 }
 
-/** Server-only state. Browser commands can never import gold, unlocks, HP, or saves. */
+/** Casual co-op trusts only this small browser-owned permanent loadout. */
+export function validateLoadout(value) {
+  if (value === undefined) return { bossDamage: false, necroSkin: null };
+  if (!plain(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) ||
+      Object.keys(value).some(key => !['bossDamage', 'necroSkin'].includes(key)) ||
+      (value.bossDamage !== undefined && typeof value.bossDamage !== 'boolean') ||
+      (value.necroSkin !== undefined && value.necroSkin !== null && value.necroSkin !== 'skeletor')) reject('Invalid permanent shop loadout.');
+  return { bossDamage: value.bossDamage === true, necroSkin: value.necroSkin === 'skeletor' ? 'skeletor' : null };
+}
+
+/** Server-only state. Browser commands cannot import gold, HP, saves, or change permanent loadouts. */
 export class Match {
   constructor({ mode, mapId, unlockedRewards = [], unlockedPaths = [] }) {
     if (!['coop', 'pvp'].includes(mode)) reject('Choose coop or pvp.');
@@ -21,6 +32,8 @@ export class Match {
     this.mapId = mapId;
     this.unlockedRewards = unlockedRewards.filter(id => id === 'strawberry');
     this.unlockedPaths = [...new Set(Array.isArray(unlockedPaths) ? unlockedPaths.filter(id => id === NECRO_PATH_SECRET.id) : [])];
+    this.receiptId = randomUUID();
+    this.rewardedRounds = new WeakMap();
     this.players = new Map();
     this.boards = new Map();
     if (mode === 'coop') this.boards.set(null, new Game(mapId, { unlocks: [...this.unlockedRewards], pathUnlocks: [...this.unlockedPaths] }));
@@ -40,14 +53,15 @@ export class Match {
 
   get paused() { return this.manualPause || this.players.size !== 2 || [...this.players.values()].some(p => !p.connected); }
   board(id) { return this.boards.get(this.mode === 'coop' ? null : id); }
-  addPlayer(id, name) {
+  addPlayer(id, name, loadout) {
     if (this.sealed || this.result || this.players.has(id) || this.players.size >= 2) reject('This match has no open seats.');
-    const player = { id, name, connected: true, ready: false, endlessReady: false, gold: this.mode === 'coop' ? 325 : 650, points: 0 };
+    const player = { id, name, loadout: Object.freeze(validateLoadout(loadout)), roundCoinsEarned: 0, receiptKey: `${this.receiptId}:${id}`, connected: true, ready: false, endlessReady: false, gold: this.mode === 'coop' ? 325 : 650, points: 0 };
     this.players.set(id, player);
     this.hostId ??= id;
     if (this.mode === 'coop') for (const tower of this.board().towers) tower.ownerId ??= this.hostId;
     if (this.mode === 'pvp') this.boards.set(id, new Game(this.mapId, { unlocks: [...this.unlockedRewards], pathUnlocks: [...this.unlockedPaths] }));
     if (this.players.size === 2) this.sealed = true;
+    this._syncLoadouts();
     this._syncWallets();
     return player;
   }
@@ -78,6 +92,27 @@ export class Match {
     };
   }
 
+  _syncLoadouts() {
+    for (const [boardOwner, game] of this.boards) {
+      const owners = [...this.players.values()].filter(p => this.mode === 'coop' || p.id === boardOwner);
+      game.bossDamageOwners = owners.filter(p => p.loadout.bossDamage).map(p => p.id);
+      for (const tower of game.towers) {
+        tower.ownerId ??= this.freeTowerOwners.get(game) || boardOwner || this.hostId;
+        if (tower.type === 'necro') tower.skin = this.players.get(tower.ownerId)?.loadout.necroSkin || null;
+      }
+    }
+  }
+
+  _awardRoundCoins(game) {
+    const previous = this.rewardedRounds.get(game) || 0;
+    const completed = game.completedWaves;
+    if (!Number.isSafeInteger(completed) || completed <= previous) return;
+    this.rewardedRounds.set(game, completed);
+    for (const player of this.players.values()) {
+      if (this.board(player.id) === game) player.roundCoinsEarned += completed - previous;
+    }
+  }
+
   _syncWallets() {
     if (this.mode === 'coop') {
       const game = this.board();
@@ -101,6 +136,7 @@ export class Match {
       player.points = game.points;
       // A free crystal guardian belongs to the player completing its secret.
       for (const tower of game.towers) tower.ownerId ??= this.freeTowerOwners.get(game) || player.id;
+      this._syncLoadouts();
       this._syncWallets();
     }
   }
@@ -179,6 +215,7 @@ export class Match {
       const tower = this._transaction(player, board => board.placeTower(message.type, message.x, message.z));
       if (!tower) reject('Cannot place that gnome here or afford it.');
       tower.ownerId = id;
+      this._syncLoadouts();
       return;
     }
     if (!['upgrade', 'sell', 'target'].includes(action)) reject('Unknown command.');
@@ -199,6 +236,7 @@ export class Match {
     for (const game of this.boards.values()) {
       const gold = game.gold, points = game.points;
       game.update(Math.min(dt, 0.05) * this.speed);
+      this._awardRoundCoins(game);
       if (this.mode === 'coop') {
         for (const p of this.players.values()) {
           p.gold += (game.gold - gold) / 2;
@@ -207,6 +245,7 @@ export class Match {
       }
       for (const tower of game.towers) tower.ownerId ??= this.freeTowerOwners.get(game) || (this.mode === 'pvp' ? [...this.boards.entries()].find(([, board]) => board === game)?.[0] : this.hostId);
     }
+    this._syncLoadouts();
     this._syncWallets();
     const boards = [...this.boards.values()];
     if (this.mode === 'coop' && boards[0].status === 'lost') this.finish('defeat');
@@ -220,7 +259,7 @@ export class Match {
 
   snapshot(roomId = '') {
     return structuredClone({
-      protocol: PROTOCOL, comboVersion: 1, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
+      protocol: PROTOCOL, comboVersion: 1, shopVersion: 1, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
       players: [...this.players.values()], paused: this.paused, manualPause: this.manualPause,
       speed: this.speed, started: this.started, autoStart: this.autoStart, autoCountdown: this.autoCountdown, tick: this.tick, result: this.result,
       boards: [...this.boards.entries()].map(([playerId, game]) => ({ playerId, state: {

@@ -5,6 +5,7 @@ import { UI } from './ui.js';
 import { GardenRenderer } from './renderer.js';
 import { MusicPlayer, MUSIC_TRACKS } from './music.js';
 import { CoopClient, applyCoopSnapshot, coopCountdown } from './multiplayer.js';
+import { buyShopItem, equipNecroSkin, applyCoopRoundReward } from './economy.js';
 
 let profile={unlocks:[]};
 try { const saved=JSON.parse(localStorage.getItem('gnomeward-profile')||'null');if(saved&&Array.isArray(saved.unlocks))profile={...saved,unlocks:saved.unlocks.filter(id=>Object.hasOwn(TOWERS,id))}; }catch{}
@@ -15,6 +16,7 @@ const preferredVolume = Number.isFinite(audioPreferences.volume) ? Math.max(0, M
 let game=new Game(MAPS[0].id,profile),world,ready=false;
 const state={selectedTowerId:null,placingType:null,paused:false,speed:1,sound:audioPreferences.effects === true,autoStart:false,autoCountdown:null,music:preferredMusic,musicVolume:preferredVolume,musicStatus:preferredMusic === 'off' ? 'off' : 'ready'};
 function refreshUI() {
+  state.shopProfile = soloRun?.game.profile || game.profile;
   ui.update(game, state);
 }
 
@@ -61,6 +63,13 @@ const multiplayer=new CoopClient({
     const previousStatus=game.status;
     const applied=applyCoopSnapshot(game,snapshot,sessionId,lastEventId);
     game=applied.game;lastEventId=applied.eventId;state.multiplayer=applied.multiplayer;
+    if (soloRun && state.multiplayer.shopSupported) {
+      const earned = applyCoopRoundReward(soloRun.game.profile, state.multiplayer.receiptKey, state.multiplayer.roundCoinsEarned);
+      if (earned) {
+        try { localStorage.setItem('gnomeward-profile', JSON.stringify(soloRun.game.profile)); } catch {}
+        ui.toast(`+${earned} Round Coin${earned === 1 ? '' : 's'} · saved to your shop wallet`);
+      }
+    }
     state.paused=snapshot.paused;state.speed=snapshot.speed;
     state.autoStart=state.multiplayer.autoStart;state.autoCountdown=coopCountdown(state.multiplayer);
     if(previousMultiplayer?.roomId===snapshot.roomId){
@@ -120,7 +129,7 @@ async function refreshLobbies(){
 async function connectCoop(options){
   if(!ready||lobbyBusy||state.multiplayer)return;
   lobbyBusy=true;ui.updateCoopLobby({loading:true,error:''});
-  try{await multiplayer.connect(options);}
+  try{await multiplayer.connect({...options,loadout:{bossDamage:game.profile.bossDamageUnlocked === true,necroSkin:game.profile.equippedNecroSkin || null}});}
   catch(error){ui.updateCoopLobby({loading:false,error:error.message});}
   finally{lobbyBusy=false;ui.updateCoopLobby({loading:false});}
 }
@@ -152,8 +161,20 @@ function targetNext(){
   refreshUI();
 }
 function newGarden(mapId){if(!ready||state.multiplayer)return;save();profile=game.profile;game=new Game(mapId,profile);Object.assign(state,{selectedTowerId:null,placingType:null,paused:false,autoCountdown:null});world?.setMap(game.map,MAPS.findIndex(m=>m.id===mapId));refreshUI();}
+function shopBuy(id) {
+  if (state.multiplayer || !buyShopItem(game.profile, id)) return;
+  save(); refreshUI(); ui.showCoinShop(); beep(880,.16);
+  ui.toast(id === 'boss-damage' ? 'Boss Breaker unlocked forever · 2× damage against bosses!' : 'Skeletor costume unlocked! Equip it in the shop.');
+}
+function shopEquip(skin) {
+  if (state.multiplayer || !equipNecroSkin(game.profile, skin === 'default' ? null : skin)) return;
+  for (const tower of game.towers) if (tower.type === 'necro') tower.skin = game.profile.equippedNecroSkin;
+  world?.setGhost(null);
+  save(); refreshUI(); ui.showCoinShop();
+}
 const ui=new UI({
   onChooseTower:choose,onStartWave:start,
+  onShopBuy:shopBuy,onShopEquip:shopEquip,
   onCoopOpen:openCoop,onCoopRefresh:refreshLobbies,onCoopCreate:connectCoop,onCoopJoin:connectCoop,onCoopLeave:()=>multiplayer.leave(),
   onContinueEndless:()=>{if(state.multiplayer){multiplayer.command({action:'endless'});return;}if(game.continueEndless()){Object.assign(state,{paused:false,autoCountdown:null,placingType:null,selectedTowerId:null});world?.setGhost(null);save();refreshUI();}},
   onPause:pause,
@@ -169,7 +190,7 @@ const ui=new UI({
 refreshUI();ui.setLoading?.('Growing your garden…');
 try {
   world=new GardenRenderer(document.getElementById('scene'),{
-    onHover:(x,z)=>{if(!ready||!state.placingType)return;const type=state.placingType;world.setGhost(type,x,z,game.canPlace(type,x,z),game.getStats({type,levels:TOWERS[type].paths.map(()=>0)}).range);},
+    onHover:(x,z)=>{if(!ready||!state.placingType)return;const type=state.placingType;world.setGhost(type,x,z,game.canPlace(type,x,z),game.getStats({type,levels:TOWERS[type].paths.map(()=>0)}).range,state.multiplayer ? state.multiplayer.loadout?.necroSkin : game.profile.equippedNecroSkin);},
     onClick:(x,z,hitTowerId,secretId,clueId)=>{
       if(!ready||['won','lost'].includes(game.status)||state.multiplayer?.result||state.multiplayer?.reconnecting)return;
       if(clueId&&!state.placingType){
@@ -242,4 +263,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.2.11'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.3.0'};

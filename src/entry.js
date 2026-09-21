@@ -4,6 +4,7 @@ const splash = document.getElementById('splash-screen');
 const app = document.getElementById('app');
 const solo = document.getElementById('splash-play');
 const coop = document.getElementById('splash-coop');
+const shop = document.getElementById('splash-shop');
 const status = document.getElementById('splash-status');
 const retry = document.getElementById('splash-retry');
 let entering = false;
@@ -20,7 +21,7 @@ if (hero.complete && !hero.naturalWidth) splash.classList.add('splash-art-missin
 async function enter(mode) {
   if (entering) return;
   entering = true;
-  solo.disabled = coop.disabled = true;
+  solo.disabled = coop.disabled = shop.disabled = true;
   splash.setAttribute('aria-busy', 'true');
   status.textContent = mode === 'resume' ? 'Rejoining your garden…' : 'Gathering your guardians…';
   app.hidden = false;
@@ -33,6 +34,7 @@ async function enter(mode) {
     window.gnomeward.renderer.resize();
     document.getElementById('scene').focus({ preventScroll: true });
     if (mode === 'coop') document.getElementById('coop-button').click();
+    if (mode === 'shop') document.getElementById('coin-shop-button').click();
   } catch (error) {
     entering = false;
     console.error('Could not enter the garden:', error);
@@ -46,6 +48,7 @@ async function enter(mode) {
 }
 solo.addEventListener('click', () => enter('solo'));
 coop.addEventListener('click', () => enter('coop'));
+shop.addEventListener('click', () => enter('shop'));
 retry.addEventListener('click', () => location.reload());
 
 // A reload during co-op must reconnect without another Play click.

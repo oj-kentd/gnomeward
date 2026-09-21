@@ -6,5 +6,6 @@
 !src/data.js
 !src/combos.js
 !src/enemy-traits.js
+!src/economy.js
 !server/
 !server/**

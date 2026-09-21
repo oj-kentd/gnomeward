@@ -1,6 +1,7 @@
 import { MAPS, TOWERS, ENEMIES, SECRETS, NECRO_PATH_SECRET, cottagePosition, cottageDoorPosition } from './data.js';
 import { SPOREFIRE, PRISMSTORM, BERRY_SINGULARITY } from './combos.js';
 import { ENEMY_TRAITS, traitForSpawn, damageMultiplier, damageKindForTower } from './enemy-traits.js';
+import { normalizeEconomy, MAX_ROUND_COINS } from './economy.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
@@ -31,7 +32,10 @@ export function wavePlan(wave, endless = false) {
 export class Game {
   constructor(mapId = 'meadow', profile = { unlocks: [] }) {
     this.map = MAPS.find(m => m.id === mapId) || MAPS[0];
-    this.profile = profile && typeof profile === 'object' ? profile : {};
+    this.profile = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
+    normalizeEconomy(this.profile);
+    this.bossDamageOwners = null;
+    this._sourceOwners = {};
     if (!Array.isArray(this.profile.unlocks)) this.profile.unlocks = [];
     this.profile.pathUnlocks = [...new Set((Array.isArray(this.profile.pathUnlocks) ? this.profile.pathUnlocks : []).filter(id => id === NECRO_PATH_SECRET.id))];
     this.profile.enemyTraits = [...new Set((Array.isArray(this.profile.enemyTraits) ? this.profile.enemyTraits : []).filter(id => typeof id === 'string' && Object.hasOwn(ENEMY_TRAITS, id)))];
@@ -170,6 +174,7 @@ export class Game {
 
   _makeTower(type, x, z, purchaseCost) {
     const tower = { id: ++this._id, type, x, z, levels: TOWERS[type].paths.map(() => 0), kills: 0, damageDone: 0, cooldown: 0, planted: 0, targeting: 'first', purchaseCost, soulQueue: [], summonCooldown: 0 };
+    if (type === 'necro') tower.skin = this.profile.equippedNecroSkin;
     this.towers.push(tower);
     return tower;
   }
@@ -288,6 +293,8 @@ export class Game {
     const index = this.towers.findIndex(t => t.id === id);
     if (index < 0) return false;
     const [tower] = this.towers.splice(index, 1);
+    // Poison and projectiles can outlive a sold tower. Preserve who fired them.
+    if (tower.ownerId != null) this._sourceOwners[tower.id] = tower.ownerId;
     this.gold += Math.floor((tower.purchaseCost ?? TOWERS[tower.type].cost) * 0.75);
     this.traps = this.traps.filter(trap => trap.sourceId !== id);
     this.holes = this.holes.filter(hole => hole.sourceId !== id);
@@ -581,6 +588,11 @@ export class Game {
     if (enemy.hp <= 0 || amount <= 0) return;
     const tower = this.towers.find(t => t.id === sourceId);
     amount *= damageMultiplier(enemy.trait, damageKind || damageKindForTower(tower?.type));
+    const owner = tower?.ownerId ?? this._sourceOwners[sourceId];
+    const bossBoost = Array.isArray(this.bossDamageOwners)
+      ? owner != null && this.bossDamageOwners.includes(owner)
+      : this.profile.bossDamageUnlocked;
+    if ((enemy.boss || enemy.isBoss) && bossBoost) amount *= 2;
     const dealt = Math.min(enemy.hp, amount);
     enemy.hp -= amount;
     if (tower) tower.damageDone += dealt;
@@ -965,8 +977,10 @@ export class Game {
       this.profile.bestRounds[this.map.id] = Math.max(this.bestRound, this.completedWaves);
       this.gold += 65 + this.wave * 5;
       this.points += 6 + Math.floor(this.wave / 2);
+      const roundCoins = this.profile.roundCoins < MAX_ROUND_COINS ? 1 : 0;
+      this.profile.roundCoins += roundCoins;
       if (this.wave === 15) this._unlock('multi');
-      this._event('wave-complete', `Wave ${this.wave} cleared! +${65 + this.wave * 5} gold, +${6 + Math.floor(this.wave / 2)} points.`, { wave: this.wave });
+      this._event('wave-complete', `Wave ${this.wave} cleared! +${65 + this.wave * 5} gold, +${6 + Math.floor(this.wave / 2)} points, +${roundCoins} Round Coin.`, { wave: this.wave, roundCoins, totalRoundCoins: this.profile.roundCoins });
       this.status = !this.endless && this.wave === this.maxWaves ? 'won' : 'planning';
       if (this.status === 'won') {
         for (const tower of Object.values(TOWERS)) if (tower.unlockMap === this.map.id) this._unlock(tower.id);

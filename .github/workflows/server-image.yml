@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [coop, motion, readiness, combos, berry, traits, layout, secrets]
+        group: [coop, motion, readiness, combos, berry, traits, layout, secrets, shop, shop-coop, splash]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -74,6 +74,9 @@ jobs:
             berry) npm run test:berry-combo-browser ;;
             traits) npm run test:traits-browser ;;
             layout) npm run test:layout-browser ;;
+            shop) npm run test:shop-browser ;;
+            shop-coop) npm run test:shop-coop-browser ;;
+            splash) npm run test:splash ;;
             secrets)
               npm run test:strawberry
               npm run test:echoes

@@ -33,6 +33,10 @@ export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0, re
     roomId: snapshot.roomId, sessionId, hostId: snapshot.hostId, players: snapshot.players,
     connected: true, reconnecting: false, ready: player.ready, endlessReady: player.endlessReady,
     combosSupported: snapshot.comboVersion === 1,
+    shopSupported: snapshot.shopVersion === 1,
+    roundCoinsEarned: snapshot.shopVersion === 1 && Number.isSafeInteger(player.roundCoinsEarned) && player.roundCoinsEarned >= 0 ? player.roundCoinsEarned : 0,
+    receiptKey: snapshot.shopVersion === 1 && typeof player.receiptKey === 'string' ? player.receiptKey : null,
+    loadout: snapshot.shopVersion === 1 ? player.loadout : null,
     paused: snapshot.paused, manualPause: snapshot.manualPause, started: snapshot.started,
     autoSupported: typeof snapshot.autoStart === 'boolean',
     autoStart: snapshot.autoStart === true,
@@ -61,13 +65,13 @@ export class CoopClient {
     if (!this.client) { const { Client } = await import('@colyseus/sdk'); this.client = new Client(this.url); }
     return this.client;
   }
-  async connect({ name, mapId, roomId, token } = {}) {
+  async connect({ name, mapId, roomId, token, loadout } = {}) {
     if (this.activeRoom || this.connecting) return;
     if (!token && (typeof name !== 'string' || !name.trim() || name.trim().length > 24 || /[\u0000-\u001f\u007f<>]/.test(name))) throw new Error('Enter a name with 1–24 plain-text characters.');
     this.connecting = true;
     try {
       const client = await this.sdk();
-      const options = { protocol: 1, name: name?.trim(), mode: 'coop' };
+      const options = { protocol: 1, name: name?.trim(), mode: 'coop', ...(loadout === undefined ? {} : { loadout }) };
       const room = token ? await client.reconnect(token) : roomId
         ? await client.joinById(roomId, options)
         : await client.create('gnomeward', { ...options, mapId });

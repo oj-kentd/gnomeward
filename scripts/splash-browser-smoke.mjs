@@ -37,7 +37,7 @@ async function assertLayout(page, viewport, name) {
   await page.setViewportSize(viewport);
   await page.waitForFunction(() => [...document.querySelectorAll('#splash-screen img')].every(image => image.complete && image.naturalWidth > 0));
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${name} has no horizontal overflow`);
-  for (const id of ['splash-play', 'splash-coop']) {
+  for (const id of ['splash-play', 'splash-coop', 'splash-shop']) {
     await page.locator(`#${id}`).scrollIntoViewIfNeeded();
     const bounds = await page.locator(`#${id}`).boundingBox();
     assert.ok(bounds.width >= 44 && bounds.height >= 44, `${name} ${id} remains a usable touch target`);

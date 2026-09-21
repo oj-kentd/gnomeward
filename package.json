@@ -1,6 +1,6 @@
 {
   "name": "gnomeward",
-  "version": "0.2.11",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -29,7 +29,9 @@
     "test:berry-combo": "node scripts/berry-singularity-balance.mjs",
     "test:berry-combo-browser": "node scripts/berry-singularity-browser.mjs",
     "test:traits-browser": "node scripts/enemy-traits-browser.mjs",
-    "test:layout-browser": "node scripts/layout-browser-smoke.mjs"
+    "test:layout-browser": "node scripts/layout-browser-smoke.mjs",
+    "test:shop-browser": "node scripts/shop-browser-smoke.mjs",
+    "test:shop-coop-browser": "node scripts/shop-coop-browser.mjs"
   },
   "dependencies": {
     "@colyseus/core": "0.18.14",

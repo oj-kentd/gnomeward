@@ -1,5 +1,5 @@
 import { Room } from '@colyseus/core';
-import { Match, validateIdentity } from './match.js';
+import { Match, validateIdentity, validateLoadout } from './match.js';
 import { NECRO_PATH_SECRET } from '../src/data.js';
 
 /** Configuration is closed over by the server, never merged with browser options. */
@@ -10,6 +10,7 @@ export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () =
 
     async onCreate(options) {
       validateIdentity(options);
+      validateLoadout(options.loadout);
       this.match = new Match({ ...options, unlockedRewards: getUnlockedRewards(), unlockedPaths: getUnlockedPaths() });
       await onRoomOpen(this);
       this.registered = true;
@@ -50,6 +51,7 @@ export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () =
 
     onAuth(client, options) {
       validateIdentity(options);
+      validateLoadout(options.loadout);
       if (options.mode !== undefined && options.mode !== this.match.mode) throw new Error('Room mode does not match.');
       if (options.mapId !== undefined && options.mapId !== this.match.mapId) throw new Error('Room map does not match.');
       return true;
@@ -63,7 +65,7 @@ export function createGnomewardRoom({ recordResult = () => {}, onRoomOpen = () =
     }
 
     onJoin(client, options) {
-      this.match.addPlayer(client.sessionId, validateIdentity(options));
+      this.match.addPlayer(client.sessionId, validateIdentity(options), options.loadout);
       this.lastActivity = Date.now();
       this.budgets.set(client.sessionId, { tokens: 60, time: Date.now() });
       if (this.match.sealed) this.lock();

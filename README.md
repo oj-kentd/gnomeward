@@ -4,7 +4,16 @@ A cozy, original 3D tower defense game made for a parent-and-child playtest. Pro
 
 **Play:** http://gnomeward.thekents.org/
 
-The welcome screen features an original Blender garden battle and a handmade wooden Gnomeward sign, with desktop and portrait artwork. Choose **Play solo** or **Play co-op** to load the game. Reloading during an active co-op session reconnects automatically. `npm run test:splash` checks the landing screen, keyboard entry, responsive layouts, and loading recovery.
+The welcome screen features an original Blender garden battle and a handmade wooden Gnomeward sign, with desktop and portrait artwork. Choose **Play solo**, **Play co-op**, or **Round Coin Shop** to load the game. Reloading during an active co-op session reconnects automatically. `npm run test:splash` checks the landing screen, keyboard entry, responsive layouts, and loading recovery.
+
+## Round Coin Shop
+
+Earn **1 Round Coin per completed round**, including endless rounds. Open the shop from the welcome screen or the **Shop** wallet in the HUD. Coins and purchases are saved in this browser and carry between gardens; they are separate from match gold and upgrade points.
+
+- **100 coins: Skeletor Morrow** — a Blender-made necromancer costume. Once owned, switch freely between Skeletor and the original look. The costume does not unlock the hidden necromancer or change its stats.
+- **50 coins: Boss Breaker** — a **permanent** 2× damage bonus against bosses, including poison and summoned guardians.
+
+In co-op, each player earns a full coin per cleared round and uses their own saved costume and boss perk. Choose purchases and equipment before joining; loadouts stay fixed for that room. Refreshing or reconnecting does not award the same completed rounds again. Co-op shop support requires **server 0.3.0**. There are no accounts or cross-device cloud saves; details are in [the economy notes](docs/ECONOMY.md).
 
 ## Play locally
 
@@ -19,9 +28,9 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 
 ## How to play
 
-1. Choose a gnome from the sliding avatar row overlaid along the bottom of the battlefield and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold. The compact shop can be hidden with **Hide ▾** and reopened with **Show ▴** to expose more of the battlefield.
+1. Choose a gnome from the sliding avatar row below the battlefield and click the grass beside the trail to place it. Its ring shows attack range. Placement costs gold. The compact shop can be hidden with **Hide ▾** and reopened with **Show ▴** to expose more of the battlefield.
 2. Start a wave. Skeleton colors indicate different health and movement speeds. Gnomes attack automatically with small traveling projectiles. Damage, slows, and on-kill explosions trigger on impact.
-3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome (including its hat or body) to open a small upgrade popup beside that gnome. The popup shows tier progress, the next stat changes, and how many more points you need.
+3. Earn gold and upgrade points from defeated skeletons and completed waves. Click a placed gnome (including its hat or body) to open its upgrade panel on the right (below the map on phones). The popup shows tier progress, the next stat changes, and how many more points you need.
 4. Each standard gnome has four paths with three upgrade levels. One individual gnome can invest in only two different paths. Choose carefully: spent upgrade points are not refunded on selling.
 5. Survive 20 waves. Bosses appear at the end of waves 10 and 20. Unlocks persist in this browser and carry into other maps and replays.
 6. After victory, choose **Continue in endless mode** to keep your defense, upgrades, gold, points, and remaining lives. Rounds keep growing tougher until you lose. Your highest fully cleared round is saved per garden in this browser and shown on the results screen and map cards. Losing during round 25 records round 24. Auto rounds also works in endless mode; victory always waits for your choice.
@@ -39,7 +48,7 @@ Open the local address printed by Vite. `npm test` runs the deterministic gamepl
 | Morrow | Spell kills summon reborn gnomes from the cottage to march up the trail and battle skeletons | Reborn Champions, Soul Procession, Gravecraft, and the hidden Soul Echoes path; choose two | A hidden puzzle in Pumpkin Hollow; the fourth path has its own discovery |
 | Strawberry | Full-map mortar fruit scatters damaging black seed shrapnel on landing | Juicy Payload, Seed Storm, Quick Harvest; choose two | Clear Strawberry Fields round 20; one free guardian starts that encounter |
 
-The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 75% of the purchase gold; the free summoned Prism sells for zero. Shooting gnomes can target First (closest to the exit), Last (farthest from the exit), Strong (highest maximum health), or Close (nearest). Tap the targeting button in their upgrade popup to cycle modes. Morel plants mushrooms, Orbit opens wells, and Prism raises barriers automatically. Bosses that escape do not grant boss-defeat unlocks. Map changes start a fresh run while retaining unlocked characters.
+The wave 15 and wave 20 unlocks are initial playtest defaults. Selling returns 75% of the purchase gold; the free summoned Prism sells for zero. Shooting gnomes can target First (closest to the exit), Last (farthest from the exit), Strong (highest maximum health), or Close (nearest). Tap the targeting button in their upgrade panel to cycle modes. Morel plants mushrooms, Orbit opens wells, and Prism raises barriers automatically. Bosses that escape do not grant boss-defeat unlocks. Map changes start a fresh run while retaining unlocked characters.
 
 **Controls:** Click/tap to select and place; Escape or right-click cancels; Space or the green play button starts the next wave, resumes a paused wave, or cycles speed during combat; P pauses; 1–9 select gnomes. Speed cycles 1× / 2× / 3×. Auto rounds optionally starts the next wave after a three-second building break. Pause and open menus freeze that countdown. The first wave always waits for you. Open **☰ → Music**, or the **♪** button on desktop, to choose **Rock**, **Chill**, or **Jazz**. Each is an original 8-bar instrumental loop, with an independent volume slider and Off option. Music stays at its normal tempo at every game speed and pauses when the tab is hidden. Your genre, volume, and effects preference are saved in this browser; saved music resumes after your first interaction. Sound effects have their own Effects switch. Solo play needs no sign-in or game server.
 
@@ -81,7 +90,7 @@ Green arrows mark every entrance. Enemies alternate between the two entrances on
 
 ## Multiplayer server for Unraid
 
-The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and coordinate rounds with Ready controls or shared auto rounds. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.2.11 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
+The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and coordinate rounds with Ready controls or shared auto rounds. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.3.0 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
 
 Run it locally with `npm run server`, then open `http://localhost:2567/`. Match results are stored in `server-data/results.json` by default. `npm test` includes authoritative multiplayer and real WebSocket integration tests; with the server running, `npm run test:server-browser` checks the desktop/phone connection page. See the [server protocol](server/PROTOCOL.md) for client integration and current rules.
 
@@ -148,9 +157,9 @@ Run `npm run test:coop` with a running game and multiplayer server to exercise t
 
 Run `npm run test:coop-ready-browser` against a running game preview to check readiness feedback, shared auto, countdown cancellation, pause/resume, and phone controls through a private WebSocket server fixture.
 
-## Hidden combinations (0.2.11)
+## Hidden combinations (0.3.0)
 
-Some completed upgrade paths interact in surprising ways. Discoveries celebrate their first activation without revealing recipes in the field guide or upgrade panels. Cross-player interactions require server **0.2.11**.
+Some completed upgrade paths interact in surprising ways. Discoveries celebrate their first activation without revealing recipes in the field guide or upgrade panels. Cross-player interactions require server **0.3.0**.
 
 `npm run test:combos` checks earned-resource endless progression. `npm run test:combos-coop` checks separate co-op wallets and natural unlocks. `npm run test:combos-browser` checks effects, spoiler-free UI, and rendering in a running preview.
 

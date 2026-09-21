@@ -55,6 +55,10 @@ blender --background --python art/generate_necromancer.py
 This exports Morrow’s `gnome-necro.glb` and `necro.png` portrait, the 1.05-unit-tall `reborn-gnome.glb`, a compact `soul-puff.glb`, four subtly marked pumpkin models, and the cottage’s `necro-clue.glb` plaque. All characters face +Z with their bases at Y=0. `art/necromancer.blend` is the editable collection; `art/necromancer-preview.png` shows the new family of assets. The pumpkin material named `pumpkin-rune` has no initial emission; the renderer lights it only after a correct discovery. Existing characters and garden assets are preserved.
 
 
+## Skeletor Morrow costume
+
+`blender --background --python art/generate_necro_skin.py` generates the optional shop costume, `public/assets/gnome-necro-skeletor.glb` and `public/assets/necro-skeletor.png`. The purple hood, yellow skull mask, blue gloves and skull staff retain Morrow's rounded plush proportions and ground alignment. `art/necro-skin.blend` is the editable source, and `art/necro-skin-preview.png` is the inspection render. This generator preserves the original Morrow assets.
+
 ## Strawberry Fields
 
 ```sh

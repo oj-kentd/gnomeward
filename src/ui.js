@@ -1,5 +1,6 @@
 import { MAPS, TOWERS, ENEMIES, NECRO_PATH_SECRET } from './data.js';
 import { ENEMY_TRAITS, damageKindForTower } from './enemy-traits.js';
+import { SHOP_ITEMS } from './economy.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const n = (value) => Math.round(Number(value) || 0).toLocaleString();
@@ -100,6 +101,7 @@ export class UI {
               <div class="hud-stat hearts" title="Lives remaining">${icons.heart}<span><strong id="hud-lives">100</strong><small>Lives</small></span></div>
               <div class="hud-stat coins" title="Gold buys new gnomes">${icons.coin}<span><strong id="hud-gold">650</strong><small>Gold</small></span></div>
               <div class="hud-stat points" title="Points buy upgrades">${icons.leaf}<span><strong id="hud-points">0</strong><small>Points</small></span></div>
+              <button class="hud-stat round-wallet" id="coin-shop-button" title="Round Coins · permanent shop" aria-haspopup="dialog">${icons.coin}<span><strong id="hud-round-coins">0</strong><small>Shop</small></span></button>
             </div>
             <div class="field-toolbar"><span class="brand">GNOMEWARD</span><button class="coop-button" id="coop-button" aria-haspopup="dialog">Co-op</button><button class="map-picker" id="map-button" title="Choose a map"><span id="map-name">Mossy Meadow</span> <span aria-hidden="true">▾</span></button></div>
             <div class="coop-status" id="coop-status" role="status" hidden></div>
@@ -147,6 +149,7 @@ export class UI {
     click('map-button', () => this.showMaps());
     click('coop-button', () => actions.onCoopOpen?.());
     click('help-button', () => this.showHelp());
+    click('coin-shop-button', () => this.showCoinShop());
     click('shop-toggle', () => {
       const collapsed = document.querySelector('.game-shell').classList.toggle('shop-collapsed');
       document.getElementById('shop-slider').hidden = collapsed;
@@ -182,6 +185,10 @@ export class UI {
     });
     document.getElementById('dialog-content').addEventListener('click', (event) => {
       if (event.target.closest('button:disabled')) return;
+      const purchase = event.target.closest('[data-shop-buy]');
+      if (purchase) actions.onShopBuy?.(purchase.dataset.shopBuy);
+      const costume = event.target.closest('[data-shop-skin]');
+      if (costume) actions.onShopEquip?.(costume.dataset.shopSkin);
       if (event.target.closest('[data-coop-refresh]')) actions.onCoopRefresh?.();
       if (event.target.closest('[data-coop-leave]')) { this.closeModal(); actions.onCoopLeave?.(); }
       const name = () => document.getElementById('coop-name')?.value.trim() || 'Gardener';
@@ -226,6 +233,12 @@ export class UI {
 
   update(game, state = {}) {
     this.last = { game, state };
+    const collection = state.shopProfile || game.profile;
+    const coinCount = collection.roundCoins || 0;
+    document.getElementById('hud-round-coins').textContent = compactNumber.format(coinCount);
+    document.getElementById('coin-shop-button').setAttribute('aria-label', `Round Coin shop · ${n(coinCount)} coins`);
+    const shopBalance = document.getElementById('shop-wallet-value');
+    if (shopBalance) shopBalance.textContent = n(coinCount);
     if (this.modalType === 'help') {
       const signature = JSON.stringify(game.profile?.enemyTraits || []);
       if (signature !== this.traitGuideSignature) {
@@ -352,7 +365,8 @@ export class UI {
     const placement = document.getElementById('placement-banner');
     placement.hidden = !state.placingType;
     if (state.placingType) set('placement-text', `Place ${TOWERS[state.placingType]?.name || 'your gnome'} · ${n(TOWERS[state.placingType]?.cost)} gold`);
-    const rosterSignature = JSON.stringify([state.placingType, Object.keys(TOWERS).map((id) => [game.isUnlocked(id), game.gold >= TOWERS[id].cost])]);
+    const rosterSkin = multiplayer ? multiplayer.loadout?.necroSkin : collection.equippedNecroSkin;
+    const rosterSignature = JSON.stringify([state.placingType, rosterSkin, Object.keys(TOWERS).map((id) => [game.isUnlocked(id), game.gold >= TOWERS[id].cost])]);
     if (rosterSignature !== this.rosterSignature) {
       this.rosterSignature = rosterSignature;
       document.getElementById('roster').innerHTML = Object.entries(TOWERS).map(([id, tower]) => {
@@ -362,7 +376,7 @@ export class UI {
         const secretGarden = MAPS.find((garden) => garden.id === tower.unlockSecret)?.name || 'a hidden garden';
         const unlockGarden = MAPS.find((garden) => garden.id === tower.unlockMap)?.name;
         const hint = secret ? id === 'necro' ? `A quiet secret in ${secretGarden}.` : `Three discoveries in ${secretGarden} may reveal a hidden guardian.` : `${tower.description}${!unlocked ? unlockGarden ? ` Clear all 20 rounds of ${unlockGarden} to unlock.` : ` Beat round ${tower.unlockWave} to unlock.` : !affordable ? ' Not enough gold.' : ''}`;
-        return `<button class="tower-card ${!unlocked ? 'locked' : !affordable ? 'unaffordable' : 'affordable'} ${secret ? 'secret-locked' : ''} ${state.placingType === id ? 'chosen' : ''}" data-tower="${id}" ${!unlocked || !affordable ? 'disabled' : ''} aria-pressed="${state.placingType === id}" title="${esc(hint)}" ${secret ? `aria-label="Map secret. ${esc(hint)}"` : ''}><div class="tower-art" style="--tower-color:${tower.color}">${portrait(id)}${!unlocked ? `<span class="lock-badge">${icons.lock}</span>` : ''}</div><span class="tower-info"><strong>${secret ? '???' : esc(tower.name)}</strong><span class="tower-cost">${unlocked ? `${icons.coin}${n(tower.cost)}` : secret ? 'Map secret' : unlockGarden ? `Clear ${esc(unlockGarden)}` : `Round ${tower.unlockWave}`}</span></span>${!affordable && unlocked ? '<span class="card-shortage">Need gold</span>' : ''}</button>`;
+        return `<button class="tower-card ${!unlocked ? 'locked' : !affordable ? 'unaffordable' : 'affordable'} ${secret ? 'secret-locked' : ''} ${state.placingType === id ? 'chosen' : ''}" data-tower="${id}" ${!unlocked || !affordable ? 'disabled' : ''} aria-pressed="${state.placingType === id}" title="${esc(hint)}" ${secret ? `aria-label="Map secret. ${esc(hint)}"` : ''}><div class="tower-art" style="--tower-color:${tower.color}">${portrait(id === 'necro' && rosterSkin === 'skeletor' ? 'necro-skeletor' : id)}${!unlocked ? `<span class="lock-badge">${icons.lock}</span>` : ''}</div><span class="tower-info"><strong>${secret ? '???' : esc(tower.name)}</strong><span class="tower-cost">${unlocked ? `${icons.coin}${n(tower.cost)}` : secret ? 'Map secret' : unlockGarden ? `Clear ${esc(unlockGarden)}` : `Round ${tower.unlockWave}`}</span></span>${!affordable && unlocked ? '<span class="card-shortage">Need gold</span>' : ''}</button>`;
       }).join('');
     }
     const selected = game.towers.find((tower) => tower.id === state.selectedTowerId);
@@ -383,7 +397,7 @@ export class UI {
         panel.setAttribute('aria-label', 'Selected defender');
       }
     }
-    const panelSignature = JSON.stringify([selected?.id, selected?.levels, selected?.targeting, selected?.kills, selected?.ownerId, game.points, game.profile?.pathUnlocks, multiplayer?.sessionId, multiplayer?.connected, multiplayer?.result]);
+    const panelSignature = JSON.stringify([selected?.id, selected?.skin, selected?.levels, selected?.targeting, selected?.kills, selected?.ownerId, game.points, game.profile?.pathUnlocks, game.profile?.bossDamageUnlocked, game.bossDamageOwners, multiplayer?.sessionId, multiplayer?.connected, multiplayer?.result]);
     if (panelSignature !== this.panelSignature) {
       this.panelSignature = panelSignature;
       const scrollTop = selectionChanged ? 0 : panel.scrollTop;
@@ -458,7 +472,7 @@ export class UI {
         ? `<span><b>${n(stats.barrierHp)}</b> barrier HP</span><span><b>${n(stats.barrierLimit)}</b> max barriers</span><span><b>${precise(stats.interval)}s</b> cooldown</span><span><b>${range}</b> range</span>`
         : `<span><b>${precise(tower.type === 'spore' ? stats.poisonDps : stats.damage)}</b> ${tower.type === 'spore' ? 'poison/s' : tower.type === 'necro' ? 'spell damage' : 'damage'}</span><span><b>${precise(stats.attackSpeed)}</b> attacks/s</span><span><b>${range}</b> range</span>`;
     const automaticNote = tower.type === 'gravity' ? `Creates holes automatically · ${stats.capture ? 'captures enemies in the hole' : 'pulls nearby enemies inward'}` : tower.type === 'crystal' ? `Places barriers automatically · ${stats.explosionDamage > 0 ? `destroyed barriers deal ${n(stats.explosionDamage)} blast damage` : 'upgrade the blast path for on-destruction explosions'}` : stats.poisonSpreadRadius > 0 ? `Wild Garden: each mushroom infection can spread to ${n(stats.poisonSpreadTargets)} nearby ${stats.poisonSpreadTargets === 1 ? 'enemy' : 'enemies'} within ${precise(stats.poisonSpreadRadius)} range, one every ${precise(stats.poisonSpreadInterval)}s, at ${n(stats.poisonSpreadMultiplier * 100)}% damage. Spread poison cannot spread again.` : 'Mushrooms poison passing enemies · Wild Garden unlocks poison spread';
-    container.innerHTML = `<div class="selected-heading">${portrait(tower.type)}<div><h3>${esc(def.name)}</h3><span>${tower.starting ? 'Free field guardian · ' : tower.starting ? 'Free starting guardian · ' : tower.purchaseCost === 0 ? 'Summoned guardian · ' : ''}${n(tower.kills)} defeated · <b class="damage-kind" data-damage-kind="${damageKind}" title="Base attack damage type">${damageKindLabels[damageKind]}</b></span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
+    container.innerHTML = `<div class="selected-heading">${portrait(tower.type === 'necro' && tower.skin === 'skeletor' ? 'necro-skeletor' : tower.type)}<div><h3>${esc(def.name)}</h3><span>${tower.starting ? 'Free field guardian · ' : tower.starting ? 'Free starting guardian · ' : tower.purchaseCost === 0 ? 'Summoned guardian · ' : ''}${n(tower.kills)} defeated · <b class="damage-kind" data-damage-kind="${damageKind}" title="Base attack damage type">${damageKindLabels[damageKind]}</b></span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
       ${multiplayer ? `<div class="tower-owner-note">${owned ? 'Your gnome · you choose its upgrades' : `${esc(owner?.name || 'Teammate')}’s gnome · upgrades controlled by your teammate`}</div>` : ''}
       <div class="unit-summary ${terrain ? 'terrain-summary' : ''}">${summary}</div>
       ${!automatic ? `<button class="targeting-button" data-targeting ${!canEdit ? 'disabled' : ''} title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : `<div class="targeting-note ${tower.type === 'spore' && stats.poisonSpreadRadius > 0 ? 'poison-spread-note' : ''}">${automaticNote}</div>`}
@@ -566,6 +580,36 @@ export class UI {
     const bestRounds = this.last?.game.profile.bestRounds || {};
     this.openModal('maps', `<div class="modal-heading"><div><span class="eyebrow">PICK YOUR BATTLEFIELD</span><h2>Choose a garden</h2></div><button class="modal-close" data-close aria-label="Close map selection">×</button></div><p class="modal-intro">Choose winding trails, loops, spirals, or two-entrance routes. Changing gardens starts a new run; your unlocked gnomes stay with you!</p><div class="map-grid">${MAPS.map((map, index) => `<button class="map-card ${map.id === currentId ? 'current' : ''}" data-map="${map.id}"><span class="map-number">${index + 1}</span><span class="map-difficulty">${esc(map.difficulty)}</span><h3>${esc(map.name)}</h3>${mapFacts(map)}<p>${esc(map.description)}</p><span class="map-best">${bestRounds[map.id] ? `Best survived: round ${n(bestRounds[map.id])}` : 'No rounds cleared yet'}</span><span class="map-card-foot">${map.id === currentId ? 'RESTART GARDEN' : 'PLAY GARDEN'} <b>▶</b></span></button>`).join('')}</div>`);
   }
+  showCoinShop() {
+    const { game, state = {} } = this.last || {};
+    if (!game) return;
+    const profile = state.shopProfile || game.profile;
+    const coins = profile.roundCoins || 0;
+    const multiplayer = state.multiplayer;
+    const ownedSkin = profile.cosmetics?.includes('necro-skeletor');
+    const equipped = profile.equippedNecroSkin === 'skeletor';
+    const purchase = item => `<button class="primary-button coin-purchase" data-shop-buy="${item.id}" ${multiplayer || coins < item.cost ? 'disabled' : ''}>${icons.coin} ${n(item.cost)} Round Coins</button>${coins < item.cost ? `<small class="coin-shortage">${n(item.cost - coins)} more to go</small>` : ''}`;
+    const skin = SHOP_ITEMS.find(item => item.id === 'necro-skeletor');
+    const boss = SHOP_ITEMS.find(item => item.id === 'boss-damage');
+    this.openModal('coin-shop', `<section id="round-coin-shop" class="coin-shop">
+      <div class="modal-heading"><div><span class="eyebrow">LITTLE TREASURES. BIG ADVENTURES.</span><h2>Round Coin Shop</h2></div><button class="modal-close" data-close aria-label="Close Round Coin shop">×</button></div>
+      <div class="coin-wallet-banner">${icons.coin}<div><strong id="shop-wallet-value">${n(coins)}</strong><span>Round Coins</span></div><p>Clear a round. Earn a coin.<br>Keep your treasures between games.</p></div>
+      ${multiplayer ? `<p class="shop-coop-note">${multiplayer.shopSupported ? 'Your coins keep arriving during co-op. Buy and equip between co-op games; your current loadout stays fixed for this room.' : 'This co-op server needs an update for Round Coin rewards and shop upgrades. Your solo wallet stays saved.'}</p>` : ''}
+      <div class="coin-shop-grid">
+        <article class="coin-shop-card skin-card"><div class="shop-product-art">${portrait('necro-skeletor')}<span class="shop-product-badge">NECROMANCER COSTUME</span></div>
+          <div class="shop-product-copy"><h3>Skeletor Morrow</h3><p>A purple hood, a skull mask, and a wicked little staff. Same Morrow. New mischief.</p><small>Cosmetic only · ${game.isUnlocked('necro') ? 'Morrow is ready to dress up.' : 'Find the necromancer in a garden to use this costume.'}</small></div>
+          <div class="shop-product-action">${ownedSkin ? `<span class="shop-owned">✓ Yours forever</span><div class="costume-options" role="group" aria-label="Necromancer costume"><button data-shop-skin="default" aria-pressed="${!equipped}" ${multiplayer ? 'disabled' : ''}>Original</button><button data-shop-skin="skeletor" aria-pressed="${equipped}" ${multiplayer ? 'disabled' : ''}>${equipped ? '✓ Equipped' : 'Equip Skeletor'}</button></div>` : purchase(skin)}</div>
+        </article>
+        <article class="coin-shop-card boss-card"><div class="shop-product-art boss-product-art"><span class="boss-multiplier">2×</span><span class="shop-product-badge">PERMANENT POWER</span></div>
+          <div class="shop-product-copy"><h3>Boss Breaker</h3><p>Double your gnomes’ damage against every boss. Shots, poison, spells, and reborn guardians all count.</p><small>Permanent · ${profile.bossDamageUnlocked ? 'Active in every solo game and supported co-op room.' : 'In co-op, boosts your gnomes. Each player can buy their own.'}</small></div>
+          <div class="shop-product-action">${profile.bossDamageUnlocked ? '<span class="shop-owned">✓ Active forever · 2× boss damage</span>' : purchase(boss)}</div>
+        </article>
+      </div>
+      <p class="shop-save-note">Earn 1 Round Coin for each completed round, including endless. In co-op, each player earns their own coin. Coins and purchases are saved in this browser; gold and upgrade points still reset with each garden.</p>
+      <button class="text-button" data-close>Back to the garden</button>
+    </section>`);
+  }
+
   showHelp(focusSection = null) {
     const state = this.last?.state || {};
     this.traitGuideSignature = JSON.stringify(this.last?.game.profile?.enemyTraits || []);
