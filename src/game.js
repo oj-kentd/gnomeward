@@ -1,7 +1,7 @@
 import { MAPS, TOWERS, ENEMIES, SECRETS, NECRO_PATH_SECRET, cottagePosition, cottageDoorPosition } from './data.js';
 import { SPOREFIRE, PRISMSTORM, BERRY_SINGULARITY } from './combos.js';
 import { ENEMY_TRAITS, traitForSpawn, damageMultiplier, damageKindForTower } from './enemy-traits.js';
-import { normalizeEconomy, MAX_ROUND_COINS } from './economy.js';
+import { normalizeEconomy, MAX_ROUND_COINS, COSTUMES, getTowerSkin } from './economy.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
@@ -174,7 +174,7 @@ export class Game {
 
   _makeTower(type, x, z, purchaseCost) {
     const tower = { id: ++this._id, type, x, z, levels: TOWERS[type].paths.map(() => 0), kills: 0, damageDone: 0, cooldown: 0, planted: 0, targeting: 'first', purchaseCost, soulQueue: [], summonCooldown: 0 };
-    if (type === 'necro') tower.skin = this.profile.equippedNecroSkin;
+    if (COSTUMES.some(costume => costume.towerType === type)) tower.skin = getTowerSkin(this.profile, type);
     this.towers.push(tower);
     return tower;
   }

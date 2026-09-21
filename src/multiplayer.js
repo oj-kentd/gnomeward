@@ -34,6 +34,7 @@ export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0, re
     connected: true, reconnecting: false, ready: player.ready, endlessReady: player.endlessReady,
     combosSupported: snapshot.comboVersion === 1,
     shopSupported: snapshot.shopVersion === 1,
+    costumesSupported: snapshot.costumeVersion === 1,
     roundCoinsEarned: snapshot.shopVersion === 1 && Number.isSafeInteger(player.roundCoinsEarned) && player.roundCoinsEarned >= 0 ? player.roundCoinsEarned : 0,
     receiptKey: snapshot.shopVersion === 1 && typeof player.receiptKey === 'string' ? player.receiptKey : null,
     loadout: snapshot.shopVersion === 1 ? player.loadout : null,
@@ -65,13 +66,28 @@ export class CoopClient {
     if (!this.client) { const { Client } = await import('@colyseus/sdk'); this.client = new Client(this.url); }
     return this.client;
   }
+  async compatibleLoadout(loadout) {
+    if (!loadout || typeof loadout !== 'object' ||
+        !['boomSkin', 'sproutSkin'].some(key => Object.hasOwn(loadout, key))) return loadout;
+    // Older servers reject unknown loadout fields. Preserve their supported
+    // purchases even if capability discovery fails or the server is upgrading.
+    const compatible = { ...loadout };
+    let costumesSupported = false;
+    try {
+      const response = await fetch(`${this.url}/healthz`, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+      costumesSupported = response.ok && (await response.json()).costumeVersion === 1;
+    } catch {}
+    if (!costumesSupported) { delete compatible.boomSkin; delete compatible.sproutSkin; }
+    return compatible;
+  }
   async connect({ name, mapId, roomId, token, loadout } = {}) {
     if (this.activeRoom || this.connecting) return;
     if (!token && (typeof name !== 'string' || !name.trim() || name.trim().length > 24 || /[\u0000-\u001f\u007f<>]/.test(name))) throw new Error('Enter a name with 1–24 plain-text characters.');
     this.connecting = true;
     try {
       const client = await this.sdk();
-      const options = { protocol: 1, name: name?.trim(), mode: 'coop', ...(loadout === undefined ? {} : { loadout }) };
+      const acceptedLoadout = token ? undefined : await this.compatibleLoadout(loadout);
+      const options = { protocol: 1, name: name?.trim(), mode: 'coop', ...(acceptedLoadout === undefined ? {} : { loadout: acceptedLoadout }) };
       const room = token ? await client.reconnect(token) : roomId
         ? await client.joinById(roomId, options)
         : await client.create('gnomeward', { ...options, mapId });

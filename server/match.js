@@ -17,10 +17,14 @@ export function validateIdentity(options) {
 export function validateLoadout(value) {
   if (value === undefined) return { bossDamage: false, necroSkin: null };
   if (!plain(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) ||
-      Object.keys(value).some(key => !['bossDamage', 'necroSkin'].includes(key)) ||
+      Object.keys(value).some(key => !['bossDamage', 'necroSkin', 'boomSkin', 'sproutSkin'].includes(key)) ||
       (value.bossDamage !== undefined && typeof value.bossDamage !== 'boolean') ||
-      (value.necroSkin !== undefined && value.necroSkin !== null && value.necroSkin !== 'skeletor')) reject('Invalid permanent shop loadout.');
-  return { bossDamage: value.bossDamage === true, necroSkin: value.necroSkin === 'skeletor' ? 'skeletor' : null };
+      (value.necroSkin !== undefined && value.necroSkin !== null && value.necroSkin !== 'skeletor') ||
+      (value.boomSkin !== undefined && value.boomSkin !== null && value.boomSkin !== 'orange-knight') ||
+      (value.sproutSkin !== undefined && value.sproutSkin !== null && value.sproutSkin !== 'skeleton')) reject('Invalid permanent shop loadout.');
+  return { bossDamage: value.bossDamage === true, necroSkin: value.necroSkin === 'skeletor' ? 'skeletor' : null,
+    ...(Object.hasOwn(value, 'boomSkin') ? { boomSkin: value.boomSkin || null } : {}),
+    ...(Object.hasOwn(value, 'sproutSkin') ? { sproutSkin: value.sproutSkin || null } : {}) };
 }
 
 /** Server-only state. Browser commands cannot import gold, HP, saves, or change permanent loadouts. */
@@ -98,7 +102,8 @@ export class Match {
       game.bossDamageOwners = owners.filter(p => p.loadout.bossDamage).map(p => p.id);
       for (const tower of game.towers) {
         tower.ownerId ??= this.freeTowerOwners.get(game) || boardOwner || this.hostId;
-        if (tower.type === 'necro') tower.skin = this.players.get(tower.ownerId)?.loadout.necroSkin || null;
+        const skinField = { necro: 'necroSkin', boom: 'boomSkin', sprout: 'sproutSkin' }[tower.type];
+        if (skinField) tower.skin = this.players.get(tower.ownerId)?.loadout[skinField] || null;
       }
     }
   }
@@ -259,7 +264,7 @@ export class Match {
 
   snapshot(roomId = '') {
     return structuredClone({
-      protocol: PROTOCOL, comboVersion: 1, shopVersion: 1, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
+      protocol: PROTOCOL, comboVersion: 1, shopVersion: 1, costumeVersion: 1, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
       players: [...this.players.values()], paused: this.paused, manualPause: this.manualPause,
       speed: this.speed, started: this.started, autoStart: this.autoStart, autoCountdown: this.autoCountdown, tick: this.tick, result: this.result,
       boards: [...this.boards.entries()].map(([playerId, game]) => ({ playerId, state: {

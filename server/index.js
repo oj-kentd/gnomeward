@@ -37,7 +37,7 @@ export async function startServer(config = readConfig(), roomOptions = {}) {
     transport, greet: false, gracefullyShutdown: false,
     express: app => {
       app.disable('x-powered-by');
-      app.get('/healthz', (_req, res) => res.json({ status: 'ok', service: 'gnomeward-server', version: SERVER_VERSION, protocol: PROTOCOL_VERSION }));
+      app.get('/healthz', (_req, res) => res.json({ status: 'ok', service: 'gnomeward-server', version: SERVER_VERSION, protocol: PROTOCOL_VERSION, costumeVersion: 1 }));
       app.get('/readyz', (_req, res) => res.status(!stopping && store.healthy ? 200 : 503).json({ ready: !stopping && store.healthy }));
       app.get('/lobbies', (req, res) => {
         if (req.headers.origin) {

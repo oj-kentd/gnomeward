@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../src/game.js';
-import { SHOP_ITEMS, MAX_ROUND_COINS, normalizeEconomy, buyShopItem, equipNecroSkin, applyCoopRoundReward } from '../src/economy.js';
+import { SHOP_ITEMS, COSTUMES, MAX_ROUND_COINS, normalizeEconomy, buyShopItem, equipNecroSkin, getTowerSkin, equipTowerSkin, applyCoopRoundReward } from '../src/economy.js';
 
 const clearRound = game => {
   assert.equal(game.startWave(), true);
@@ -63,6 +63,95 @@ test('skins equip only when owned and never unlock Morrow or change its stats', 
   assert.equal(equipNecroSkin(profile, null), true);
   assert.equal(profile.equippedNecroSkin, null);
   assert.equal(equipNecroSkin(profile, 'fake'), false);
+});
+
+test('new costumes each cost 100 coins and preserve the requested Sprout description', () => {
+  assert.ok(Object.isFrozen(COSTUMES));
+  assert.ok(COSTUMES.every(Object.isFrozen));
+  for (const [id, name] of [['boom-orange-knight', 'Orange Knight Bramble'], ['sprout-skeleton', 'Skeleton Sprout']]) {
+    const item = SHOP_ITEMS.find(item => item.id === id);
+    assert.equal(item.cost, 100);
+    assert.equal(item.name, name);
+    const profile = { roundCoins: 199 };
+    assert.equal(buyShopItem(profile, id), true);
+    assert.equal(profile.roundCoins, 99);
+    assert.equal(buyShopItem(profile, id), false);
+    profile.roundCoins = 100;
+    assert.equal(buyShopItem(profile, id), false);
+    assert.equal(profile.roundCoins, 100);
+  }
+  assert.equal(SHOP_ITEMS.find(item => item.id === 'sprout-skeleton').description, 'skeleton vs skeletons who wins ???');
+});
+
+test('costume migration preserves Morrow, removes unknown ownership, and deduplicates all known costumes', () => {
+  const legacy = { roundCoins: 23, cosmetics: ['necro-skeletor'], equippedNecroSkin: 'skeletor', bossDamageUnlocked: true };
+  normalizeEconomy(legacy);
+  assert.equal(legacy.roundCoins, 23);
+  assert.equal(getTowerSkin(legacy, 'necro'), 'skeletor');
+  assert.equal(legacy.equippedBoomSkin, null);
+  assert.equal(legacy.equippedSproutSkin, null);
+  assert.equal(legacy.bossDamageUnlocked, true);
+  legacy.cosmetics.push('sprout-skeleton', 'sprout-skeleton', 'boom-orange-knight', '__proto__', 'unknown', ['necro-skeletor']);
+  legacy.equippedBoomSkin = 'orange-knight'; legacy.equippedSproutSkin = 'skeleton';
+  const game = new Game('meadow', JSON.parse(JSON.stringify(legacy)));
+  assert.deepEqual(game.profile.cosmetics, ['necro-skeletor', 'sprout-skeleton', 'boom-orange-knight']);
+  assert.equal(getTowerSkin(game.profile, 'necro'), 'skeletor');
+  assert.equal(getTowerSkin(game.profile, 'boom'), 'orange-knight');
+  assert.equal(getTowerSkin(game.profile, 'sprout'), 'skeleton');
+  assert.equal(game.profile.roundCoins, 23);
+});
+
+test('costumes require matching ownership and cannot be equipped on other tower types', () => {
+  const profile = { cosmetics: ['sprout-skeleton'], equippedBoomSkin: 'orange-knight', equippedSproutSkin: 'skeleton' };
+  assert.equal(getTowerSkin(profile, 'boom'), null);
+  assert.equal(equipTowerSkin(profile, 'boom', 'orange-knight'), false);
+  assert.equal(profile.equippedBoomSkin, null);
+  assert.equal(equipTowerSkin(profile, 'boom', 'skeleton'), false);
+  assert.equal(equipTowerSkin(profile, 'sprout', 'orange-knight'), false);
+  assert.equal(equipTowerSkin(profile, 'spore', 'skeleton'), false);
+  assert.equal(equipTowerSkin(profile, 'spore', null), false);
+  assert.equal(equipTowerSkin(profile, 'sprout', 'skeleton'), true);
+  for (const bad of [null, undefined, [], 0, 'profile']) assert.equal(getTowerSkin(bad, 'sprout'), null);
+  for (const type of [null, undefined, '__proto__', ['sprout']]) assert.equal(getTowerSkin(profile, type), null);
+});
+
+test('all three costume selections equip independently and survive purchases and serialization', () => {
+  let profile = { roundCoins: 350 };
+  for (const costume of COSTUMES) {
+    assert.equal(buyShopItem(profile, costume.itemId), true);
+    assert.equal(equipTowerSkin(profile, costume.towerType, costume.skin), true);
+  }
+  assert.equal(buyShopItem(profile, 'boss-damage'), true);
+  assert.equal(profile.roundCoins, 0);
+  profile = new Game('quarry', JSON.parse(JSON.stringify(profile))).profile;
+  for (const costume of COSTUMES) assert.equal(getTowerSkin(profile, costume.towerType), costume.skin);
+  assert.equal(equipTowerSkin(profile, 'boom', null), true);
+  assert.equal(getTowerSkin(profile, 'boom'), null);
+  assert.equal(getTowerSkin(profile, 'sprout'), 'skeleton');
+  assert.equal(getTowerSkin(profile, 'necro'), 'skeletor');
+  assert.equal(profile.bossDamageUnlocked, true);
+});
+
+test('placed Bramble and Sprout use equipped costumes with unchanged price and combat', () => {
+  for (const [type, itemId, skin] of [['boom', 'boom-orange-knight', 'orange-knight'], ['sprout', 'sprout-skeleton', 'skeleton']]) {
+    const profile = { roundCoins: 100 };
+    buyShopItem(profile, itemId); equipTowerSkin(profile, type, skin);
+    const dressedGame = new Game('meadow', profile), normalGame = new Game('meadow');
+    const dressed = dressedGame.placeTower(type, -4, 0), normal = normalGame.placeTower(type, -4, 0);
+    assert.ok(dressed && normal);
+    assert.equal(dressed.skin, skin);
+    assert.equal(normal.skin, null);
+    assert.equal(dressedGame.gold, normalGame.gold);
+    assert.deepEqual(dressedGame.getStats(dressed), normalGame.getStats(normal));
+    dressed.levels = [3, 3, 0, 0]; normal.levels = [3, 3, 0, 0];
+    assert.deepEqual(dressedGame.getStats(dressed), normalGame.getStats(normal));
+    const dressedEnemy = dressedGame._spawn('boss'), normalEnemy = normalGame._spawn('boss');
+    dressedGame._launch(dressed, dressedEnemy, dressedGame.getStats(dressed));
+    normalGame._launch(normal, normalEnemy, normalGame.getStats(normal));
+    dressedGame._advanceProjectiles(2); normalGame._advanceProjectiles(2);
+    assert.equal(dressedEnemy.hp, normalEnemy.hp);
+    assert.equal(dressed.damageDone, normal.damageDone);
+  }
 });
 
 test('every completed round earns one coin with no reward for idle updates or starting rounds', () => {

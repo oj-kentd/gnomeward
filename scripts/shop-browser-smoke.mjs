@@ -11,6 +11,11 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 page.setDefaultTimeout(45000);
 const errors = [], checks = [], layouts = [], hudLayouts = [];
+const purchaseItems = ['necro-skeletor', 'boom-orange-knight', 'sprout-skeleton', 'boss-damage'];
+const newCostumes = [
+  { type: 'boom', item: 'boom-orange-knight', skin: 'orange-knight', profileKey: 'equippedBoomSkin' },
+  { type: 'sprout', item: 'sprout-skeleton', skin: 'skeleton', profileKey: 'equippedSproutSkin' },
+];
 page.on('pageerror', error => errors.push(error.message));
 page.on('response', response => { if (response.status() >= 400 && /\/assets\//.test(response.url())) errors.push(`${response.status()} ${response.url()}`); });
 let stage = 'opening a fresh garden';
@@ -60,7 +65,7 @@ async function checkPhone(width) {
   const bounds = await dialog.boundingBox();
   assert.ok(bounds && bounds.x >= -1 && bounds.x + bounds.width <= width + 1, 'shop dialog fits the phone');
   const items = [];
-  for (const item of ['necro-skeletor', 'boss-damage']) {
+  for (const item of purchaseItems) {
     const button = page.locator(`[data-shop-buy="${item}"]`);
     await button.scrollIntoViewIfNeeded();
     const rect = await button.boundingBox();
@@ -143,7 +148,7 @@ try {
   await page.evaluate(() => Object.assign(gnomeward.state, { paused: true, autoStart: false }));
   await wallet(0);
   checks.push('Splash shop button enters the shop directly');
-  for (const item of ['necro-skeletor', 'boss-damage']) assert.equal(await page.locator(`[data-shop-buy="${item}"]`).isDisabled(), true);
+  for (const item of purchaseItems) assert.equal(await page.locator(`[data-shop-buy="${item}"]`).isDisabled(), true);
   checks.push('Fresh collection has zero coins and cannot buy unaffordable items');
   await closeShop();
 
@@ -212,11 +217,85 @@ try {
   checks.push('Purchases survive reload, newly placed Morrow wears the selected skin, and original look is free to restore');
   await closeShop();
 
+  stage = 'buying and independently equipping Bramble and Sprout costumes';
+  const costumeTowers = await page.evaluate(() => {
+    const game = gnomeward.game;
+    game.profile.roundCoins = 200;
+    return { boom: game._makeTower('boom', -4, 0, 0).id, sprout: game._makeTower('sprout', 4, 0, 0).id };
+  });
+  await settled(); await openShop(); await wallet(200);
+  assert.equal(await page.locator('[data-costume-card="sprout-skeleton"] .shop-product-copy p').textContent(), 'skeleton vs skeletons who wins ???');
+  for (const [index, costume] of newCostumes.entries()) {
+    await doublePurchase(costume.item); await wallet(100 - index * 100);
+    await page.locator(`[data-shop-tower="${costume.type}"][data-shop-skin="${costume.skin}"]`).click();
+    await model(costumeTowers[costume.type], 'gnome-' + costume.item);
+    await page.waitForFunction(({ type, item, profileKey, skin }) =>
+      gnomeward.game.profile[profileKey] === skin &&
+      document.querySelector(`[data-tower="${type}"] img`)?.getAttribute('src').endsWith(`/assets/${item}.png`), costume);
+  }
+  assert.deepEqual(await page.evaluate(() => gnomeward.game.profile.cosmetics), ['necro-skeletor', 'boom-orange-knight', 'sprout-skeleton']);
+  assert.equal(await page.evaluate(() => gnomeward.game.profile.bossDamageUnlocked), true);
+  await closeShop();
+  for (const costume of newCostumes) {
+    await page.evaluate(id => { gnomeward.state.selectedTowerId = id; }, costumeTowers[costume.type]);
+    await page.waitForFunction(item => document.querySelector('.selected-heading img')?.getAttribute('src').endsWith(`/assets/${item}.png`), costume.item);
+  }
+  await page.screenshot({ path: 'playtest-results/shop-costumes-equipped.png' });
+  checks.push('Both new 100-coin costumes buy exactly once, swap existing models, and update roster and selected-unit portraits; Sprout description matches exactly');
+
+  stage = 'new costume persistence, placement ghosts, and new placements';
+  await page.reload(); await enter();
+  assert.deepEqual(await page.evaluate(() => ({
+    coins: gnomeward.game.profile.roundCoins, boom: gnomeward.game.profile.equippedBoomSkin,
+    sprout: gnomeward.game.profile.equippedSproutSkin, necro: gnomeward.game.profile.equippedNecroSkin,
+    perk: gnomeward.game.profile.bossDamageUnlocked,
+  })), { coins: 0, boom: 'orange-knight', sprout: 'skeleton', necro: null, perk: true });
+  const placedCostumes = {};
+  for (const costume of newCostumes) {
+    await page.locator(`[data-tower="${costume.type}"]`).click();
+    await settled();
+    const placement = await page.evaluate(type => {
+      const { game, renderer } = gnomeward;
+      const rect = renderer.renderer.domElement.getBoundingClientRect();
+      for (let z = -5; z <= 5; z += 2) for (let x = -8; x <= 8; x += 2) {
+        if (!game.canPlace(type, x, z)) continue;
+        const p = renderer.camera.position.clone().set(x, 0, z).project(renderer.camera);
+        const clientX = rect.left + (p.x + 1) * rect.width / 2;
+        const clientY = rect.top + (1 - p.y) * rect.height / 2;
+        if (document.elementFromPoint(clientX, clientY) !== renderer.renderer.domElement) continue;
+        return { x, z, clientX, clientY };
+      }
+      throw new Error('No visible valid placement for ' + type);
+    }, costume.type);
+    await page.mouse.move(placement.clientX, placement.clientY);
+    await page.waitForFunction(item => gnomeward.renderer.ghost?.visible && gnomeward.renderer.ghostType === 'gnome-' + item, costume.item);
+    await page.mouse.click(placement.clientX, placement.clientY);
+    await page.waitForFunction(({ type, skin }) => gnomeward.game.towers.some(tower => tower.type === type && tower.skin === skin), costume);
+    placedCostumes[costume.type] = await page.evaluate(type => gnomeward.game.towers.find(tower => tower.type === type).id, costume.type);
+    await model(placedCostumes[costume.type], 'gnome-' + costume.item);
+    await page.waitForFunction(item => document.querySelector('.selected-heading img')?.getAttribute('src').endsWith(`/assets/${item}.png`), costume.item);
+  }
+  checks.push('Both new equipped costumes persist on reload and appear on production placement ghosts and newly placed gnomes');
+
+  stage = 'restoring Bramble without unequipping Sprout';
+  await openShop(); await wallet(0);
+  await page.locator('[data-shop-tower="boom"][data-shop-skin="default"]').click();
+  await model(placedCostumes.boom, 'gnome-boom');
+  await model(placedCostumes.sprout, 'gnome-sprout-skeleton');
+  await page.waitForFunction(() => {
+    const saved = JSON.parse(localStorage.getItem('gnomeward-profile') || '{}');
+    return saved.equippedBoomSkin === null && saved.equippedSproutSkin === 'skeleton' && saved.roundCoins === 0 && saved.bossDamageUnlocked;
+  });
+  assert.equal(await page.locator('[data-shop-tower="sprout"][data-shop-skin="skeleton"]').getAttribute('aria-pressed'), 'true');
+  checks.push('Restoring Bramble costs nothing, persists, and leaves Skeleton Sprout and the permanent boss perk equipped');
+  await closeShop();
+
   stage = 'small-screen shop controls';
   await page.evaluate(() => localStorage.removeItem('gnomeward-profile'));
   await page.reload(); await enter(); await openShop();
   await checkPhone(390); await checkPhone(320);
-  checks.push('390px and 320px shops have no horizontal overflow and both purchase controls remain reachable');
+  for (const item of purchaseItems) assert.equal(await page.locator(`[data-shop-buy="${item}"]`).isDisabled(), true);
+  checks.push('390px and 320px shops have no horizontal overflow and all four purchase controls remain reachable and disabled with an empty wallet');
   await closeShop();
   stage = 'large persistent and run wallets across four HUD sizes';
   for (const [width, height] of [[1280, 800], [844, 390], [390, 844], [320, 568]]) await checkLargeWalletHud(width, height);

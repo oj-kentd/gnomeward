@@ -59,6 +59,12 @@ This exports Morrow’s `gnome-necro.glb` and `necro.png` portrait, the 1.05-uni
 
 `blender --background --python art/generate_necro_skin.py` generates the optional shop costume, `public/assets/gnome-necro-skeletor.glb` and `public/assets/necro-skeletor.png`. The purple hood, yellow skull mask, blue gloves and skull staff retain Morrow's rounded plush proportions and ground alignment. `art/necro-skin.blend` is the editable source, and `art/necro-skin-preview.png` is the inspection render. This generator preserves the original Morrow assets.
 
+## Orange Knight Bramble and Skeleton Sprout costumes
+
+`blender --background --python art/generate_party_costumes.py` creates the two optional shop costumes: `public/assets/gnome-boom-orange-knight.glb` with `boom-orange-knight.png`, and `public/assets/gnome-sprout-skeleton.glb` with `sprout-skeleton.png`. The editable collection is `art/party-costumes.blend`; `art/party-costumes-preview.png` shows both outfits together. The generator preserves all original defenders and existing costumes.
+
+Bramble wears a soft orange bucket helmet with an ivory cross-shaped faceplate, orange-cross tabard, mittens, and a small shield while retaining his beard and bomb. The color and faceplate reference is [The Behemoth's official Orange Knight papercraft](https://www.thebehemoth.com/papercraft/); all exported geometry is newly authored in Blender. Sprout keeps his bent gnome hat and slingshot, with a friendly skull mask, dark suit, stitched white ribs, and crossed bones on his hat. Both GLBs face +Z, stand at Y=0, and use the same toy proportions as the other gnomes. Portraits are transparent 320×320 Blender renders.
+
 ## Strawberry Fields
 
 ```sh

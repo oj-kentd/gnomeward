@@ -28,8 +28,13 @@ test('shop loadouts accept only bounded permanent perks, with legacy defaults', 
   assert.deepEqual(validateLoadout({}), { bossDamage: false, necroSkin: null });
   const good = { bossDamage: true, necroSkin: 'skeletor' };
   assert.deepEqual(validateLoadout(good), good);
+  assert.deepEqual(validateLoadout({ ...good, boomSkin: 'orange-knight', sproutSkin: 'skeleton' }),
+    { ...good, boomSkin: 'orange-knight', sproutSkin: 'skeleton' });
+  assert.deepEqual(validateLoadout({ boomSkin: null, sproutSkin: null }),
+    { bossDamage: false, necroSkin: null, boomSkin: null, sproutSkin: null });
   for (const bad of [null, [], 1, 'yes', { bossDamage: 2 }, { bossDamage: 'true' },
-    { necroSkin: 'unlimited' }, { gold: 999 }, { hp: 999 }, { roundCoins: 999 },
+    { necroSkin: 'unlimited' }, { boomSkin: 'skeleton' }, { sproutSkin: 'orange-knight' },
+    { boomSkin: false }, { sproutSkin: [] }, { boomSkin: { id: 'orange-knight' } }, { gold: 999 }, { hp: 999 }, { roundCoins: 999 },
     { profile: good }, { multiplier: 10 }, Object.create({ bossDamage: true }), new Date()]) {
     assert.throws(() => validateLoadout(bad), /loadout/);
   }
@@ -114,8 +119,14 @@ test('snapshot adapter exposes cumulative rewards and safely defaults old server
   const match = pair({ bossDamage: true }); start(match); clear(match);
   const snapshot = match.snapshot('room');
   assert.equal(snapshot.shopVersion, 1);
+  assert.equal(snapshot.costumeVersion, 1);
   const current = applyCoopSnapshot(null, snapshot, 'a').multiplayer;
   assert.equal(current.shopSupported, true);
+  assert.equal(current.costumesSupported, true);
+  const oldCostumes = structuredClone(snapshot);
+  delete oldCostumes.costumeVersion;
+  assert.equal(applyCoopSnapshot(null, oldCostumes, 'a').multiplayer.costumesSupported, false);
+  assert.equal(applyCoopSnapshot(null, oldCostumes, 'a').multiplayer.shopSupported, true);
   assert.equal(current.roundCoinsEarned, 1);
   assert.equal(current.receiptKey, match.players.get('a').receiptKey);
   assert.equal(current.loadout.bossDamage, true);
@@ -126,7 +137,9 @@ test('snapshot adapter exposes cumulative rewards and safely defaults old server
   assert.equal(legacy.receiptKey, null);
 });
 
-test('browser sends optional loadouts for create and join, but reconnect only uses its token', async () => {
+test('browser sends legacy loadouts without fetching health, and reconnect only uses its token', async t => {
+  let healthCalls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { healthCalls++; return { ok: true, json: async () => ({ costumeVersion: 1 }) }; });
   const calls = [];
   const client = new CoopClient({});
   client.sdk = async () => ({
@@ -138,10 +151,11 @@ test('browser sends optional loadouts for create and join, but reconnect only us
   const loadout = { bossDamage: true, necroSkin: 'skeletor' };
   await client.connect({ name: 'Alice', mapId: 'meadow', loadout });
   await client.connect({ name: 'Alice', roomId: 'abc', loadout });
-  await client.connect({ token: 'resume', loadout: { bossDamage: false } });
+  await client.connect({ token: 'resume', loadout: { bossDamage: false, boomSkin: 'orange-knight', sproutSkin: 'skeleton' } });
   assert.deepEqual(calls[0][2].loadout, loadout);
   assert.deepEqual(calls[1][2].loadout, loadout);
   assert.deepEqual(calls[2], ['reconnect', 'resume']);
+  assert.equal(healthCalls, 0);
 });
 
 test('WebSocket loadouts and round receipts survive an actual reconnect', { timeout: 15000 }, async () => {
@@ -170,7 +184,10 @@ test('WebSocket loadouts and round receipts survive an actual reconnect', { time
     return view;
   };
   try {
-    const host = await new Client(url).create('gnomeward', { protocol: 1, name: 'Host', mode: 'coop', mapId: 'meadow', loadout: { bossDamage: true, necroSkin: 'skeletor' }, gold: 99999, roundCoins: 99999 });
+    const health = await fetch(`${url}/healthz`, { headers: { origin: 'https://game.example' } });
+    assert.equal(health.headers.get('access-control-allow-origin'), 'https://game.example');
+    assert.equal((await health.json()).costumeVersion, 1);
+    const host = await new Client(url).create('gnomeward', { protocol: 1, name: 'Host', mode: 'coop', mapId: 'meadow', loadout: { bossDamage: true, necroSkin: 'skeletor', boomSkin: 'orange-knight', sproutSkin: 'skeleton' }, gold: 99999, roundCoins: 99999 });
     connections.push(host); const a = observe(host);
     const guest = await new Client(url).joinById(host.roomId, { protocol: 1, name: 'Guest' });
     connections.push(guest); observe(guest);
@@ -178,7 +195,7 @@ test('WebSocket loadouts and round receipts survive an actual reconnect', { time
     const original = a.snapshot.players.find(p => p.id === host.sessionId);
     assert.equal(original.gold, 325);
     assert.equal(original.roundCoinsEarned, 0);
-    assert.deepEqual(original.loadout, { bossDamage: true, necroSkin: 'skeletor' });
+    assert.deepEqual(original.loadout, { bossDamage: true, necroSkin: 'skeletor', boomSkin: 'orange-knight', sproutSkin: 'skeleton' });
     host.send('command', { action: 'ready' }); guest.send('command', { action: 'ready' });
     const match = [...app.rooms][0].match;
     await until(() => match.started);
@@ -201,4 +218,59 @@ test('WebSocket loadouts and round receipts survive an actual reconnect', { time
     await app.stop();
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+
+test('Bramble and Sprout costumes belong to their owner and leave combat stats unchanged', () => {
+  for (const [type, field, skin] of [['boom', 'boomSkin', 'orange-knight'], ['sprout', 'sproutSkin', 'skeleton']]) {
+    const loadout = { [field]: skin };
+    const match = pair(loadout);
+    const own = place(match, 'a', type, -4), teammate = place(match, 'b', type, 2);
+    assert.equal(own.skin, skin);
+    assert.equal(teammate.skin, null);
+    assert.deepEqual(match.board().getStats(own), match.board().getStats(teammate));
+    loadout[field] = null;
+    match.setConnected('a', false); match.setConnected('a', true);
+    match._syncLoadouts();
+    assert.equal(own.skin, skin, 'the room retains its original loadout');
+    const snapshot = match.snapshot('costume-room');
+    assert.equal(snapshot.boards[0].state.towers.find(tower => tower.id === own.id).skin, skin);
+    assert.equal(snapshot.boards[0].state.towers.find(tower => tower.id === teammate.id).skin, null);
+  }
+});
+
+test('extended browser costumes require a successful versioned health capability', async t => {
+  const loadout = { bossDamage: true, necroSkin: 'skeletor', boomSkin: 'orange-knight', sproutSkin: 'skeleton' };
+  const original = structuredClone(loadout), sent = [], requests = [];
+  const client = new CoopClient({ url: 'https://garden.example/' });
+  client.sdk = async () => ({
+    create: async (_type, options) => { sent.push(options); return {}; },
+    joinById: async (_id, options) => { sent.push(options); return {}; },
+  });
+  client.attach = () => {};
+  let response = { ok: true, json: async () => ({ costumeVersion: 1 }) };
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    requests.push({ url, options });
+    if (response instanceof Error) throw response;
+    return response;
+  });
+  await client.connect({ name: 'Alice', mapId: 'meadow', loadout });
+  await client.connect({ name: 'Alice', roomId: 'new-room', loadout });
+  assert.deepEqual(sent[0].loadout, loadout);
+  assert.deepEqual(sent[1].loadout, loadout);
+  for (const unavailable of [
+    { ok: true, json: async () => ({ version: '0.3.3', shopVersion: 1 }) },
+    { ok: true, json: async () => ({ costumeVersion: '1' }) },
+    { ok: true, json: async () => ({ costumeVersion: 2 }) },
+    { ok: false, json: async () => ({ costumeVersion: 1 }) },
+    { ok: true, json: async () => { throw new SyntaxError('Bad JSON'); } },
+    new TypeError('Network unavailable'), new DOMException('Timed out', 'TimeoutError'),
+  ]) {
+    response = unavailable;
+    await client.connect({ name: 'Alice', roomId: 'legacy-room', loadout });
+    assert.deepEqual(sent.at(-1).loadout, { bossDamage: true, necroSkin: 'skeletor' }, 'fallback keeps existing owned permanent perks');
+  }
+  assert.equal(requests.length, 9);
+  assert.ok(requests.every(request => request.url === 'https://garden.example/healthz' && request.options.cache === 'no-store' && request.options.signal instanceof AbortSignal));
+  assert.deepEqual(loadout, original, 'capability filtering does not alter the saved collection');
 });

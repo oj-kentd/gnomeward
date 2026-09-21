@@ -5,7 +5,7 @@ import { UI } from './ui.js';
 import { GardenRenderer } from './renderer.js';
 import { MusicPlayer, MUSIC_TRACKS } from './music.js';
 import { CoopClient, applyCoopSnapshot, coopCountdown } from './multiplayer.js';
-import { buyShopItem, equipNecroSkin, applyCoopRoundReward } from './economy.js';
+import { buyShopItem, equipTowerSkin, getTowerSkin, SHOP_ITEMS, applyCoopRoundReward } from './economy.js';
 
 let profile={unlocks:[]};
 try { const saved=JSON.parse(localStorage.getItem('gnomeward-profile')||'null');if(saved&&Array.isArray(saved.unlocks))profile={...saved,unlocks:saved.unlocks.filter(id=>Object.hasOwn(TOWERS,id))}; }catch{}
@@ -129,7 +129,7 @@ async function refreshLobbies(){
 async function connectCoop(options){
   if(!ready||lobbyBusy||state.multiplayer)return;
   lobbyBusy=true;ui.updateCoopLobby({loading:true,error:''});
-  try{await multiplayer.connect({...options,loadout:{bossDamage:game.profile.bossDamageUnlocked === true,necroSkin:game.profile.equippedNecroSkin || null}});}
+  try{await multiplayer.connect({...options,loadout:{bossDamage:game.profile.bossDamageUnlocked === true,necroSkin:getTowerSkin(game.profile,'necro'),...(getTowerSkin(game.profile,'boom') ? {boomSkin:getTowerSkin(game.profile,'boom')} : {}),...(getTowerSkin(game.profile,'sprout') ? {sproutSkin:getTowerSkin(game.profile,'sprout')} : {})}});}
   catch(error){ui.updateCoopLobby({loading:false,error:error.message});}
   finally{lobbyBusy=false;ui.updateCoopLobby({loading:false});}
 }
@@ -164,11 +164,11 @@ function newGarden(mapId){if(!ready||state.multiplayer)return;save();profile=gam
 function shopBuy(id) {
   if (state.multiplayer || !buyShopItem(game.profile, id)) return;
   save(); refreshUI(); ui.showCoinShop(); beep(880,.16);
-  ui.toast(id === 'boss-damage' ? 'Boss Breaker unlocked forever · 2× damage against bosses!' : 'Skeletor costume unlocked! Equip it in the shop.');
+  ui.toast(id === 'boss-damage' ? 'Boss Breaker unlocked forever · 2× damage against bosses!' : `${SHOP_ITEMS.find(item => item.id === id)?.name || 'Costume'} unlocked! Equip it in the shop.`);
 }
-function shopEquip(skin) {
-  if (state.multiplayer || !equipNecroSkin(game.profile, skin === 'default' ? null : skin)) return;
-  for (const tower of game.towers) if (tower.type === 'necro') tower.skin = game.profile.equippedNecroSkin;
+function shopEquip(type, skin) {
+  if (state.multiplayer || !equipTowerSkin(game.profile, type, skin === 'default' ? null : skin)) return;
+  for (const tower of game.towers) if (tower.type === type) tower.skin = getTowerSkin(game.profile, type);
   world?.setGhost(null);
   save(); refreshUI(); ui.showCoinShop();
 }
@@ -190,7 +190,7 @@ const ui=new UI({
 refreshUI();ui.setLoading?.('Growing your garden…');
 try {
   world=new GardenRenderer(document.getElementById('scene'),{
-    onHover:(x,z)=>{if(!ready||!state.placingType)return;const type=state.placingType;world.setGhost(type,x,z,game.canPlace(type,x,z),game.getStats({type,levels:TOWERS[type].paths.map(()=>0)}).range,state.multiplayer ? state.multiplayer.loadout?.necroSkin : game.profile.equippedNecroSkin);},
+    onHover:(x,z)=>{if(!ready||!state.placingType)return;const type=state.placingType;world.setGhost(type,x,z,game.canPlace(type,x,z),game.getStats({type,levels:TOWERS[type].paths.map(()=>0)}).range,state.multiplayer ? state.multiplayer.loadout?.[type+'Skin'] : getTowerSkin(game.profile,type));},
     onClick:(x,z,hitTowerId,secretId,clueId)=>{
       if(!ready||['won','lost'].includes(game.status)||state.multiplayer?.result||state.multiplayer?.reconnecting)return;
       if(clueId&&!state.placingType){
@@ -263,4 +263,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.3.3'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.3.4'};
