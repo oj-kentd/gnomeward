@@ -10,7 +10,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
   args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 page.setDefaultTimeout(45000);
-const errors = [], checks = [], layouts = [];
+const errors = [], checks = [], layouts = [], hudLayouts = [];
 page.on('pageerror', error => errors.push(error.message));
 page.on('response', response => { if (response.status() >= 400 && /\/assets\//.test(response.url())) errors.push(`${response.status()} ${response.url()}`); });
 let stage = 'opening a fresh garden';
@@ -74,6 +74,65 @@ async function checkPhone(width) {
   await settled();
   await page.screenshot({ path: `playtest-results/shop-${width}.png` });
   layouts.push({ width, dialog: bounds, items });
+}
+
+async function checkLargeWalletHud(width, height) {
+  await page.setViewportSize({ width, height });
+  // Six-digit earned gold exposed the original fourth-stat regression. Also
+  // exercise long compact decimals and the maximum persistent coin balance.
+  for (const values of [{ gold: 130624, points: 9375, coins: 99999 },
+    { gold: 999999999, points: 123456789, coins: 1000000000 }]) {
+    await page.evaluate(values => {
+      Object.assign(gnomeward.game, { gold: values.gold, points: values.points });
+      gnomeward.game.profile.roundCoins = values.coins;
+    }, values);
+    await page.waitForFunction(values => {
+      const gold = document.getElementById('hud-gold');
+      const points = document.getElementById('hud-points');
+      const coins = document.getElementById('hud-round-coins');
+      const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumSignificantDigits: 3 });
+      return gold.textContent === compact.format(values.gold) &&
+        Number(points.title.replace(/[^0-9.]/g, '')) === values.points &&
+        coins.textContent === compact.format(values.coins);
+    }, values);
+    await settled();
+    const layout = await page.evaluate(() => {
+      const rectangle = rect => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height });
+      const stats = [...document.querySelectorAll('.hud > .hud-stat')].map(stat => {
+        const icon = stat.querySelector('svg'), value = stat.querySelector('strong');
+        const texts = [...stat.querySelectorAll('strong, small')].flatMap(node => {
+          if (!node.getClientRects().length || getComputedStyle(node).visibility === 'hidden') return [];
+          const range = document.createRange(); range.selectNodeContents(node);
+          return [{ text: node.textContent, rect: rectangle(range.getBoundingClientRect()) }];
+        });
+        return { id: value.id, text: value.textContent, bounds: rectangle(stat.getBoundingClientRect()),
+          icon: rectangle(icon.getBoundingClientRect()), texts };
+      });
+      return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, stats };
+    });
+    assert.equal(layout.stats.length, 4, 'all four HUD resources remain present');
+    assert.ok(layout.scrollWidth <= width, 'large HUD values do not widen the page');
+    for (const [index, stat] of layout.stats.entries()) {
+      assert.ok(stat.bounds.left >= -1 && stat.bounds.right <= width + 1, `${stat.id} remains on screen`);
+      assert.ok(stat.icon.width > 0 && stat.icon.height > 0 && stat.texts.length > 0, `${stat.id} has a visible icon and value`);
+      for (const content of [stat.icon, ...stat.texts.map(text => text.rect)]) {
+        assert.ok(content.width > 0 && content.height > 0, `${stat.id} text/icon is visible`);
+        assert.ok(content.left >= stat.bounds.left - 1 && content.right <= stat.bounds.right + 1 &&
+          content.top >= stat.bounds.top - 1 && content.bottom <= stat.bounds.bottom + 1,
+        `${stat.id} text/icon fits its own stat at ${width}px: ${JSON.stringify({ stat, content, values })}`);
+      }
+      const valueText = stat.texts[0].rect;
+      assert.ok(stat.icon.right <= valueText.left + 1 || stat.icon.bottom <= valueText.top + 1 ||
+        valueText.right <= stat.icon.left + 1 || valueText.bottom <= stat.icon.top + 1,
+        `${stat.id} icon does not cover its value at ${width}px: ${JSON.stringify(stat)}`);
+      if (index > 0) {
+        const previous = layout.stats[index - 1];
+        assert.ok(previous.bounds.right <= stat.bounds.left + 1 || previous.bounds.bottom <= stat.bounds.top + 1,
+          `${previous.id} and ${stat.id} do not overlap at ${width}px`);
+      }
+    }
+    hudLayouts.push({ ...layout, values });
+  }
 }
 
 try {
@@ -158,8 +217,12 @@ try {
   await page.reload(); await enter(); await openShop();
   await checkPhone(390); await checkPhone(320);
   checks.push('390px and 320px shops have no horizontal overflow and both purchase controls remain reachable');
+  await closeShop();
+  stage = 'large persistent and run wallets across four HUD sizes';
+  for (const [width, height] of [[1280, 800], [844, 390], [390, 844], [320, 568]]) await checkLargeWalletHud(width, height);
+  checks.push('Large gold, points and Round Coin values fit all four HUD stats without icon/text or adjacent overlap at 1280, 844, 390 and 320px');
   assert.deepEqual(errors, []);
-  const summary = { ok: true, checks, round, restored, layouts, errors };
+  const summary = { ok: true, checks, round, restored, layouts, hudLayouts, errors };
   await writeFile('playtest-results/shop-browser.json', JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary, null, 2));
 } catch (error) {
