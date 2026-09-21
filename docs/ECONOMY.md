@@ -17,7 +17,7 @@ The existing `gnomeward-profile` browser save gains `roundCoins`, `cosmetics`, `
 
 The server remains authoritative for rounds, combat, match gold and upgrade points. For this casual co-op game it accepts only the bounded cosmetic/permanent-perk loadout from browser saves; this is not an authenticated commerce system or a ranked anti-cheat boundary. Each server run assigns unique per-player receipt keys and cumulative earned counts. The browser pays only the increase over its saved maximum for that receipt. The most recent 128 receipts are retained, which covers reconnectable rooms while bounding storage.
 
-Co-op requires server 0.3.1 or later. With an older server the shop explains that an update is needed; it does not simulate local coin awards or modify remote combat.
+Co-op requires server 0.3.2 or later. With an older server the shop explains that an update is needed; it does not simulate local coin awards or modify remote combat.
 
 ## Verification
 

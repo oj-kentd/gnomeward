@@ -218,7 +218,38 @@ try {
   await a.screenshot({ path: 'playtest-results/coop-game-upgraded.png', fullPage: true });
   await a.locator('[data-close-upgrades]').click();
 
-  stage = 'leaving restores solo play without changing solo progression';
+  stage = 'completed co-op rounds credit each permanent wallet exactly once';
+  const receipts = [];
+  const completedWaves = await a.evaluate(() => gnomeward.game.completedWaves);
+  assert.ok(Number.isSafeInteger(completedWaves) && completedWaves >= 1, 'real combat completed at least one round');
+  for (const device of [host, guest]) {
+    const reward = await device.page.evaluate(() => {
+      const { game, state } = gnomeward, multiplayer = state.multiplayer;
+      const player = multiplayer.players.find(player => player.id === multiplayer.sessionId);
+      return { completedWaves: game.completedWaves, supported: multiplayer.shopSupported,
+        earned: multiplayer.roundCoinsEarned, receiptKey: multiplayer.receiptKey,
+        playerEarned: player.roundCoinsEarned, playerReceipt: player.receiptKey };
+    });
+    assert.equal(reward.supported, true, 'the released server supports permanent shop rewards');
+    assert.equal(reward.completedWaves, completedWaves, 'both browsers received the completed round');
+    assert.equal(reward.earned, completedWaves, 'one permanent coin per actual completed round, including after reconnect');
+    assert.equal(reward.playerEarned, completedWaves, 'the player receipt agrees with the server board');
+    assert.match(reward.receiptKey, /^[a-zA-Z0-9_.:-]{1,160}$/);
+    assert.equal(reward.receiptKey, reward.playerReceipt, 'the adapter uses this player’s server receipt');
+    assert.equal(Object.hasOwn(device.profile.coopRoundReceipts, reward.receiptKey), false, 'a new room gets a new receipt');
+    receipts.push(reward.receiptKey);
+    // Compare every profile field, allowing exactly the earned coins and this
+    // room's cumulative receipt. Solo unlocks, records and purchases must match.
+    device.expectedProfile = { ...device.profile,
+      roundCoins: device.profile.roundCoins + completedWaves,
+      coopRoundReceipts: { ...device.profile.coopRoundReceipts, [reward.receiptKey]: completedWaves } };
+    assert.deepEqual(await device.page.evaluate(() => gnomeward.state.shopProfile), device.expectedProfile);
+    assert.deepEqual(await device.page.evaluate(() => JSON.parse(localStorage.getItem('gnomeward-profile'))), device.expectedProfile,
+      'earned coins and the anti-duplicate receipt are persisted before leaving');
+  }
+  assert.notEqual(receipts[0], receipts[1], 'each player has a distinct reward receipt');
+
+  stage = 'leaving restores all solo progression plus earned permanent coins';
   for (const device of [guest, host]) {
     if (device === host) {
       // A teammate leaving ends the match and opens the host's result dialog.
@@ -226,16 +257,17 @@ try {
     } else await device.page.locator('#coop-button').click();
     await device.page.locator('[data-coop-leave]').click();
     await device.page.waitForFunction(() => !gnomeward.state.multiplayer?.roomId);
-    assert.deepEqual(await device.page.evaluate(() => gnomeward.game.profile), device.profile);
+    assert.deepEqual(await device.page.evaluate(() => gnomeward.game.profile), device.expectedProfile);
     assert.equal(await device.page.evaluate(() => gnomeward.game.isUnlocked('gravity')), true);
     assert.equal(await device.page.locator('#map-button').isEnabled(), true);
     const stored = await device.page.evaluate(() => JSON.parse(localStorage.getItem('gnomeward-profile')));
+    assert.deepEqual(stored, device.expectedProfile, 'leaving neither loses nor duplicates permanent round rewards');
     assert.deepEqual(stored.unlocks, profile.unlocks);
     assert.equal(stored.bestRounds.meadow, 23);
     assert.equal(stored.bestRounds.quarry, 7);
   }
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, baseURL, checks: ['in-game public co-op lobby', 'two real players', 'shared rendered defenses', 'separate wallets', 'server-enforced tower ownership', 'both-player readiness', 'shared enemies', 'host speed', 'shared pause', 'menus keep remote game running', 'reload resumes same seat', 'same-seat reconnect', 'earned-point upgrade replication', 'solo progression preserved', 'phone lobby and game layout'], errors }, null, 2));
+  console.log(JSON.stringify({ ok: true, baseURL, checks: ['in-game public co-op lobby', 'two real players', 'shared rendered defenses', 'separate wallets', 'server-enforced tower ownership', 'both-player readiness', 'shared enemies', 'host speed', 'shared pause', 'menus keep remote game running', 'reload resumes same seat', 'same-seat reconnect', 'earned-point upgrade replication', 'one saved permanent coin per completed round', 'distinct reconnect-safe player receipts', 'all other solo progression preserved', 'phone lobby and game layout'], errors }, null, 2));
 } catch (error) {
   console.error(`Co-op browser check failed at: ${stage}`);
   console.error(error);
