@@ -2,9 +2,9 @@
 
 Yes: add Gnomeward as another published application on your existing Cloudflare Tunnel. Keep the existing `cloudflared` container, tunnel, token, and other routes. One tunnel can serve multiple hostnames. [Cloudflare routing documentation](https://developers.cloudflare.com/tunnel/concepts/routing/)
 
-Server 0.3.2 supports the published game’s **Co-op** button and public lobby list. Install this update, then open the normal game in two browsers: one player creates a co-op lobby, the other joins it. The server root also retains a connection-test page. PvP gameplay is not yet connected to the main game.
+Server 0.3.3 supports the published game’s **Co-op** button and public lobby list. Install this update, then open the normal game in two browsers: one player creates a co-op lobby, the other joins it. The server root also retains a connection-test page. PvP gameplay is not yet connected to the main game.
 
-**Already running an earlier server?** Update to **0.3.2** and refresh both browsers for Round Coin rewards, the Skeletor necromancer costume, and the permanent boss-damage perk in co-op. Each player earns one coin per completed round; perks apply to their own gnomes. Existing combinations, enemy traits, shared countdowns, readiness, and smooth motion remain included. Keep the same data mount, port, environment variables, and Cloudflare route. The shop wallet and purchases live in each browser, so the server update does not erase them. Earlier servers still play co-op but do not provide shop rewards or perks.
+**Already running an earlier server?** Update to **0.3.3** and refresh both browsers for Round Coin rewards, the Skeletor necromancer costume, and the permanent boss-damage perk in co-op. Each player earns one coin per completed round; perks apply to their own gnomes. Existing combinations, enemy traits, shared countdowns, readiness, and smooth motion remain included. Keep the same data mount, port, environment variables, and Cloudflare route. The shop wallet and purchases live in each browser, so the server update does not erase them. Earlier servers still play co-op but do not provide shop rewards or perks.
 
 The intended connections are:
 
@@ -23,21 +23,21 @@ Cloudflare provides public HTTPS/WSS. The service speaks HTTP/WebSocket on the p
 The release includes a tested **Linux amd64** Docker image for a typical Unraid server. Download and import it from the Unraid terminal; no GitHub registry login or package permissions are needed:
 
 ```bash
-mkdir -p /mnt/user/appdata/gnomeward-install/0.3.2
-cd /mnt/user/appdata/gnomeward-install/0.3.2
-curl -fLO https://github.com/oj-kentd/gnomeward/releases/download/server-v0.3.2/gnomeward-server-0.3.2-linux-amd64.tar.gz
-curl -fLO https://github.com/oj-kentd/gnomeward/releases/download/server-v0.3.2/SHA256SUMS
+mkdir -p /mnt/user/appdata/gnomeward-install/0.3.3
+cd /mnt/user/appdata/gnomeward-install/0.3.3
+curl -fLO https://github.com/oj-kentd/gnomeward/releases/download/server-v0.3.3/gnomeward-server-0.3.3-linux-amd64.tar.gz
+curl -fLO https://github.com/oj-kentd/gnomeward/releases/download/server-v0.3.3/SHA256SUMS
 sha256sum -c SHA256SUMS
 ```
 
 Continue only after the checksum reports **OK**:
 
 ```bash
-docker load -i gnomeward-server-0.3.2-linux-amd64.tar.gz
-docker image inspect gnomeward-server:0.3.2 --format '{{.Os}}/{{.Architecture}}'
+docker load -i gnomeward-server-0.3.3-linux-amd64.tar.gz
+docker image inspect gnomeward-server:0.3.3 --format '{{.Os}}/{{.Architecture}}'
 ```
 
-The last command should print `linux/amd64`. Keep the downloaded archive for rollback, or retain the release link. The local image is named **`gnomeward-server:0.3.2`**; it is not pulled from Docker Hub or GHCR.
+The last command should print `linux/amd64`. Keep the downloaded archive for rollback, or retain the release link. The local image is named **`gnomeward-server:0.3.3`**; it is not pulled from Docker Hub or GHCR.
 
 ### Add the container in Unraid
 
@@ -46,7 +46,7 @@ Use **Docker → Add Container**. Switch to **Advanced View** to see Extra Param
 | Setting | Value |
 | --- | --- |
 | Name | `gnomeward-server` |
-| Repository | `gnomeward-server:0.3.2` (the image loaded above) |
+| Repository | `gnomeward-server:0.3.3` (the image loaded above) |
 | Network Type | `Bridge` |
 | Privileged | Off |
 | WebUI | `http://[IP]:[PORT:2567]/` |
@@ -78,7 +78,7 @@ The image normally runs as UID/GID `1000:1000`; the Extra Parameters above use U
 
 Select **Apply**, then enable **Autostart** for Gnomeward. Leave Post Arguments empty. If port 2567 is already occupied, change only the host port and use that port in the tunnel origin and LAN test URL.
 
-The pinned `0.3.2` tag gives reproducible setup. Do not enable registry auto-updates for this local image; install subsequent release archives as described below. Unraid's registry update check may show an unavailable status because this image has no registry pull source.
+The pinned `0.3.3` tag gives reproducible setup. Do not enable registry auto-updates for this local image; install subsequent release archives as described below. Unraid's registry update check may show an unavailable status because this image has no registry pull source.
 
 ### Optional: Compose or a source build
 
@@ -87,11 +87,11 @@ If you already manage containers with Compose, use [compose.unraid.yml](../deplo
 For another CPU architecture, or if downloading a prebuilt image is unavailable, build the tagged source locally:
 
 ```bash
-mkdir -p /mnt/user/appdata/gnomeward-source/0.3.2
-cd /mnt/user/appdata/gnomeward-source/0.3.2
-curl -fL https://github.com/oj-kentd/gnomeward/archive/refs/tags/server-v0.3.2.tar.gz -o source.tar.gz
+mkdir -p /mnt/user/appdata/gnomeward-source/0.3.3
+cd /mnt/user/appdata/gnomeward-source/0.3.3
+curl -fL https://github.com/oj-kentd/gnomeward/archive/refs/tags/server-v0.3.3.tar.gz -o source.tar.gz
 tar -xzf source.tar.gz --strip-components=1
-docker build -f Dockerfile.server -t gnomeward-server:0.3.2 .
+docker build -f Dockerfile.server -t gnomeward-server:0.3.3 .
 ```
 
 Then use the same container settings above. The build requires Internet access for the Node base image and npm dependencies; it does not need Blender or a GPU.
@@ -201,10 +201,10 @@ Keep this dedicated game hostname reachable without an interactive Cloudflare Ac
 | Stale diagnostic/API responses | Exclude the service hostname from any custom “Cache Everything” rule. It carries live state and should not be cached. |
 | Connection drops during maintenance | Server/connector updates end connections; active rooms do not survive a server restart. |
 | Co-op looks choppy even in round one while solo is smooth | Refresh both game browsers to load the current client, which smooths motion between network snapshots. This fix also works against server 0.2.2; changing the tunnel or increasing snapshot traffic is unnecessary. If movement still stalls, compare LAN/public connections and watch server CPU and upload bandwidth. |
-| Hidden combinations behave differently in co-op | Load server 0.3.2, verify `/healthz` reports 0.3.2, refresh both browsers, and start a fresh room. |
-| Shared auto says “server update” | Load server 0.3.2, verify `/healthz` reports 0.3.2, and start a fresh room. Readiness highlighting works with older servers; shared countdowns and changing a Ready vote need the update. |
-| Soul Echoes remains unavailable in co-op | Verify `/healthz` reports server 0.3.2. Find Morrow, revisit the Pumpkin Hollow cottage, and complete its later clue. A solo browser unlock does not grant a server reward. |
-| Unraid tries to pull an image and fails | Load the release archive first. The Repository field must exactly match the imported local tag, `gnomeward-server:0.3.2`. This image is not on Docker Hub. |
+| Hidden combinations behave differently in co-op | Load server 0.3.3, verify `/healthz` reports 0.3.3, refresh both browsers, and start a fresh room. |
+| Shared auto says “server update” | Load server 0.3.3, verify `/healthz` reports 0.3.3, and start a fresh room. Readiness highlighting works with older servers; shared countdowns and changing a Ready vote need the update. |
+| Soul Echoes remains unavailable in co-op | Verify `/healthz` reports server 0.3.3. Find Morrow, revisit the Pumpkin Hollow cottage, and complete its later clue. A solo browser unlock does not grant a server reward. |
+| Unraid tries to pull an image and fails | Load the release archive first. The Repository field must exactly match the imported local tag, `gnomeward-server:0.3.3`. This image is not on Docker Hub. |
 | Release download returns 404 or checksum fails | Check the release version and asset names. Do not import a failed download; retry the download or build from the tagged source. |
 
 For origin reachability errors, see [Cloudflare's troubleshooting reference](https://developers.cloudflare.com/tunnel/troubleshooting/). Do not expose the Unraid management UI or Docker socket through the game route.
