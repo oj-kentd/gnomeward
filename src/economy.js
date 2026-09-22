@@ -5,6 +5,14 @@ const validCount = value => Number.isSafeInteger(value) && value >= 0 && value <
 const validReceipt = key => typeof key === 'string' && /^[a-zA-Z0-9_.:-]{1,160}$/.test(key) && !['__proto__', 'constructor', 'prototype'].includes(key);
 const PERK_PROFILE_KEYS = Object.freeze({ 'boss-damage': 'bossDamageUnlocked', 'tumble-speed': 'tumbleSpeedUnlocked' });
 
+export const TUMBLE_DAY_EVENT = Object.freeze({
+  timeZone: 'America/New_York', firstYear: 2026, month: 9, day: 22,
+  launchDurationDays: 7, durationDays: 7, saleCost: 50, regularCost: 1000,
+});
+const eventDate = new Intl.DateTimeFormat('en-US', {
+  timeZone: TUMBLE_DAY_EVENT.timeZone, year: 'numeric', month: 'numeric', day: 'numeric',
+});
+
 export const COSTUMES = Object.freeze([
   Object.freeze({ itemId: 'necro-skeletor', towerType: 'necro', skin: 'skeletor', profileKey: 'equippedNecroSkin', modelName: 'gnome-necro-skeletor', portrait: 'necro-skeletor' }),
   Object.freeze({ itemId: 'boom-orange-knight', towerType: 'boom', skin: 'orange-knight', profileKey: 'equippedBoomSkin', modelName: 'gnome-boom-orange-knight', portrait: 'boom-orange-knight' }),
@@ -16,8 +24,24 @@ export const SHOP_ITEMS = Object.freeze([
   Object.freeze({ id: 'boom-orange-knight', name: 'Orange Knight Bramble', cost: 100, description: 'Orange armor and a knight’s helmet for Bramble. Cosmetic only; the same explosive guardian underneath.' }),
   Object.freeze({ id: 'sprout-skeleton', name: 'Skeleton Sprout', cost: 100, description: 'skeleton vs skeletons who wins ???' }),
   Object.freeze({ id: 'boss-damage', name: 'Boss Breaker', cost: 50, description: 'Permanently doubles your gnomes’ damage against bosses, including poison and summoned guardians.' }),
-  Object.freeze({ id: 'tumble-speed', name: 'Turbo Tumble', cost: 50, description: 'Permanently triples Tumble’s attack speed at every upgrade level. Same damage and shots per attack; three times the volleys.' }),
+  Object.freeze({ id: 'tumble-speed', name: 'Turbo Tumble', cost: TUMBLE_DAY_EVENT.regularCost, description: 'Permanently triples Tumble’s attack speed at every upgrade level. Same damage and shots per attack; three times the volleys.' }),
 ]);
+
+export function getShopOffer(id, now = Date.now()) {
+  const item = SHOP_ITEMS.find(item => item.id === id);
+  if (!item) return null;
+  let saleActive = false;
+  const timestamp = now instanceof Date ? now.getTime() : now;
+  if (id === 'tumble-speed' && typeof timestamp === 'number' && Number.isFinite(timestamp) &&
+      timestamp >= Date.UTC(TUMBLE_DAY_EVENT.firstYear, 0, 1) && Number.isFinite(new Date(timestamp).getTime())) {
+    const parts = Object.fromEntries(eventDate.formatToParts(timestamp).map(part => [part.type, part.value]));
+    const year = Number(parts.year), month = Number(parts.month), day = Number(parts.day);
+    const days = year === TUMBLE_DAY_EVENT.firstYear ? TUMBLE_DAY_EVENT.launchDurationDays : TUMBLE_DAY_EVENT.durationDays;
+    saleActive = year >= TUMBLE_DAY_EVENT.firstYear && month === TUMBLE_DAY_EVENT.month &&
+      day >= TUMBLE_DAY_EVENT.day && day < TUMBLE_DAY_EVENT.day + days;
+  }
+  return Object.freeze({ ...item, cost: saleActive ? TUMBLE_DAY_EVENT.saleCost : item.cost, regularCost: item.cost, saleActive });
+}
 
 export function getTowerSkin(profile, type) {
   if (!profile || typeof profile !== 'object' || Array.isArray(profile) || !Array.isArray(profile.cosmetics)) return null;
@@ -39,9 +63,9 @@ export function normalizeEconomy(profile) {
   return profile;
 }
 
-export function buyShopItem(profile, id) {
+export function buyShopItem(profile, id, now = Date.now()) {
   if (!normalizeEconomy(profile)) return false;
-  const item = SHOP_ITEMS.find(item => item.id === id);
+  const item = getShopOffer(id, now);
   if (!item || profile.roundCoins < item.cost) return false;
   const perkKey = PERK_PROFILE_KEYS[id];
   if (perkKey ? profile[perkKey] : profile.cosmetics.includes(id)) return false;

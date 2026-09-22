@@ -12,7 +12,7 @@ Earn **1 Round Coin per completed round**, including endless rounds. Open the sh
 
 - **100 coins: Skeletor Morrow** — a Blender-made necromancer costume. Once owned, switch freely between Skeletor and the original look. The costume does not unlock the hidden necromancer or change its stats.
 - **100 coins each: Orange Knight Bramble and Skeleton Sprout** — two more Blender-made costumes. Equip each independently, or switch back to the original for free. Sprout asks: “skeleton vs skeletons who wins ???”.
-- **50 coins: Turbo Tumble** — permanently triples Tumble’s attack speed at every upgrade tier. Includes existing and future Tumbles; in co-op, only your gnomes receive your purchase. Clearing round 15 still unlocks the character.
+- **1,000 coins (50 during Tumble Day): Turbo Tumble** — permanently triples Tumble’s attack speed at every upgrade tier. Includes existing and future Tumbles; in co-op, only your gnomes receive your purchase. Clearing round 15 still unlocks the character. The 50-coin launch offer runs September 22–28, 2026, and returns September 22–28 every year (Eastern time). Purchased upgrades stay permanent after the offer ends.
 - **50 coins: Boss Breaker** — a **permanent** 2× damage bonus against bosses, including poison and summoned guardians.
 
 In co-op, each player earns a full coin per cleared round and uses their own saved costume and boss perk. Choose purchases and equipment before joining; loadouts stay fixed for that room. Refreshing or reconnecting does not award the same completed rounds again. Co-op shop support requires **server 0.3.5**. There are no accounts or cross-device cloud saves; details are in [the economy notes](docs/ECONOMY.md).

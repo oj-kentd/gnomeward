@@ -1,6 +1,6 @@
 import { MAPS, TOWERS, ENEMIES, NECRO_PATH_SECRET } from './data.js';
 import { ENEMY_TRAITS, damageKindForTower } from './enemy-traits.js';
-import { SHOP_ITEMS, COSTUMES, getTowerSkin } from './economy.js';
+import { SHOP_ITEMS, COSTUMES, getTowerSkin, getShopOffer, TUMBLE_DAY_EVENT } from './economy.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const n = (value) => Math.round(Number(value) || 0).toLocaleString();
@@ -187,7 +187,7 @@ export class UI {
     document.getElementById('dialog-content').addEventListener('click', (event) => {
       if (event.target.closest('button:disabled')) return;
       const purchase = event.target.closest('[data-shop-buy]');
-      if (purchase) actions.onShopBuy?.(purchase.dataset.shopBuy);
+      if (purchase) actions.onShopBuy?.(purchase.dataset.shopBuy, Number(purchase.dataset.shopPrice));
       const costume = event.target.closest('[data-shop-skin]');
       if (costume) actions.onShopEquip?.(costume.dataset.shopTower, costume.dataset.shopSkin);
       if (event.target.closest('[data-coop-refresh]')) actions.onCoopRefresh?.();
@@ -240,6 +240,13 @@ export class UI {
     document.getElementById('coin-shop-button').setAttribute('aria-label', `Round Coin shop · ${n(coinCount)} coins`);
     const shopBalance = document.getElementById('shop-wallet-value');
     if (shopBalance) shopBalance.textContent = n(coinCount);
+    if (this.modalType === 'coin-shop' && this.shopOfferCost !== getShopOffer('tumble-speed').cost) {
+      const scrollTop = this.dialog.scrollTop;
+      const focusedItem = document.activeElement?.dataset?.shopBuy;
+      this.showCoinShop();
+      this.dialog.scrollTop = scrollTop;
+      if (focusedItem) document.querySelector(`[data-shop-buy="${focusedItem}"]:not(:disabled)`)?.focus({ preventScroll: true });
+    }
     if (this.modalType === 'help') {
       const signature = JSON.stringify(game.profile?.enemyTraits || []);
       if (signature !== this.traitGuideSignature) {
@@ -589,9 +596,18 @@ export class UI {
     const profile = state.shopProfile || game.profile;
     const coins = profile.roundCoins || 0;
     const multiplayer = state.multiplayer;
-    const purchase = item => `<button class="primary-button coin-purchase" data-shop-buy="${item.id}" ${multiplayer || coins < item.cost ? 'disabled' : ''}>${icons.coin} ${n(item.cost)} Round Coins</button>${coins < item.cost ? `<small class="coin-shortage">${n(item.cost - coins)} more to go</small>` : ''}`;
+    const now = Date.now();
+    const purchase = item => {
+      const offer = getShopOffer(item.id, now);
+      return `<button class="primary-button coin-purchase" data-shop-buy="${item.id}" data-shop-price="${offer.cost}" ${multiplayer || coins < offer.cost ? 'disabled' : ''}>${icons.coin} ${n(offer.cost)} Round Coins</button>${coins < offer.cost ? `<small class="coin-shortage">${n(offer.cost - coins)} more to go</small>` : ''}`;
+    };
     const boss = SHOP_ITEMS.find(item => item.id === 'boss-damage');
-    const tumble = SHOP_ITEMS.find(item => item.id === 'tumble-speed');
+    const tumble = getShopOffer('tumble-speed', now);
+    this.shopOfferCost = tumble.cost;
+    const eventStart = new Date(Date.UTC(2000, TUMBLE_DAY_EVENT.month - 1, TUMBLE_DAY_EVENT.day));
+    const startLabel = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' }).format(eventStart);
+    const endDay = new Date(eventStart.getTime() + (TUMBLE_DAY_EVENT.durationDays - 1) * 86400000).getUTCDate();
+    const saleDates = TUMBLE_DAY_EVENT.durationDays === 1 ? startLabel : `${startLabel}–${endDay}`;
     this.openModal('coin-shop', `<section id="round-coin-shop" class="coin-shop">
       <div class="modal-heading"><div><span class="eyebrow">LITTLE TREASURES. BIG ADVENTURES.</span><h2>Round Coin Shop</h2></div><button class="modal-close" data-close aria-label="Close Round Coin shop">×</button></div>
       <div class="coin-wallet-banner">${icons.coin}<div><strong id="shop-wallet-value">${n(coins)}</strong><span>Round Coins</span></div><p>Clear a round. Earn a coin.<br>Keep your treasures between games.</p></div>
@@ -601,6 +617,7 @@ export class UI {
       <div class="coin-shop-grid">
         <article class="coin-shop-card tumble-card" data-shop-item="tumble-speed"><div class="shop-product-art tumble-product-art">${portrait('multi')}<span class="tumble-multiplier">3×</span><span class="shop-product-badge">PERMANENT TUMBLE POWER</span></div>
           <div class="shop-product-copy"><h3>${esc(tumble.name)}</h3><p>${esc(tumble.description)}</p><small>Permanent · Works with every upgrade level. ${game.isUnlocked('multi') ? 'All your Tumbles get the boost.' : 'Unlock Tumble by clearing round 15 to use this power.'}</small></div>
+          <div class="tumble-sale-note ${tumble.saleActive ? 'on-sale' : ''}">${tumble.saleActive ? `<strong>Tumble Day celebration!</strong><span><s>${n(tumble.regularCost)}</s> <b>${n(tumble.cost)} Round Coins</b></span><small>${saleDates}, Eastern time · Returns every year.</small>` : `<strong>${n(tumble.cost)} Round Coins</strong><small>Tumble Day deal: ${n(TUMBLE_DAY_EVENT.saleCost)} coins every ${saleDates}, Eastern time.</small>`}<small>${profile.tumbleSpeedUnlocked ? 'Already yours forever. No repurchase needed.' : 'Buy once. Keep the upgrade forever.'}</small></div>
           <div class="shop-product-action">${profile.tumbleSpeedUnlocked ? '<span class="shop-owned">✓ Active forever · 3× attack speed</span>' : purchase(tumble)}</div>
         </article>
         ${COSTUMES.map(costume => {

@@ -5,7 +5,7 @@ import { UI } from './ui.js';
 import { GardenRenderer } from './renderer.js';
 import { MusicPlayer, MUSIC_TRACKS } from './music.js';
 import { CoopClient, applyCoopSnapshot, coopCountdown } from './multiplayer.js';
-import { buyShopItem, equipTowerSkin, getTowerSkin, SHOP_ITEMS, applyCoopRoundReward } from './economy.js';
+import { buyShopItem, getShopOffer, equipTowerSkin, getTowerSkin, SHOP_ITEMS, applyCoopRoundReward } from './economy.js';
 
 let profile={unlocks:[]};
 try { const saved=JSON.parse(localStorage.getItem('gnomeward-profile')||'null');if(saved&&Array.isArray(saved.unlocks))profile={...saved,unlocks:saved.unlocks.filter(id=>Object.hasOwn(TOWERS,id))}; }catch{}
@@ -161,8 +161,16 @@ function targetNext(){
   refreshUI();
 }
 function newGarden(mapId){if(!ready||state.multiplayer)return;save();profile=game.profile;game=new Game(mapId,profile);Object.assign(state,{selectedTowerId:null,placingType:null,paused:false,autoCountdown:null});world?.setMap(game.map,MAPS.findIndex(m=>m.id===mapId));refreshUI();}
-function shopBuy(id) {
-  if (state.multiplayer || !buyShopItem(game.profile, id)) return;
+function shopBuy(id, quotedPrice) {
+  if (state.multiplayer) return;
+  const now = Date.now(), offer = getShopOffer(id, now);
+  if (!offer) return;
+  if (quotedPrice !== offer.cost) {
+    refreshUI(); ui.showCoinShop();
+    ui.toast('The shop offer has changed. Check the current price before buying.');
+    return;
+  }
+  if (!buyShopItem(game.profile, id, now)) { refreshUI(); ui.showCoinShop(); return; }
   if (id === 'tumble-speed') for (const tower of game.towers) if (tower.type === 'multi') tower.cooldown /= 3;
   save(); refreshUI(); ui.showCoinShop(); beep(880,.16);
   ui.toast(id === 'boss-damage' ? 'Boss Breaker unlocked forever · 2× damage against bosses!' : id === 'tumble-speed' ? 'Turbo Tumble unlocked forever · 3× attack speed!' : `${SHOP_ITEMS.find(item => item.id === id)?.name || 'Costume'} unlocked! Equip it in the shop.`);
@@ -264,4 +272,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.3.5'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.3.6'};

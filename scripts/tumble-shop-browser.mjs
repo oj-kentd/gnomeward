@@ -10,6 +10,8 @@ await mkdir('playtest-results', { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, headless: true,
   args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+// Pin the launch sale without stopping animation frames or browser timers.
+await page.clock.setFixedTime(new Date('2026-09-22T04:00:00Z'));
 page.setDefaultTimeout(45000);
 const errors = [], checks = [], selections = [];
 page.on('pageerror', error => errors.push(error.message));

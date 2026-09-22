@@ -7,7 +7,7 @@ Round Coins are collection currency, separate from the gold used to place gnomes
 | Skeletor Morrow | 100 Round Coins | Necromancer costume ownership; free switching between original and Skeletor |
 | Orange Knight Bramble | 100 Round Coins | Bramble costume ownership; free switching to the original |
 | Skeleton Sprout | 100 Round Coins | Sprout costume ownership; description: “skeleton vs skeletons who wins ???” |
-| Turbo Tumble | 50 Round Coins | Permanent 3× attack speed for the player’s Tumbles at every upgrade tier |
+| Turbo Tumble | 1,000 Round Coins; 50 during Tumble Day | Permanent 3× attack speed for the player’s Tumbles at every upgrade tier |
 | Boss Breaker | 50 Round Coins | Permanent 2× damage to bosses from the player's gnomes, poison and reborn guardians |
 
 Buying a costume does not reveal or unlock the hidden necromancer. Costumes do not change combat stats. Turbo Tumble increases firing frequency without changing damage per hit, volley size, or hidden-combination cooldowns. None of these purchases changes the two-path limit. Purchases cannot be bought twice or stacked.
@@ -25,3 +25,7 @@ Co-op rewards and the original shop items require server 0.3.3 or later. Orange 
 ## Verification
 
 `npm test` includes economy purchases, save normalization, duplicate rewards, endless/loss behavior, owner-specific damage and real WebSocket loadout/reconnection tests. `npm run test:shop-browser` exercises purchases, skin swapping, reload persistence and phone layouts. `npm run test:shop-coop-browser` checks the actual main-game snapshot callback, fixed room loadouts, reconnect receipts, separate player skins, and legacy-server behavior.
+
+## Tumble Day pricing
+
+Turbo Tumble costs 50 Round Coins from September 22 at midnight through September 28 each year, beginning in 2026, using America/New_York time. At midnight on September 29 it returns to 1,000 coins. The shop displays the dates and regular price, refreshes an open offer at the boundary, and checks the price again on purchase. If the displayed price has changed, the player must click the updated offer before any coins are spent. Existing owners keep the permanent upgrade without paying again. This pricing update needs no server update beyond the existing Turbo Tumble support in server 0.3.5.

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../src/game.js';
 import { TOWERS } from '../src/data.js';
-import { SHOP_ITEMS, COSTUMES, MAX_ROUND_COINS, normalizeEconomy, buyShopItem, equipNecroSkin, getTowerSkin, equipTowerSkin, applyCoopRoundReward } from '../src/economy.js';
+import { SHOP_ITEMS, COSTUMES, TUMBLE_DAY_EVENT, MAX_ROUND_COINS, getShopOffer, normalizeEconomy, buyShopItem, equipNecroSkin, getTowerSkin, equipTowerSkin, applyCoopRoundReward } from '../src/economy.js';
 
 const clearRound = game => {
   assert.equal(game.startWave(), true);
@@ -309,20 +309,21 @@ test('summoned guardians inherit the necromancer owner boss boost without creati
   }
 });
 
-test('Turbo Tumble costs 50 coins, is permanent, and never stacks or becomes a cosmetic', () => {
-  const item = SHOP_ITEMS.find(item => item.id === 'tumble-speed');
+test('Turbo Tumble costs 50 coins during launch week, is permanent, and never stacks or becomes a cosmetic', () => {
+  const now = Date.parse('2026-09-22T14:00:00Z');
+  const item = getShopOffer('tumble-speed', now);
   assert.equal(item.name, 'Turbo Tumble');
   assert.equal(item.cost, 50);
   const profile = { roundCoins: 49, cosmetics: ['necro-skeletor'], bossDamageUnlocked: true };
-  assert.equal(buyShopItem(profile, item.id), false);
+  assert.equal(buyShopItem(profile, item.id, now), false);
   assert.equal(profile.roundCoins, 49);
   assert.equal(profile.tumbleSpeedUnlocked, false);
   profile.roundCoins = 50;
-  assert.equal(buyShopItem(profile, item.id), true);
+  assert.equal(buyShopItem(profile, item.id, now), true);
   assert.equal(profile.roundCoins, 0);
   assert.equal(profile.tumbleSpeedUnlocked, true);
   profile.roundCoins = 100;
-  assert.equal(buyShopItem(profile, item.id), false);
+  assert.equal(buyShopItem(profile, item.id, now), false);
   assert.equal(profile.roundCoins, 100);
   assert.deepEqual(profile.cosmetics, ['necro-skeletor']);
   const reloaded = new Game('meadow', JSON.parse(JSON.stringify(profile)));
@@ -331,6 +332,76 @@ test('Turbo Tumble costs 50 coins, is permanent, and never stacks or becomes a c
   assert.equal(reloaded.profile.roundCoins, 100);
   assert.equal(reloaded.isUnlocked('multi'), false, 'the shop perk does not bypass recruiting Tumble');
   assert.equal(new Game('quarry', reloaded.profile).profile.tumbleSpeedUnlocked, true);
+});
+
+test('Tumble launch week and annual offers use exact New York midnight boundaries', () => {
+  assert.ok(Object.isFrozen(TUMBLE_DAY_EVENT));
+  assert.equal(TUMBLE_DAY_EVENT.timeZone, 'America/New_York');
+  assert.equal(SHOP_ITEMS.find(item => item.id === 'tumble-speed').cost, 1000);
+  for (const year of [2026, 2027]) {
+    for (const [iso, sale] of [
+      [`${year}-09-22T03:59:59.999Z`, false],
+      [`${year}-09-22T04:00:00.000Z`, true],
+      [`${year}-09-29T03:59:59.999Z`, true],
+      [`${year}-09-29T04:00:00.000Z`, false],
+    ]) {
+      const offer = getShopOffer('tumble-speed', Date.parse(iso));
+      assert.ok(Object.isFrozen(offer));
+      assert.equal(offer.saleActive, sale, iso);
+      assert.equal(offer.cost, sale ? 50 : 1000, iso);
+      assert.equal(offer.regularCost, 1000);
+    }
+  }
+});
+
+test('Tumble offer follows the event calendar across leap years, local offsets, and years before launch', () => {
+  for (const date of ['2025-09-22T12:00:00Z', '2026-01-01T00:00:00Z', '2026-09-21T23:59:59-04:00',
+    '2026-09-29T00:00:00-04:00', '2026-12-31T23:59:59-05:00', '2027-01-01T00:00:00-05:00',
+    '2028-02-29T12:00:00Z', '2028-09-21T23:59:59-04:00', '2028-09-29T00:00:00-04:00']) {
+    assert.equal(getShopOffer('tumble-speed', Date.parse(date)).saleActive, false, date);
+  }
+  for (const date of ['2026-09-22T00:00:00-04:00', '2027-09-22T00:00:00-04:00', '2028-09-22T00:00:00-04:00']) {
+    assert.equal(getShopOffer('tumble-speed', new Date(date)).saleActive, true, date);
+  }
+  for (const invalid of [null, NaN, Infinity, -Infinity, 9e15, '2026-09-22', new Date(NaN), {}, []]) {
+    assert.equal(getShopOffer('tumble-speed', invalid).cost, 1000);
+  }
+  assert.equal(getShopOffer('unknown', Date.parse('2026-09-22')), null);
+  for (const id of ['boss-damage', 'necro-skeletor', 'boom-orange-knight', 'sprout-skeleton']) {
+    const offer = getShopOffer(id, Date.parse('2026-09-22T12:00:00Z'));
+    assert.equal(offer.cost, SHOP_ITEMS.find(item => item.id === id).cost);
+    assert.equal(offer.saleActive, false);
+  }
+});
+
+test('purchases revalidate the current price and require 1000 coins after the event', () => {
+  const beforeEnd = Date.parse('2026-09-29T03:59:59.999Z');
+  const afterEnd = beforeEnd + 1;
+  const profile = { roundCoins: 50 };
+  assert.equal(getShopOffer('tumble-speed', beforeEnd).cost, 50, 'an open shop can display an offer before it expires');
+  assert.equal(buyShopItem(profile, 'tumble-speed', afterEnd), false, 'purchase does not trust the old displayed price');
+  assert.equal(profile.roundCoins, 50);
+  profile.roundCoins = 999;
+  assert.equal(buyShopItem(profile, 'tumble-speed', afterEnd), false);
+  assert.equal(profile.roundCoins, 999);
+  profile.roundCoins = 1000;
+  assert.equal(buyShopItem(profile, 'tumble-speed', afterEnd), true);
+  assert.equal(profile.roundCoins, 0);
+  assert.equal(profile.tumbleSpeedUnlocked, true);
+  assert.deepEqual(profile.cosmetics, []);
+});
+
+test('launch purchases remain permanent after the sale and cannot be repurchased during later annual events', () => {
+  const profile = { roundCoins: 50 };
+  assert.equal(buyShopItem(profile, 'tumble-speed', Date.parse('2026-09-22T12:00:00Z')), true);
+  const reloaded = new Game('meadow', JSON.parse(JSON.stringify(profile)));
+  reloaded.profile.roundCoins = 1000;
+  for (const date of ['2026-09-29T12:00:00Z', '2027-09-22T12:00:00Z', '2028-01-01T12:00:00Z']) {
+    assert.equal(buyShopItem(reloaded.profile, 'tumble-speed', Date.parse(date)), false);
+    assert.equal(reloaded.profile.roundCoins, 1000);
+    assert.equal(reloaded.profile.tumbleSpeedUnlocked, true);
+    assert.equal(reloaded.getStats({ type: 'multi', levels: [0] }).interval, 1.3 / 3);
+  }
 });
 
 test('only a saved boolean true activates Turbo Tumble and old collections migrate safely', () => {
