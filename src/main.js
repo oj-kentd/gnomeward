@@ -1,3 +1,4 @@
+import { normalizeBook, discoverBook, recordBookDiscoveries } from './merging-book.js';
 import './style.css';
 import { Game } from './game.js';
 import { MAPS, TOWERS } from './data.js';
@@ -9,6 +10,7 @@ import { buyShopItem, getShopOffer, equipTowerSkin, getTowerSkin, SHOP_ITEMS, ap
 
 let profile={unlocks:[]};
 try { const saved=JSON.parse(localStorage.getItem('gnomeward-profile')||'null');if(saved&&Array.isArray(saved.unlocks))profile={...saved,unlocks:saved.unlocks.filter(id=>Object.hasOwn(TOWERS,id))}; }catch{}
+normalizeBook(profile);
 let audioPreferences = {};
 try { audioPreferences = JSON.parse(localStorage.getItem('gnomeward-audio') || '{}') || {}; } catch {}
 const preferredMusic = MUSIC_TRACKS.includes(audioPreferences.music) ? audioPreferences.music : 'off';
@@ -24,6 +26,7 @@ function refreshUI() {
     state.mergeOpen = false; state.mergePartnerId = null;
   }
   state.shopProfile = soloRun?.game.profile || game.profile;
+  if(recordBookDiscoveries(state.shopProfile,game,game.events))saveCollection();
   ui.update(game, state);
 }
 
@@ -41,6 +44,15 @@ function chooseMusic(track){
 let audio;
 function beep(pitch=440,duration=.08){if(!state.sound)return;try{audio??=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();const osc=audio.createOscillator(),gain=audio.createGain();osc.type='sine';osc.frequency.setValueAtTime(pitch,audio.currentTime);osc.frequency.exponentialRampToValueAtTime(pitch*.6,audio.currentTime+duration);gain.gain.setValueAtTime(.045,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);osc.connect(gain).connect(audio.destination);osc.start();osc.stop(audio.currentTime+duration);}catch{}}
 function save(){if(state.multiplayer)return;try{localStorage.setItem('gnomeward-profile',JSON.stringify(game.profile));}catch{}}
+function collectionProfile(){return soloRun?.game.profile || game.profile;}
+function saveCollection(){try{localStorage.setItem('gnomeward-profile',JSON.stringify(collectionProfile()));}catch{}}
+function findMergingBook(){
+  const collection=collectionProfile();
+  const found=discoverBook(collection);
+  recordBookDiscoveries(collection,game,game.events);
+  saveCollection();refreshUI();ui.showMergingBook();
+  if(found){beep(1100,.2);ui.toast('The Book of Merging is yours! Reopen it in the field guide.');}
+}
 function cancel(){state.placingType=null;state.selectedTowerId=null;world?.setGhost(null);refreshUI();}
 function choose(type){if(!ready)return;if(!game.isUnlocked(type)){ui.toast(TOWERS[type].unlockMap ? `Clear all 20 rounds of ${MAPS.find(map=>map.id===TOWERS[type].unlockMap).name} to recruit this gnome.` : TOWERS[type].unlockSecret ? `A hidden friend awaits in ${MAPS.find(map=>map.id===TOWERS[type].unlockSecret).name}.` : 'This gnome joins your team after its milestone.');return;}state.placingType=state.placingType===type?null:type;state.selectedTowerId=null;refreshUI();beep(600);}
 function cycleSpeed(){
@@ -220,6 +232,7 @@ try {
     onHover:(x,z)=>{if(!ready||!state.placingType)return;const type=state.placingType;world.setGhost(type,x,z,game.canPlace(type,x,z),game.getStats({type,levels:TOWERS[type].paths.map(()=>0)}).range,state.multiplayer ? state.multiplayer.loadout?.[type+'Skin'] : getTowerSkin(game.profile,type));},
     onClick:(x,z,hitTowerId,secretId,clueId)=>{
       if(!ready||['won','lost'].includes(game.status)||state.multiplayer?.result||state.multiplayer?.reconnecting)return;
+      if(clueId==='merging-book'&&!state.placingType){findMergingBook();return;}
       if(clueId&&!state.placingType){
         ui.showCottageClue();
         return;
@@ -269,6 +282,7 @@ function frame(now){
     let remaining=dt*state.speed;
     while(remaining>0){const step=Math.min(remaining,1/30);game.update(step);remaining-=step;}
   }
+  if(recordBookDiscoveries(collectionProfile(),game,game.events))saveCollection();
   const events=game.events.splice(0);
   const announcement=events.findLast(event=>['unlock','path-unlock','combo','trait-discovered'].includes(event.type))||events.findLast(event=>['wave-start','wave-complete'].includes(event.type));
   if (announcement) {
@@ -290,4 +304,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.4.0'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.4.1'};

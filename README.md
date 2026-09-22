@@ -172,3 +172,7 @@ Endless mode introduces three enemy traits after the campaign, using only physic
 ## Merged gnomes (0.4.0)
 
 Sprout, Tumble, and Morrow can merge in any distinct pair, then combine with the missing third gnome to form Trinity. Select a gnome and choose **Merge gnomes** to preview and confirm. Each keeps its abilities and upgrade paths; costumes stay owned but are put aside on merged units. Turbo Tumble triples all attack patterns in forms containing Tumble. Co-op merging requires server **0.4.0**. See [merging rules](docs/FUSIONS.md).
+
+## Book of Merging
+
+A lost book is hidden in Mossy Meadow. Find it to add a permanent book to the game menu. It records all four merged forms and three special combinations: undiscovered entries show guardian silhouettes and hints, while discoveries reveal their names and recipes. Progress is saved in the same browser, including discoveries made before finding the book. Co-op observations fill your own collection; the book itself needs no additional server update beyond the existing server 0.4.0 fusion support.

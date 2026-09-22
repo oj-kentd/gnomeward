@@ -1,6 +1,6 @@
 {
   "name": "gnomeward",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -34,7 +34,8 @@
     "test:shop-coop-browser": "node scripts/shop-coop-browser.mjs",
     "test:tumble-shop-browser": "node scripts/tumble-shop-browser.mjs",
     "test:tumble-day-browser": "node scripts/tumble-day-browser.mjs",
-    "test:fusions-browser": "node scripts/fusion-browser.mjs"
+    "test:fusions-browser": "node scripts/fusion-browser.mjs",
+    "test:merging-book-browser": "node scripts/merging-book-browser.mjs"
   },
   "dependencies": {
     "@colyseus/core": "0.18.14",

@@ -1,11 +1,12 @@
 import { COSTUMES } from './economy.js';
 import { FUSIONS } from './fusions.js';
+import { BOOK_LOCATION } from './merging-book.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CoopMotionBuffer } from './coop-motion.js';
 import { TOWERS, ENEMIES, SECRETS, cottagePosition } from './data.js';
 
-const ASSETS = [...Object.values(FUSIONS).map(fusion=>fusion.modelName),...COSTUMES.map(costume=>costume.modelName),'trait-armored','trait-runed','trait-toxic','combo-marker-sporefire','combo-marker-prismstorm','combo-marker-berry-singularity','berry-singularity-seed-ring','berry-singularity-arcs','berry-singularity-stars','sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
+const ASSETS = ['merging-book',...Object.values(FUSIONS).map(fusion=>fusion.modelName),...COSTUMES.map(costume=>costume.modelName),'trait-armored','trait-runed','trait-toxic','combo-marker-sporefire','combo-marker-prismstorm','combo-marker-berry-singularity','berry-singularity-seed-ring','berry-singularity-arcs','berry-singularity-stars','sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
 const ENEMY_TRAIT_MODELS = { armored: 'trait-armored', runed: 'trait-runed', toxic: 'trait-toxic' };
 const COMBO_MARKER_MODELS = { sporefire: 'combo-marker-sporefire', prismstorm: 'combo-marker-prismstorm', 'berry-singularity': 'combo-marker-berry-singularity' };
 const COMBO_BURSTS = new Set(['sporefire', 'prism-burst', 'berry-singularity']);
@@ -26,7 +27,7 @@ export class GardenRenderer {
     this.comboMarkers = new Map();
     this.comboMarkerStarts = new Map();
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    this.container=container; this.handlers=handlers; this.models={}; this.entities=new Map(); this.traps=new Map(); this.fx=new Map(); this.holes=new Map(); this.barriers=new Map(); this.secrets=new Map(); this.clues=new Map(); this.allies=new Map(); this.tintMaterials=new Map(); this.cluePlaque=null;
+    this.container=container; this.handlers=handlers; this.models={}; this.entities=new Map(); this.traps=new Map(); this.fx=new Map(); this.holes=new Map(); this.barriers=new Map(); this.secrets=new Map(); this.clues=new Map(); this.allies=new Map(); this.tintMaterials=new Map(); this.cluePlaque=null; this.mergingBook=null;
     this.scene=new THREE.Scene(); this.scene.background=new THREE.Color(0x183c35);
     this.camera=new THREE.OrthographicCamera(-16,16,12,-12,.1,150); this.camera.position.set(0,26,21); this.camera.lookAt(0,0,0);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
@@ -47,7 +48,7 @@ export class GardenRenderer {
       this.scene.updateMatrixWorld(true);
       const towers = [...this.entities].filter(([key]) => key.startsWith('t')).map(([, object]) => object);
       const towerHit = this.raycaster.intersectObjects(towers, true)[0];
-      const secretHit = this.raycaster.intersectObjects([...this.secrets.values(), ...this.clues.values()], true)[0];
+      const secretHit = this.raycaster.intersectObjects([...this.secrets.values(), ...this.clues.values(), ...(this.mergingBook?.visible ? [this.mergingBook] : [])], true)[0];
       let hit = towerHit?.object;
       while (hit && hit.userData.towerId === undefined) hit = hit.parent;
       let secret = secretHit && (!towerHit || secretHit.distance < towerHit.distance) ? secretHit.object : null;
@@ -158,6 +159,8 @@ export class GardenRenderer {
   add(name,x,y,z,sx=1,sy=sx,sz=sx,color,rotation=0) {const obj=this.clone(name,color);obj.position.set(x,y,z);obj.scale.set(sx,sy,sz);obj.rotation.y=rotation;this.world.add(obj);return obj;}
   setMap(map,index) {
     this.motion.reset();
+    for (const material of this.mergingBook?.userData.glowMaterials || []) material.dispose();
+    this.mergingBook = null;
     if (this.cluePlaque) this.cluePlaque.traverse(child => { if (child.isMesh) for (const material of Array.isArray(child.material) ? child.material : [child.material]) material.dispose(); });
     this.cluePlaque = null;
     for (const object of this.fx.values()) this.disposeEffect(object);
@@ -252,6 +255,22 @@ export class GardenRenderer {
         this.add('mushroom',THREE.MathUtils.clamp(start[0]+.8,-12,12),.08,THREE.MathUtils.clamp(start[1]-1.2,-7.6,7.6),.6,.6,.6);
         entrances.add(start.join(','));
       }
+    }
+    if (map.id === BOOK_LOCATION.mapId) {
+      const book = this.add('merging-book', BOOK_LOCATION.x, .14, BOOK_LOCATION.z, .95, .95, .95, undefined, -.28);
+      book.userData.clueId = BOOK_LOCATION.id;
+      book.userData.glowMaterials = [];
+      book.traverse(child => {
+        if (!child.isMesh) return;
+        const cloneGlow = material => {
+          if (material.name !== 'book-glimmer') return material;
+          const copy = material.clone();
+          book.userData.glowMaterials.push(copy);
+          return copy;
+        };
+        child.material = Array.isArray(child.material) ? child.material.map(cloneGlow) : cloneGlow(child.material);
+      });
+      this.mergingBook = book;
     }
     for (const spot of SECRETS[map.id]?.spots || []) {
       const object = this.clone(map.id === 'hollow' ? 'secret-pumpkin-' + spot.id.split('-').at(-1) : map.id === 'quarry' ? 'secret-crystal' : 'secret-rune');
@@ -446,6 +465,14 @@ export class GardenRenderer {
       object.getObjectByName('barrier-health').scale.x = .9 * Math.max(.02, barrier.hp / barrier.maxHp);
     }
     for (const [id, object] of this.barriers) if (!barrierIds.has(id)) { this.actors.remove(object); this.barriers.delete(id); }
+    if (this.mergingBook) {
+      this.mergingBook.visible = !(state.shopProfile || game.profile).mergingBookFound;
+      const reduced = this.reducedMotion.matches;
+      this.mergingBook.position.y = .14 + (reduced ? 0 : Math.sin(time * 1.3) * .012);
+      for (const material of this.mergingBook.userData.glowMaterials) {
+        material.emissiveIntensity = reduced ? .32 : .32 + (Math.sin(time * 1.7) + 1) * .14;
+      }
+    }
     const pathPuzzleReady = !!game.canDiscoverNecroPath?.();
     if (this.cluePlaque) this.cluePlaque.traverse(child => {
       if (!child.isMesh) return;

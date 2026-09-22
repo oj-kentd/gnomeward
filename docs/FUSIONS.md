@@ -18,3 +18,9 @@ Morrow adds guardian summoning to all direct attacks in the form, using Morrow�
 Merged forms use their own Blender models. Costumes are put aside on those units; owned costumes and equipped collection choices remain saved for new unmerged gnomes. Selling a merged unit removes all its components and guardians and refunds the usual 75% of each component’s original gold purchase cost. Spent upgrade points are not refunded.
 
 Co-op requires server **0.4.0**, advertising `fusionVersion: 1`. Older servers remain joinable, with merging disabled. Refresh both browsers after updating the server and start a new room.
+
+## Book of Merging
+
+Find the lost book in Mossy Meadow to keep a permanent journal in the menu. Its seven entries cover merged forms and special combinations. Locked entries give silhouette clues without revealing upgrade recipes. Creating a form or triggering a combo fills its entry, even if you have not found the book yet. Simply placing compatible units or purchasing their upgrades does not count as triggering a combo.
+
+The book and discovered entries are saved to this browser’s collection, alongside your costumes and permanent powers. They survive reloads and new gardens. In co-op the book belongs to your local collection, and combinations you observe in the shared garden count toward it. Finding the book does not unlock a character, grant upgrades, or enable merging on older servers. The book UI works with the existing 0.4.0 server; no additional Docker update is needed for it.
