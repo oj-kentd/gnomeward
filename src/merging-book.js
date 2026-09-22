@@ -2,7 +2,7 @@ import { FUSIONS } from './fusions.js';
 import { TOWERS } from './data.js';
 import { PRISMSTORM } from './combos.js';
 
-export const BOOK_LOCATION = Object.freeze({ id: 'merging-book', mapId: 'meadow', x: 9.65, z: 5.75 });
+export const BOOK_LOCATION = Object.freeze({ id: 'merging-book', mapId: 'creek', x: 9.65, z: 5.75 });
 
 const pairHints = {
   'multi-sprout': 'A little green courage meets a whirlwind of surprises.',

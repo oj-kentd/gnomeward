@@ -36,8 +36,13 @@ try {
   await page.goto(process.env.PLAYTEST_URL || 'http://127.0.0.1:5190'); await enter();
   await page.locator('#help-button').click();
   assert.equal(await page.locator('[data-merging-book]').count(), 0);
-  assert.match(await page.locator('.book-rumor').innerText(), /Mossy Meadow/);
+  assert.match(await page.locator('.book-rumor').innerText(), /Moonlit Creek/);
   await page.locator('[aria-label="Close field guide"]').click();
+  assert.equal(await page.evaluate(() => gnomeward.renderer.mergingBook), null, 'book is no longer in Meadow');
+  await page.locator('#map-button').click();
+  await page.locator(`[data-map="${BOOK_LOCATION.mapId}"]`).click();
+  await page.waitForFunction(() => gnomeward.game.map.id === 'creek' && !!gnomeward.renderer.mergingBook);
+  await page.screenshot({ path: 'playtest-results/merging-book-creek.png' });
   const merged = await page.evaluate(() => {
     const game = gnomeward.game;
     const a = game._makeTower('sprout', -3, 0, 100), b = game._makeTower('multi', 0, 0, 290);
@@ -105,7 +110,7 @@ try {
     profile.mergingBookFound = false; profile.fusionDiscoveries = []; profile.comboDiscoveries = [];
     localStorage.setItem('gnomeward-profile', JSON.stringify(profile));
   });
-  const match = new Match({ mode: 'coop', mapId: 'meadow' });
+  const match = new Match({ mode: 'coop', mapId: BOOK_LOCATION.mapId });
   match.addPlayer('one', 'Reader'); match.addPlayer('two', 'Teammate'); match.manualPause = true;
   const board = match.board(), a = board._makeTower('multi', -3, 0, 290), b = board._makeTower('necro', 0, 0, 320);
   a.ownerId = b.ownerId = 'two'; assert.equal(board.mergeTowers(a.id, b.id), true);

@@ -6,7 +6,7 @@ import { FUSIONS } from '../src/fusions.js';
 import { BOOK_LOCATION, BOOK_ENTRIES, normalizeBook, discoverBook, recordBookDiscoveries, bookEntryDiscovered } from '../src/merging-book.js';
 
 test('the hidden book catalogs all four forms and three special combinations', () => {
-  assert.deepEqual(BOOK_LOCATION, { id: 'merging-book', mapId: 'meadow', x: 9.65, z: 5.75 });
+  assert.deepEqual(BOOK_LOCATION, { id: 'merging-book', mapId: 'creek', x: 9.65, z: 5.75 });
   assert.equal(BOOK_ENTRIES.length, 7);
   assert.equal(new Set(BOOK_ENTRIES.map(entry => entry.id)).size, 7);
   assert.deepEqual(BOOK_ENTRIES.filter(entry => entry.kind === 'fusion').map(entry => entry.id).sort(), Object.keys(FUSIONS).sort());

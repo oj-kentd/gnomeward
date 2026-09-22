@@ -21,6 +21,6 @@ Co-op requires server **0.4.0**, advertising `fusionVersion: 1`. Older servers r
 
 ## Book of Merging
 
-Find the lost book in Mossy Meadow to keep a permanent journal in the menu. Its seven entries cover merged forms and special combinations. Locked entries give silhouette clues without revealing upgrade recipes. Creating a form or triggering a combo fills its entry, even if you have not found the book yet. Simply placing compatible units or purchasing their upgrades does not count as triggering a combo.
+Find the lost book in Moonlit Creek to keep a permanent journal in the menu. Its seven entries cover merged forms and special combinations. Locked entries give silhouette clues without revealing upgrade recipes. Creating a form or triggering a combo fills its entry, even if you have not found the book yet. Simply placing compatible units or purchasing their upgrades does not count as triggering a combo.
 
 The book and discovered entries are saved to this browser’s collection, alongside your costumes and permanent powers. They survive reloads and new gardens. In co-op the book belongs to your local collection, and combinations you observe in the shared garden count toward it. Finding the book does not unlock a character, grant upgrades, or enable merging on older servers. The book UI works with the existing 0.4.0 server; no additional Docker update is needed for it.

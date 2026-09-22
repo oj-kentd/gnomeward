@@ -175,4 +175,4 @@ Sprout, Tumble, and Morrow can merge in any distinct pair, then combine with the
 
 ## Book of Merging
 
-A lost book is hidden in Mossy Meadow. Find it to add a permanent book to the game menu. It records all four merged forms and three special combinations: undiscovered entries show guardian silhouettes and hints, while discoveries reveal their names and recipes. Progress is saved in the same browser, including discoveries made before finding the book. Co-op observations fill your own collection; the book itself needs no additional server update beyond the existing server 0.4.0 fusion support.
+A lost book is hidden in Moonlit Creek. Find it to add a permanent book to the game menu. It records all four merged forms and three special combinations: undiscovered entries show guardian silhouettes and hints, while discoveries reveal their names and recipes. Progress is saved in the same browser, including discoveries made before finding the book. Co-op observations fill your own collection; the book itself needs no additional server update beyond the existing server 0.4.0 fusion support.
