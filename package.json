@@ -1,6 +1,6 @@
 {
   "name": "gnomeward",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -31,7 +31,8 @@
     "test:traits-browser": "node scripts/enemy-traits-browser.mjs",
     "test:layout-browser": "node scripts/layout-browser-smoke.mjs",
     "test:shop-browser": "node scripts/shop-browser-smoke.mjs",
-    "test:shop-coop-browser": "node scripts/shop-coop-browser.mjs"
+    "test:shop-coop-browser": "node scripts/shop-coop-browser.mjs",
+    "test:tumble-shop-browser": "node scripts/tumble-shop-browser.mjs"
   },
   "dependencies": {
     "@colyseus/core": "0.18.14",

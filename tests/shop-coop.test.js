@@ -28,13 +28,15 @@ test('shop loadouts accept only bounded permanent perks, with legacy defaults', 
   assert.deepEqual(validateLoadout({}), { bossDamage: false, necroSkin: null });
   const good = { bossDamage: true, necroSkin: 'skeletor' };
   assert.deepEqual(validateLoadout(good), good);
+  assert.deepEqual(validateLoadout({ tumbleSpeed: true }), { bossDamage: false, necroSkin: null, tumbleSpeed: true });
+  assert.deepEqual(validateLoadout({ tumbleSpeed: false }), { bossDamage: false, necroSkin: null, tumbleSpeed: false });
   assert.deepEqual(validateLoadout({ ...good, boomSkin: 'orange-knight', sproutSkin: 'skeleton' }),
     { ...good, boomSkin: 'orange-knight', sproutSkin: 'skeleton' });
   assert.deepEqual(validateLoadout({ boomSkin: null, sproutSkin: null }),
     { bossDamage: false, necroSkin: null, boomSkin: null, sproutSkin: null });
   for (const bad of [null, [], 1, 'yes', { bossDamage: 2 }, { bossDamage: 'true' },
     { necroSkin: 'unlimited' }, { boomSkin: 'skeleton' }, { sproutSkin: 'orange-knight' },
-    { boomSkin: false }, { sproutSkin: [] }, { boomSkin: { id: 'orange-knight' } }, { gold: 999 }, { hp: 999 }, { roundCoins: 999 },
+    { boomSkin: false }, { sproutSkin: [] }, { tumbleSpeed: null }, { tumbleSpeed: 3 }, { tumbleSpeed: 'true' }, { tumbleSpeed: [] }, { boomSkin: { id: 'orange-knight' } }, { gold: 999 }, { hp: 999 }, { roundCoins: 999 },
     { profile: good }, { multiplier: 10 }, Object.create({ bossDamage: true }), new Date()]) {
     assert.throws(() => validateLoadout(bad), /loadout/);
   }
@@ -151,7 +153,7 @@ test('browser sends legacy loadouts without fetching health, and reconnect only 
   const loadout = { bossDamage: true, necroSkin: 'skeletor' };
   await client.connect({ name: 'Alice', mapId: 'meadow', loadout });
   await client.connect({ name: 'Alice', roomId: 'abc', loadout });
-  await client.connect({ token: 'resume', loadout: { bossDamage: false, boomSkin: 'orange-knight', sproutSkin: 'skeleton' } });
+  await client.connect({ token: 'resume', loadout: { bossDamage: false, boomSkin: 'orange-knight', sproutSkin: 'skeleton', tumbleSpeed: true } });
   assert.deepEqual(calls[0][2].loadout, loadout);
   assert.deepEqual(calls[1][2].loadout, loadout);
   assert.deepEqual(calls[2], ['reconnect', 'resume']);
@@ -186,8 +188,10 @@ test('WebSocket loadouts and round receipts survive an actual reconnect', { time
   try {
     const health = await fetch(`${url}/healthz`, { headers: { origin: 'https://game.example' } });
     assert.equal(health.headers.get('access-control-allow-origin'), 'https://game.example');
-    assert.equal((await health.json()).costumeVersion, 1);
-    const host = await new Client(url).create('gnomeward', { protocol: 1, name: 'Host', mode: 'coop', mapId: 'meadow', loadout: { bossDamage: true, necroSkin: 'skeletor', boomSkin: 'orange-knight', sproutSkin: 'skeleton' }, gold: 99999, roundCoins: 99999 });
+    const capabilities = await health.json();
+    assert.equal(capabilities.costumeVersion, 1);
+    assert.equal(capabilities.tumbleSpeedVersion, 1);
+    const host = await new Client(url).create('gnomeward', { protocol: 1, name: 'Host', mode: 'coop', mapId: 'meadow', loadout: { bossDamage: true, necroSkin: 'skeletor', boomSkin: 'orange-knight', sproutSkin: 'skeleton', tumbleSpeed: true }, gold: 99999, roundCoins: 99999 });
     connections.push(host); const a = observe(host);
     const guest = await new Client(url).joinById(host.roomId, { protocol: 1, name: 'Guest' });
     connections.push(guest); observe(guest);
@@ -195,7 +199,7 @@ test('WebSocket loadouts and round receipts survive an actual reconnect', { time
     const original = a.snapshot.players.find(p => p.id === host.sessionId);
     assert.equal(original.gold, 325);
     assert.equal(original.roundCoinsEarned, 0);
-    assert.deepEqual(original.loadout, { bossDamage: true, necroSkin: 'skeletor', boomSkin: 'orange-knight', sproutSkin: 'skeleton' });
+    assert.deepEqual(original.loadout, { bossDamage: true, necroSkin: 'skeletor', boomSkin: 'orange-knight', sproutSkin: 'skeleton', tumbleSpeed: true });
     host.send('command', { action: 'ready' }); guest.send('command', { action: 'ready' });
     const match = [...app.rooms][0].match;
     await until(() => match.started);
@@ -213,6 +217,9 @@ test('WebSocket loadouts and round receipts survive an actual reconnect', { time
     assert.equal(current.roundCoinsEarned, 1);
     assert.deepEqual(current.loadout, original.loadout);
     assert.deepEqual(match.board().bossDamageOwners, [host.sessionId]);
+    assert.deepEqual(match.board().tumbleSpeedOwners, [host.sessionId]);
+    assert.equal(again.snapshot.tumbleSpeedVersion, 1);
+    assert.deepEqual(again.snapshot.boards[0].state.tumbleSpeedOwners, [host.sessionId]);
   } finally {
     for (const room of connections) if (room.connection.isOpen) await room.leave().catch(() => {});
     await app.stop();
@@ -273,4 +280,91 @@ test('extended browser costumes require a successful versioned health capability
   assert.equal(requests.length, 9);
   assert.ok(requests.every(request => request.url === 'https://garden.example/healthz' && request.options.cache === 'no-store' && request.options.signal instanceof AbortSignal));
   assert.deepEqual(loadout, original, 'capability filtering does not alter the saved collection');
+});
+
+
+test('Turbo Tumble boosts only its owner by three times and snapshots preserve accurate client stats', () => {
+  const match = pair({ tumbleSpeed: true });
+  const game = match.board();
+  assert.deepEqual(game.tumbleSpeedOwners, ['a']);
+  assert.throws(() => place(match, 'a', 'multi', -4), 'the perk cannot unlock Tumble early');
+  game.profile.unlocks.push('multi');
+  const own = place(match, 'a', 'multi', -4), teammate = place(match, 'b', 'multi', 2);
+  for (const level of [0, 1, 3]) {
+    own.levels = [level]; teammate.levels = [level];
+    const boosted = game.getStats(own), normal = game.getStats(teammate);
+    assert.ok(Math.abs(boosted.interval * 3 - normal.interval) < 1e-12);
+    assert.ok(Math.abs(boosted.attackSpeed - normal.attackSpeed * 3) < 1e-12);
+    assert.deepEqual({ ...boosted, interval: normal.interval, attackSpeed: normal.attackSpeed }, normal, 'only attack frequency changes');
+    const snapshot = match.snapshot('turbo-room');
+    assert.equal(snapshot.tumbleSpeedVersion, 1);
+    assert.deepEqual(snapshot.boards[0].state.tumbleSpeedOwners, ['a']);
+    const applied = applyCoopSnapshot(null, snapshot, 'b');
+    assert.equal(applied.multiplayer.tumbleSpeedSupported, true);
+    for (const tower of [own, teammate]) {
+      const clientTower = applied.game.towers.find(item => item.id === tower.id);
+      assert.deepEqual(applied.game.getStats(clientTower), game.getStats(tower));
+      assert.deepEqual(applied.game.getStats({ ...clientTower, levels: [3] }), game.getStats({ ...tower, levels: [3] }),
+        'upgrade previews keep the owning player’s perk');
+    }
+  }
+  const both = pair({ tumbleSpeed: true }, { tumbleSpeed: true });
+  both.board().profile.unlocks.push('multi');
+  const tower = place(both, 'a', 'multi', -4);
+  assert.ok(Math.abs(both.board().getStats(tower).interval * 3 - 1.3) < 1e-12, 'two buyers never multiply the boost again');
+});
+
+test('old or malformed Turbo Tumble snapshots clear any previously active owner boost', () => {
+  const match = pair({ tumbleSpeed: true });
+  match.board().profile.unlocks.push('multi');
+  const tower = place(match, 'a', 'multi', -4);
+  const current = match.snapshot('turbo-room');
+  let client = applyCoopSnapshot(null, current, 'a').game;
+  client.profile.tumbleSpeedUnlocked = true;
+  const old = structuredClone(current);
+  delete old.tumbleSpeedVersion;
+  delete old.boards[0].state.tumbleSpeedOwners;
+  const result = applyCoopSnapshot(client, old, 'a');
+  assert.equal(result.multiplayer.tumbleSpeedSupported, false);
+  assert.deepEqual(result.game.tumbleSpeedOwners, []);
+  assert.equal(result.game.getStats(result.game.towers.find(item => item.id === tower.id)).interval, 1.3);
+  client = applyCoopSnapshot(client, current, 'a').game;
+  const malformed = structuredClone(current);
+  malformed.boards[0].state.tumbleSpeedOwners = 'a';
+  assert.deepEqual(applyCoopSnapshot(client, malformed, 'a').game.tumbleSpeedOwners, []);
+});
+
+test('one health request filters costume and Tumble capabilities independently', async t => {
+  const legacy = { bossDamage: true, necroSkin: 'skeletor' };
+  const costumes = { boomSkin: 'orange-knight', sproutSkin: 'skeleton' };
+  const full = { ...legacy, ...costumes, tumbleSpeed: true };
+  const client = new CoopClient({ url: 'https://garden.example' });
+  const requests = [], sent = [];
+  let capabilities = {};
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    requests.push({ url, options });
+    if (capabilities instanceof Error) throw capabilities;
+    return { ok: true, json: async () => capabilities };
+  });
+  client.sdk = async () => ({ create: async (_type, options) => { sent.push(options.loadout); return {}; } });
+  client.attach = () => {};
+  for (const [health, expected] of [
+    [{ costumeVersion: 1, tumbleSpeedVersion: 1 }, full],
+    [{ costumeVersion: 1 }, { ...legacy, ...costumes }],
+    [{ tumbleSpeedVersion: 1 }, { ...legacy, tumbleSpeed: true }],
+    [{}, legacy],
+    [{ costumeVersion: 1, tumbleSpeedVersion: '1' }, { ...legacy, ...costumes }],
+    [new TypeError('Network unavailable'), legacy],
+  ]) {
+    capabilities = health;
+    const before = requests.length;
+    await client.connect({ name: 'Alice', mapId: 'meadow', loadout: full });
+    assert.equal(requests.length, before + 1, 'both perks share one capability request');
+    assert.deepEqual(sent.at(-1), expected);
+  }
+  capabilities = { tumbleSpeedVersion: 1 };
+  await client.connect({ name: 'Alice', mapId: 'meadow', loadout: { tumbleSpeed: true } });
+  assert.deepEqual(sent.at(-1), { tumbleSpeed: true }, 'Tumble-only loadouts also request capabilities');
+  assert.equal(requests.length, 7);
+  assert.deepEqual(full, { ...legacy, ...costumes, tumbleSpeed: true });
 });

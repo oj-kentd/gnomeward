@@ -35,6 +35,7 @@ export class Game {
     this.profile = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
     normalizeEconomy(this.profile);
     this.bossDamageOwners = null;
+    this.tumbleSpeedOwners = null;
     this._sourceOwners = {};
     if (!Array.isArray(this.profile.unlocks)) this.profile.unlocks = [];
     this.profile.pathUnlocks = [...new Set((Array.isArray(this.profile.pathUnlocks) ? this.profile.pathUnlocks : []).filter(id => id === NECRO_PATH_SECRET.id))];
@@ -333,6 +334,9 @@ export class Game {
       case 'strawberry': stats = { damage: [18,34,60,96][a], interval: 4 * 0.76 ** c, range: 40, explosionRadius: [2.1,2.45,2.8,3.2][a], seedCount: [8,12,16,20][b], seedDamage: [4,6,9,13][b], seedPierce: [1,1,2,3][b], seedRange: 3 + b * 0.25, flightDuration: [1.5,1.25,1,0.8][c] }; break;
       default: stats = { damage: 0, interval: 1, range: 0 };
     }
+    if (tower.type === 'multi' && (Array.isArray(this.tumbleSpeedOwners)
+      ? tower.ownerId != null && this.tumbleSpeedOwners.includes(tower.ownerId)
+      : this.profile.tumbleSpeedUnlocked)) stats.interval /= 3;
     return { shots: 1, poisonDps: 0, poisonDuration: 0, poisonSpreadRadius: 0, poisonSpreadInterval: 0, poisonSpreadTargets: 0, poisonSpreadMultiplier: 0, slowDuration: 0, slowMultiplier: 1, explosionDamage: 0, explosionRadius: 0, ...stats, attackSpeed: 1 / stats.interval };
   }
 
@@ -880,6 +884,10 @@ export class Game {
     this._dispatchReborn(dt);
     this._moveReborn(dt);
     for (const tower of this.towers) {
+      // Keep Tumble's sub-tick attack timing at the co-op server's 20 Hz rate.
+      // A ready/idle gnome starts a fresh interval instead of banking missed shots.
+      const attackRemainder = tower.type === 'multi' && tower.cooldown > 0
+        ? Math.min(0, tower.cooldown - dt) : 0;
       tower.cooldown = Math.max(0, tower.cooldown - dt);
       tower.prismCooldown = Math.max(0, (tower.prismCooldown || 0) - dt);
       if (tower.cooldown > 0) continue;
@@ -897,7 +905,7 @@ export class Game {
       }
       const targets = this.enemies.filter(e => e.hp > 0 && distance(tower, e) <= stats.range).sort((a, b) => this._targetPriority(tower, a, b)).slice(0, stats.shots);
       if (!targets.length) continue;
-      tower.cooldown = stats.interval;
+      tower.cooldown = Math.max(0, stats.interval + attackRemainder);
       const prism = tower.prismCooldown <= 0 && this.projectiles.filter(shot => shot.type === 'prism-shard').length < PRISMSTORM.projectileLimit ? this.prismPartner(tower) : null;
       if (prism) {
         tower.prismCooldown = PRISMSTORM.cooldown;

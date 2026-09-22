@@ -11,7 +11,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 page.setDefaultTimeout(45000);
 const errors = [], checks = [], layouts = [], hudLayouts = [];
-const purchaseItems = ['necro-skeletor', 'boom-orange-knight', 'sprout-skeleton', 'boss-damage'];
+const purchaseItems = ['necro-skeletor', 'boom-orange-knight', 'sprout-skeleton', 'boss-damage', 'tumble-speed'];
 const newCostumes = [
   { type: 'boom', item: 'boom-orange-knight', skin: 'orange-knight', profileKey: 'equippedBoomSkin' },
   { type: 'sprout', item: 'sprout-skeleton', skin: 'skeleton', profileKey: 'equippedSproutSkin' },

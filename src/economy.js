@@ -3,6 +3,7 @@ export const MAX_ROUND_COINS = 1_000_000_000;
 const MAX_RECEIPTS = 128;
 const validCount = value => Number.isSafeInteger(value) && value >= 0 && value <= MAX_ROUND_COINS;
 const validReceipt = key => typeof key === 'string' && /^[a-zA-Z0-9_.:-]{1,160}$/.test(key) && !['__proto__', 'constructor', 'prototype'].includes(key);
+const PERK_PROFILE_KEYS = Object.freeze({ 'boss-damage': 'bossDamageUnlocked', 'tumble-speed': 'tumbleSpeedUnlocked' });
 
 export const COSTUMES = Object.freeze([
   Object.freeze({ itemId: 'necro-skeletor', towerType: 'necro', skin: 'skeletor', profileKey: 'equippedNecroSkin', modelName: 'gnome-necro-skeletor', portrait: 'necro-skeletor' }),
@@ -15,6 +16,7 @@ export const SHOP_ITEMS = Object.freeze([
   Object.freeze({ id: 'boom-orange-knight', name: 'Orange Knight Bramble', cost: 100, description: 'Orange armor and a knight’s helmet for Bramble. Cosmetic only; the same explosive guardian underneath.' }),
   Object.freeze({ id: 'sprout-skeleton', name: 'Skeleton Sprout', cost: 100, description: 'skeleton vs skeletons who wins ???' }),
   Object.freeze({ id: 'boss-damage', name: 'Boss Breaker', cost: 50, description: 'Permanently doubles your gnomes’ damage against bosses, including poison and summoned guardians.' }),
+  Object.freeze({ id: 'tumble-speed', name: 'Turbo Tumble', cost: 50, description: 'Permanently triples Tumble’s attack speed at every upgrade level. Same damage and shots per attack; three times the volleys.' }),
 ]);
 
 export function getTowerSkin(profile, type) {
@@ -27,7 +29,7 @@ export function normalizeEconomy(profile) {
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return null;
   profile.roundCoins = validCount(profile.roundCoins) ? profile.roundCoins : 0;
   profile.cosmetics = [...new Set((Array.isArray(profile.cosmetics) ? profile.cosmetics : []).filter(id => COSTUMES.some(costume => costume.itemId === id)))];
-  profile.bossDamageUnlocked = profile.bossDamageUnlocked === true;
+  for (const key of Object.values(PERK_PROFILE_KEYS)) profile[key] = profile[key] === true;
   for (const costume of COSTUMES) profile[costume.profileKey] = getTowerSkin(profile, costume.towerType);
   const ledger = profile.coopRoundReceipts;
   profile.coopRoundReceipts = Object.fromEntries(
@@ -41,9 +43,10 @@ export function buyShopItem(profile, id) {
   if (!normalizeEconomy(profile)) return false;
   const item = SHOP_ITEMS.find(item => item.id === id);
   if (!item || profile.roundCoins < item.cost) return false;
-  if (id === 'boss-damage' ? profile.bossDamageUnlocked : profile.cosmetics.includes(id)) return false;
+  const perkKey = PERK_PROFILE_KEYS[id];
+  if (perkKey ? profile[perkKey] : profile.cosmetics.includes(id)) return false;
   profile.roundCoins -= item.cost;
-  if (id === 'boss-damage') profile.bossDamageUnlocked = true;
+  if (perkKey) profile[perkKey] = true;
   else profile.cosmetics.push(id);
   return true;
 }

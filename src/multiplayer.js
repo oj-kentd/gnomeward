@@ -23,6 +23,9 @@ export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0, re
   for (const [key, value] of Object.entries(board)) {
     if (key !== 'bestRound' && key !== 'events') game[key] = value;
   }
+  // Never inherit a solo perk or retain a newer room's owners on an older server.
+  game.tumbleSpeedOwners = snapshot.tumbleSpeedVersion === 1 && Array.isArray(board.tumbleSpeedOwners)
+    ? board.tumbleSpeedOwners.filter(id => typeof id === 'string') : [];
   game.gold = player.gold;
   game.points = player.points;
   const events = board.events || [];
@@ -35,6 +38,7 @@ export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0, re
     combosSupported: snapshot.comboVersion === 1,
     shopSupported: snapshot.shopVersion === 1,
     costumesSupported: snapshot.costumeVersion === 1,
+    tumbleSpeedSupported: snapshot.tumbleSpeedVersion === 1,
     roundCoinsEarned: snapshot.shopVersion === 1 && Number.isSafeInteger(player.roundCoinsEarned) && player.roundCoinsEarned >= 0 ? player.roundCoinsEarned : 0,
     receiptKey: snapshot.shopVersion === 1 && typeof player.receiptKey === 'string' ? player.receiptKey : null,
     loadout: snapshot.shopVersion === 1 ? player.loadout : null,
@@ -68,16 +72,21 @@ export class CoopClient {
   }
   async compatibleLoadout(loadout) {
     if (!loadout || typeof loadout !== 'object' ||
-        !['boomSkin', 'sproutSkin'].some(key => Object.hasOwn(loadout, key))) return loadout;
+        !['boomSkin', 'sproutSkin', 'tumbleSpeed'].some(key => Object.hasOwn(loadout, key))) return loadout;
     // Older servers reject unknown loadout fields. Preserve their supported
     // purchases even if capability discovery fails or the server is upgrading.
     const compatible = { ...loadout };
-    let costumesSupported = false;
+    let costumesSupported = false, tumbleSpeedSupported = false;
     try {
       const response = await fetch(`${this.url}/healthz`, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
-      costumesSupported = response.ok && (await response.json()).costumeVersion === 1;
+      if (response.ok) {
+        const capabilities = await response.json();
+        costumesSupported = capabilities?.costumeVersion === 1;
+        tumbleSpeedSupported = capabilities?.tumbleSpeedVersion === 1;
+      }
     } catch {}
     if (!costumesSupported) { delete compatible.boomSkin; delete compatible.sproutSkin; }
+    if (!tumbleSpeedSupported) delete compatible.tumbleSpeed;
     return compatible;
   }
   async connect({ name, mapId, roomId, token, loadout } = {}) {

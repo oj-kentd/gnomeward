@@ -129,7 +129,7 @@ async function refreshLobbies(){
 async function connectCoop(options){
   if(!ready||lobbyBusy||state.multiplayer)return;
   lobbyBusy=true;ui.updateCoopLobby({loading:true,error:''});
-  try{await multiplayer.connect({...options,loadout:{bossDamage:game.profile.bossDamageUnlocked === true,necroSkin:getTowerSkin(game.profile,'necro'),...(getTowerSkin(game.profile,'boom') ? {boomSkin:getTowerSkin(game.profile,'boom')} : {}),...(getTowerSkin(game.profile,'sprout') ? {sproutSkin:getTowerSkin(game.profile,'sprout')} : {})}});}
+  try{await multiplayer.connect({...options,loadout:{bossDamage:game.profile.bossDamageUnlocked === true,necroSkin:getTowerSkin(game.profile,'necro'),...(game.profile.tumbleSpeedUnlocked ? {tumbleSpeed:true} : {}),...(getTowerSkin(game.profile,'boom') ? {boomSkin:getTowerSkin(game.profile,'boom')} : {}),...(getTowerSkin(game.profile,'sprout') ? {sproutSkin:getTowerSkin(game.profile,'sprout')} : {})}});}
   catch(error){ui.updateCoopLobby({loading:false,error:error.message});}
   finally{lobbyBusy=false;ui.updateCoopLobby({loading:false});}
 }
@@ -163,8 +163,9 @@ function targetNext(){
 function newGarden(mapId){if(!ready||state.multiplayer)return;save();profile=game.profile;game=new Game(mapId,profile);Object.assign(state,{selectedTowerId:null,placingType:null,paused:false,autoCountdown:null});world?.setMap(game.map,MAPS.findIndex(m=>m.id===mapId));refreshUI();}
 function shopBuy(id) {
   if (state.multiplayer || !buyShopItem(game.profile, id)) return;
+  if (id === 'tumble-speed') for (const tower of game.towers) if (tower.type === 'multi') tower.cooldown /= 3;
   save(); refreshUI(); ui.showCoinShop(); beep(880,.16);
-  ui.toast(id === 'boss-damage' ? 'Boss Breaker unlocked forever · 2× damage against bosses!' : `${SHOP_ITEMS.find(item => item.id === id)?.name || 'Costume'} unlocked! Equip it in the shop.`);
+  ui.toast(id === 'boss-damage' ? 'Boss Breaker unlocked forever · 2× damage against bosses!' : id === 'tumble-speed' ? 'Turbo Tumble unlocked forever · 3× attack speed!' : `${SHOP_ITEMS.find(item => item.id === id)?.name || 'Costume'} unlocked! Equip it in the shop.`);
 }
 function shopEquip(type, skin) {
   if (state.multiplayer || !equipTowerSkin(game.profile, type, skin === 'default' ? null : skin)) return;
@@ -263,4 +264,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.3.4'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.3.5'};

@@ -3,7 +3,7 @@ import { Game } from '../src/game.js';
 import { MAPS, TOWERS, SECRETS, NECRO_PATH_SECRET } from '../src/data.js';
 
 export const PROTOCOL = 1;
-const BOARD_FIELDS = ['wave', 'completedWaves', 'maxWaves', 'endless', 'lives', 'gold', 'points', 'status', 'kills', 'time', 'towers', 'enemies', 'traps', 'holes', 'barriers', 'allies', 'secretDiscoveries', 'pathSecretDiscoveries', 'necroSpellKills', 'effects', 'projectiles'];
+const BOARD_FIELDS = ['wave', 'completedWaves', 'maxWaves', 'endless', 'lives', 'gold', 'points', 'status', 'kills', 'time', 'towers', 'enemies', 'traps', 'holes', 'barriers', 'allies', 'secretDiscoveries', 'pathSecretDiscoveries', 'necroSpellKills', 'effects', 'projectiles', 'tumbleSpeedOwners'];
 const reject = message => { throw new Error(message); };
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -17,14 +17,16 @@ export function validateIdentity(options) {
 export function validateLoadout(value) {
   if (value === undefined) return { bossDamage: false, necroSkin: null };
   if (!plain(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) ||
-      Object.keys(value).some(key => !['bossDamage', 'necroSkin', 'boomSkin', 'sproutSkin'].includes(key)) ||
+      Object.keys(value).some(key => !['bossDamage', 'necroSkin', 'boomSkin', 'sproutSkin', 'tumbleSpeed'].includes(key)) ||
       (value.bossDamage !== undefined && typeof value.bossDamage !== 'boolean') ||
+      (value.tumbleSpeed !== undefined && typeof value.tumbleSpeed !== 'boolean') ||
       (value.necroSkin !== undefined && value.necroSkin !== null && value.necroSkin !== 'skeletor') ||
       (value.boomSkin !== undefined && value.boomSkin !== null && value.boomSkin !== 'orange-knight') ||
       (value.sproutSkin !== undefined && value.sproutSkin !== null && value.sproutSkin !== 'skeleton')) reject('Invalid permanent shop loadout.');
   return { bossDamage: value.bossDamage === true, necroSkin: value.necroSkin === 'skeletor' ? 'skeletor' : null,
     ...(Object.hasOwn(value, 'boomSkin') ? { boomSkin: value.boomSkin || null } : {}),
-    ...(Object.hasOwn(value, 'sproutSkin') ? { sproutSkin: value.sproutSkin || null } : {}) };
+    ...(Object.hasOwn(value, 'sproutSkin') ? { sproutSkin: value.sproutSkin || null } : {}),
+    ...(Object.hasOwn(value, 'tumbleSpeed') ? { tumbleSpeed: value.tumbleSpeed === true } : {}) };
 }
 
 /** Server-only state. Browser commands cannot import gold, HP, saves, or change permanent loadouts. */
@@ -100,6 +102,7 @@ export class Match {
     for (const [boardOwner, game] of this.boards) {
       const owners = [...this.players.values()].filter(p => this.mode === 'coop' || p.id === boardOwner);
       game.bossDamageOwners = owners.filter(p => p.loadout.bossDamage).map(p => p.id);
+      game.tumbleSpeedOwners = owners.filter(p => p.loadout.tumbleSpeed).map(p => p.id);
       for (const tower of game.towers) {
         tower.ownerId ??= this.freeTowerOwners.get(game) || boardOwner || this.hostId;
         const skinField = { necro: 'necroSkin', boom: 'boomSkin', sprout: 'sproutSkin' }[tower.type];
@@ -264,7 +267,7 @@ export class Match {
 
   snapshot(roomId = '') {
     return structuredClone({
-      protocol: PROTOCOL, comboVersion: 1, shopVersion: 1, costumeVersion: 1, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
+      protocol: PROTOCOL, comboVersion: 1, shopVersion: 1, costumeVersion: 1, tumbleSpeedVersion: 1, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
       players: [...this.players.values()], paused: this.paused, manualPause: this.manualPause,
       speed: this.speed, started: this.started, autoStart: this.autoStart, autoCountdown: this.autoCountdown, tick: this.tick, result: this.result,
       boards: [...this.boards.entries()].map(([playerId, game]) => ({ playerId, state: {

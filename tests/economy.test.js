@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../src/game.js';
+import { TOWERS } from '../src/data.js';
 import { SHOP_ITEMS, COSTUMES, MAX_ROUND_COINS, normalizeEconomy, buyShopItem, equipNecroSkin, getTowerSkin, equipTowerSkin, applyCoopRoundReward } from '../src/economy.js';
 
 const clearRound = game => {
@@ -305,5 +306,151 @@ test('summoned guardians inherit the necromancer owner boss boost without creati
     game._fightReborn();
     assert.equal(before - boss.hp, ally.damage * (ownerId === 'buyer' ? 2 : 1));
     assert.equal(tower.soulQueue.length, 0);
+  }
+});
+
+test('Turbo Tumble costs 50 coins, is permanent, and never stacks or becomes a cosmetic', () => {
+  const item = SHOP_ITEMS.find(item => item.id === 'tumble-speed');
+  assert.equal(item.name, 'Turbo Tumble');
+  assert.equal(item.cost, 50);
+  const profile = { roundCoins: 49, cosmetics: ['necro-skeletor'], bossDamageUnlocked: true };
+  assert.equal(buyShopItem(profile, item.id), false);
+  assert.equal(profile.roundCoins, 49);
+  assert.equal(profile.tumbleSpeedUnlocked, false);
+  profile.roundCoins = 50;
+  assert.equal(buyShopItem(profile, item.id), true);
+  assert.equal(profile.roundCoins, 0);
+  assert.equal(profile.tumbleSpeedUnlocked, true);
+  profile.roundCoins = 100;
+  assert.equal(buyShopItem(profile, item.id), false);
+  assert.equal(profile.roundCoins, 100);
+  assert.deepEqual(profile.cosmetics, ['necro-skeletor']);
+  const reloaded = new Game('meadow', JSON.parse(JSON.stringify(profile)));
+  assert.equal(reloaded.profile.tumbleSpeedUnlocked, true);
+  assert.equal(reloaded.profile.bossDamageUnlocked, true);
+  assert.equal(reloaded.profile.roundCoins, 100);
+  assert.equal(reloaded.isUnlocked('multi'), false, 'the shop perk does not bypass recruiting Tumble');
+  assert.equal(new Game('quarry', reloaded.profile).profile.tumbleSpeedUnlocked, true);
+});
+
+test('only a saved boolean true activates Turbo Tumble and old collections migrate safely', () => {
+  for (const value of [undefined, null, false, 0, 1, 'true', [], {}, NaN]) {
+    const profile = { tumbleSpeedUnlocked: value, cosmetics: ['tumble-speed', 'sprout-skeleton'] };
+    normalizeEconomy(profile);
+    assert.equal(profile.tumbleSpeedUnlocked, false);
+    assert.deepEqual(profile.cosmetics, ['sprout-skeleton']);
+  }
+  const profile = { tumbleSpeedUnlocked: true };
+  normalizeEconomy(profile);
+  assert.equal(profile.tumbleSpeedUnlocked, true);
+});
+
+test('Turbo Tumble triples attack speed at every upgrade tier without changing other stats or combo cooldowns', () => {
+  const normal = new Game(), turbo = new Game('meadow', { tumbleSpeedUnlocked: true });
+  for (let level = 0; level <= 3; level++) {
+    const tower = { type: 'multi', levels: [level], prismCooldown: 1.7 };
+    const base = normal.getStats(tower), fast = turbo.getStats(tower);
+    assert.equal(fast.interval, base.interval / 3);
+    assert.ok(Math.abs(fast.attackSpeed - base.attackSpeed * 3) < 1e-10);
+    assert.deepEqual({ ...fast, interval: base.interval, attackSpeed: base.attackSpeed }, base);
+    assert.equal(tower.prismCooldown, 1.7);
+  }
+  for (const type of Object.keys(TOWERS).filter(type => type !== 'multi')) {
+    for (const tier of [0, 3]) {
+      const tower = { type, levels: TOWERS[type].paths.map(() => tier), kills: 12 };
+      assert.deepEqual(turbo.getStats(tower), normal.getStats(tower), `${type} tier ${tier} stays unchanged`);
+    }
+  }
+});
+
+test('co-op Turbo Tumble follows only the eligible tower owner and overrides the shared profile', () => {
+  const game = new Game('meadow', { tumbleSpeedUnlocked: true });
+  game.tumbleSpeedOwners = ['buyer'];
+  const normal = new Game();
+  for (const ownerId of ['buyer', 'friend', undefined]) for (let tier = 0; tier <= 3; tier++) {
+    const tower = { type: 'multi', ownerId, levels: [tier] };
+    assert.equal(game.getStats(tower).interval, normal.getStats(tower).interval / (ownerId === 'buyer' ? 3 : 1));
+  }
+  game.tumbleSpeedOwners = [];
+  assert.equal(game.getStats({ type: 'multi', ownerId: 'buyer', levels: [0] }).interval, 1.3);
+  game.profile.tumbleSpeedUnlocked = false;
+  game.tumbleSpeedOwners = ['buyer'];
+  assert.equal(game.getStats({ type: 'multi', ownerId: 'buyer', levels: [0] }).interval, 1.3 / 3);
+});
+
+test('Turbo Tumble fires real volleys at the faster cadence without changing damage per hit', () => {
+  function battle(turbo) {
+    const game = new Game('meadow', { tumbleSpeedUnlocked: turbo });
+    const point = game.pointAt(5);
+    const tower = game._makeTower('multi', point.x, point.z, 0);
+    const enemy = game._spawn('boss');
+    Object.assign(enemy, point, { progress: 5, speed: 0, hp: 1e6, maxHp: 1e6 });
+    game.status = 'wave';
+    const volleys = [];
+    const launch = game._launch.bind(game);
+    game._launch = (...args) => { volleys.push({ time: game.time, damage: args[2].damage }); launch(...args); };
+    for (let step = 0; step < 2610; step++) game.update(.001);
+    return { volleys, damageDone: tower.damageDone };
+  }
+  const normal = battle(false), turbo = battle(true);
+  assert.equal(normal.volleys.length, 3);
+  assert.equal(turbo.volleys.length, 7);
+  for (const [result, interval] of [[normal, 1.3], [turbo, 1.3 / 3]]) {
+    assert.ok(result.damageDone > 0, 'real projectiles hit the enemy');
+    assert.ok(result.volleys.every(shot => shot.damage === 8));
+    for (let index = 1; index < result.volleys.length; index++) {
+      const elapsed = result.volleys[index].time - result.volleys[index - 1].time;
+      assert.ok(Math.abs(elapsed - interval) <= .001001, 'volley interval matches within one simulation step');
+    }
+  }
+  assert.ok(turbo.damageDone > normal.damageDone);
+});
+
+test('production 20 Hz Tumble attacks preserve fractional intervals and a threefold sustained cadence at every tier', () => {
+  for (let tier = 0; tier <= 3; tier++) {
+    const counts = [];
+    for (const turbo of [false, true]) {
+      const game = new Game('meadow', { tumbleSpeedUnlocked: turbo });
+      const point = game.pointAt(5);
+      const tower = game._makeTower('multi', point.x, point.z, 0); tower.levels = [tier];
+      const enemy = game._spawn('boss');
+      Object.assign(enemy, point, { progress: 5, speed: 0, hp: 1e9, maxHp: 1e9 });
+      game.status = 'wave';
+      const attacks = [], launch = game._launch.bind(game);
+      game._launch = (...args) => { attacks.push(game.time); launch(...args); };
+      for (let step = 0; step < 1200; step++) game.update(.05);
+      const interval = game.getStats(tower).interval;
+      for (let index = 0; index < attacks.length; index++) {
+        const scheduled = attacks[0] + index * interval;
+        assert.ok(Math.abs(attacks[index] - scheduled) < .050001, `tier ${tier}, turbo ${turbo}: no cumulative tick-rounding drift`);
+      }
+      counts.push(attacks.length);
+      assert.ok(tower.damageDone > 0);
+    }
+    // Both start with an immediate volley; the final partial interval can differ.
+    assert.ok(Math.abs(counts[1] - 3 * counts[0]) <= 3, `tier ${tier}: ${counts} volleys should sustain 3× cadence`);
+  }
+});
+
+test('idle Tumble drops missed attack time and resumes with no banked volley burst', () => {
+  for (const turbo of [false, true]) {
+    const game = new Game('meadow', { tumbleSpeedUnlocked: turbo });
+    const point = game.pointAt(5);
+    const tower = game._makeTower('multi', point.x, point.z, 0);
+    tower.levels = [3]; tower.cooldown = .02;
+    game.status = 'wave'; game._queue = ['bone']; game._spawnTimer = 10000;
+    for (let step = 0; step < 1200; step++) game.update(.05);
+    assert.equal(tower.cooldown, 0, 'idle time never builds negative cooldown debt');
+    assert.equal(game.projectiles.length, 0);
+    const enemy = game._spawn('boss');
+    Object.assign(enemy, point, { progress: 5, speed: 0, hp: 1e9, maxHp: 1e9 });
+    const attacks = [], launch = game._launch.bind(game);
+    game._launch = (...args) => { attacks.push(game.time); launch(...args); };
+    game.update(.05);
+    assert.equal(attacks.length, 1);
+    assert.equal(tower.cooldown, game.getStats(tower).interval, 'returning target starts a fresh full interval');
+    game.update(.05); game.update(.05); game.update(.05);
+    assert.equal(attacks.length, 1, 'no next-tick catch-up volley after a long idle');
+    assert.ok(tower.cooldown > 0);
   }
 });

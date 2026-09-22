@@ -188,7 +188,7 @@ try {
   if (await guest.locator('#dismiss-tip').isVisible()) await guest.locator('#dismiss-tip').click();
   await guest.evaluate(snapshot => gnomeward.multiplayer.onSnapshot(snapshot, 'two'), initial);
   await guest.locator('#coin-shop-button').click();
-  assert.equal(await guest.locator('[data-shop-buy]:disabled').count(), 4);
+  assert.equal(await guest.locator('[data-shop-buy]:disabled').count(), 5);
   await guest.locator('[data-shop-buy="boss-damage"]').dispatchEvent('click');
   for (const costume of costumes) await guest.locator(`[data-shop-buy="${costume.item}"]`).dispatchEvent('click');
   const untouched = await guest.evaluate(() => ({ coins: gnomeward.state.shopProfile.roundCoins, boss: gnomeward.state.shopProfile.bossDamageUnlocked, skins: gnomeward.state.shopProfile.cosmetics }));

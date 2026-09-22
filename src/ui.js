@@ -398,7 +398,7 @@ export class UI {
         panel.setAttribute('aria-label', 'Selected defender');
       }
     }
-    const panelSignature = JSON.stringify([selected?.id, selected?.skin, selected?.levels, selected?.targeting, selected?.kills, selected?.ownerId, game.points, game.profile?.pathUnlocks, game.profile?.bossDamageUnlocked, game.bossDamageOwners, multiplayer?.sessionId, multiplayer?.connected, multiplayer?.result]);
+    const panelSignature = JSON.stringify([selected?.id, selected?.skin, selected?.levels, selected?.targeting, selected?.kills, selected?.ownerId, game.points, game.profile?.pathUnlocks, game.profile?.bossDamageUnlocked, game.bossDamageOwners, game.profile?.tumbleSpeedUnlocked, game.tumbleSpeedOwners, multiplayer?.sessionId, multiplayer?.connected, multiplayer?.result]);
     if (panelSignature !== this.panelSignature) {
       this.panelSignature = panelSignature;
       const scrollTop = selectionChanged ? 0 : panel.scrollTop;
@@ -457,6 +457,7 @@ export class UI {
     const canEdit = owned && (!multiplayer || multiplayer.connected && !multiplayer.result);
     const owner = multiplayer?.players?.find((player) => player.id === tower.ownerId);
     const stats = game.getStats(tower);
+    const turboTumble = tower.type === 'multi' && (Array.isArray(game.tumbleSpeedOwners) ? game.tumbleSpeedOwners.includes(tower.ownerId) : game.profile.tumbleSpeedUnlocked);
     const levels = tower.levels || def.paths.map(() => 0);
     const used = levels.filter((level) => level > 0).length;
     const limit = Math.min(2, def.paths.length);
@@ -477,6 +478,7 @@ export class UI {
       ${multiplayer ? `<div class="tower-owner-note">${owned ? 'Your gnome · you choose its upgrades' : `${esc(owner?.name || 'Teammate')}’s gnome · upgrades controlled by your teammate`}</div>` : ''}
       <div class="unit-summary ${terrain ? 'terrain-summary' : ''}">${summary}</div>
       ${!automatic ? `<button class="targeting-button" data-targeting ${!canEdit ? 'disabled' : ''} title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : `<div class="targeting-note ${tower.type === 'spore' && stats.poisonSpreadRadius > 0 ? 'poison-spread-note' : ''}">${automaticNote}</div>`}
+      ${turboTumble ? '<div class="targeting-note tumble-speed-note">Turbo Tumble · permanent 3× attack speed</div>' : ''}
       ${tower.type === 'stun' ? `<div class="targeting-note">50% slower for ${precise(stats.slowDuration)}s · does not stack</div>` : ''}
       ${tower.type === 'strawberry' ? `<div class="targeting-note">Lobs at a fixed landing spot · ${precise(stats.flightDuration)}s flight · ${precise(stats.explosionRadius)} blast radius. Seeds deal ${n(stats.seedDamage)} damage to up to ${n(stats.seedPierce)} ${stats.seedPierce === 1 ? 'target' : 'targets'} each.</div>` : ''}
       ${helpers ? `<div class="necro-ability"><p>Spell kills queue guardians at the cottage to march toward enemies. Helper kills summon no one; helper upgrades apply to new summons.</p><div class="helper-stats" aria-label="New helper stats"><span><b>${n(stats.summonCount || 1)}</b> ${(stats.summonCount || 1) === 1 ? 'guardian' : 'guardians'} per spell kill</span><span><b>${n(stats.allyHp)}</b> helper HP</span><span><b>${n(stats.allyDamage)}</b> melee damage</span><span><b>${precise(stats.summonInterval)}s</b> dispatch</span><span><b>${precise(stats.allySpeed)}</b> march speed</span></div><div class="helper-counts"><span><b data-helper-active>${helpers.active}</b> / ${n(stats.allyLimit)} active</span><span><b data-helper-waiting>${helpers.waiting}</b> queued guardians</span></div></div>` : ''}
@@ -589,12 +591,18 @@ export class UI {
     const multiplayer = state.multiplayer;
     const purchase = item => `<button class="primary-button coin-purchase" data-shop-buy="${item.id}" ${multiplayer || coins < item.cost ? 'disabled' : ''}>${icons.coin} ${n(item.cost)} Round Coins</button>${coins < item.cost ? `<small class="coin-shortage">${n(item.cost - coins)} more to go</small>` : ''}`;
     const boss = SHOP_ITEMS.find(item => item.id === 'boss-damage');
+    const tumble = SHOP_ITEMS.find(item => item.id === 'tumble-speed');
     this.openModal('coin-shop', `<section id="round-coin-shop" class="coin-shop">
       <div class="modal-heading"><div><span class="eyebrow">LITTLE TREASURES. BIG ADVENTURES.</span><h2>Round Coin Shop</h2></div><button class="modal-close" data-close aria-label="Close Round Coin shop">×</button></div>
       <div class="coin-wallet-banner">${icons.coin}<div><strong id="shop-wallet-value">${n(coins)}</strong><span>Round Coins</span></div><p>Clear a round. Earn a coin.<br>Keep your treasures between games.</p></div>
       ${multiplayer ? `<p class="shop-coop-note">${multiplayer.shopSupported ? 'Your coins keep arriving during co-op. Buy and equip between co-op games; your current loadout stays fixed for this room.' : 'This co-op server needs an update for Round Coin rewards and shop upgrades. Your solo wallet stays saved.'}</p>` : ''}
       ${multiplayer?.shopSupported && !multiplayer.costumesSupported ? '<p class="shop-costume-note">Update the co-op server for Orange Knight Bramble and Skeleton Sprout. Your purchased costumes stay saved; this room uses their original looks.</p>' : ''}
+      ${multiplayer?.shopSupported && !multiplayer.tumbleSpeedSupported && profile.tumbleSpeedUnlocked ? '<p class="shop-tumble-note">Update the co-op server for Turbo Tumble. Your purchase stays saved; Tumble uses normal attack speed in this room.</p>' : ''}
       <div class="coin-shop-grid">
+        <article class="coin-shop-card tumble-card" data-shop-item="tumble-speed"><div class="shop-product-art tumble-product-art">${portrait('multi')}<span class="tumble-multiplier">3×</span><span class="shop-product-badge">PERMANENT TUMBLE POWER</span></div>
+          <div class="shop-product-copy"><h3>${esc(tumble.name)}</h3><p>${esc(tumble.description)}</p><small>Permanent · Works with every upgrade level. ${game.isUnlocked('multi') ? 'All your Tumbles get the boost.' : 'Unlock Tumble by clearing round 15 to use this power.'}</small></div>
+          <div class="shop-product-action">${profile.tumbleSpeedUnlocked ? '<span class="shop-owned">✓ Active forever · 3× attack speed</span>' : purchase(tumble)}</div>
+        </article>
         ${COSTUMES.map(costume => {
           const item = SHOP_ITEMS.find(item => item.id === costume.itemId);
           const owned = profile.cosmetics?.includes(item.id);
