@@ -7,5 +7,6 @@
 !src/combos.js
 !src/enemy-traits.js
 !src/economy.js
+!src/fusions.js
 !server/
 !server/**

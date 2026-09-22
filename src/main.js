@@ -14,8 +14,15 @@ try { audioPreferences = JSON.parse(localStorage.getItem('gnomeward-audio') || '
 const preferredMusic = MUSIC_TRACKS.includes(audioPreferences.music) ? audioPreferences.music : 'off';
 const preferredVolume = Number.isFinite(audioPreferences.volume) ? Math.max(0, Math.min(1, audioPreferences.volume)) : .35;
 let game=new Game(MAPS[0].id,profile),world,ready=false;
-const state={selectedTowerId:null,placingType:null,paused:false,speed:1,sound:audioPreferences.effects === true,autoStart:false,autoCountdown:null,music:preferredMusic,musicVolume:preferredVolume,musicStatus:preferredMusic === 'off' ? 'off' : 'ready'};
+const state={selectedTowerId:null,selectedFusionMemberId:null,mergeOpen:false,mergePartnerId:null,placingType:null,paused:false,speed:1,sound:audioPreferences.effects === true,autoStart:false,autoCountdown:null,music:preferredMusic,musicVolume:preferredVolume,musicStatus:preferredMusic === 'off' ? 'off' : 'ready'};
 function refreshUI() {
+  const root = game.getFusionRoot?.(state.selectedTowerId);
+  if (root) state.selectedTowerId = root.id;
+  if (state.fusionSelectionRoot !== state.selectedTowerId) {
+    state.fusionSelectionRoot = state.selectedTowerId;
+    state.selectedFusionMemberId = state.selectedTowerId;
+    state.mergeOpen = false; state.mergePartnerId = null;
+  }
   state.shopProfile = soloRun?.game.profile || game.profile;
   ui.update(game, state);
 }
@@ -171,13 +178,13 @@ function shopBuy(id, quotedPrice) {
     return;
   }
   if (!buyShopItem(game.profile, id, now)) { refreshUI(); ui.showCoinShop(); return; }
-  if (id === 'tumble-speed') for (const tower of game.towers) if (tower.type === 'multi') tower.cooldown /= 3;
+  if (id === 'tumble-speed') for (const tower of game.towers) if (game.getFusionMembers(tower.id).some(member => member.type === 'multi')) tower.cooldown /= 3;
   save(); refreshUI(); ui.showCoinShop(); beep(880,.16);
   ui.toast(id === 'boss-damage' ? 'Boss Breaker unlocked forever · 2× damage against bosses!' : id === 'tumble-speed' ? 'Turbo Tumble unlocked forever · 3× attack speed!' : `${SHOP_ITEMS.find(item => item.id === id)?.name || 'Costume'} unlocked! Equip it in the shop.`);
 }
 function shopEquip(type, skin) {
   if (state.multiplayer || !equipTowerSkin(game.profile, type, skin === 'default' ? null : skin)) return;
-  for (const tower of game.towers) if (tower.type === type) tower.skin = getTowerSkin(game.profile, type);
+  for (const tower of game.towers) if (tower.type === type && !tower.fusionKey && !tower.fusionParentId) tower.skin = getTowerSkin(game.profile, type);
   world?.setGhost(null);
   save(); refreshUI(); ui.showCoinShop();
 }
@@ -190,9 +197,20 @@ const ui=new UI({
   onSpeed:()=>{cycleSpeed();refreshUI()},
   onAuto:()=>{if(state.multiplayer){if(state.multiplayer.autoSupported)multiplayer.command({action:'auto',enabled:!state.multiplayer.autoStart});return;}state.autoStart=!state.autoStart;state.autoCountdown=null;refreshUI()},
   onTargeting:targetNext,
+  onFusionMember:id=>{if(game.getFusionMembers(state.selectedTowerId).some(member=>member.id===id)){state.selectedFusionMemberId=id;refreshUI();}},
+  onMergeOpen:()=>{state.mergeOpen=!state.mergeOpen;state.mergePartnerId=null;refreshUI();},
+  onMergePartner:id=>{if(game.canMergeTowers(state.selectedTowerId,id)){state.mergePartnerId=id;refreshUI();}},
+  onMergeConfirm:()=>{
+    if(!ownSelection() || (state.multiplayer&&!state.multiplayer.fusionsSupported))return;
+    const towerId=state.selectedTowerId,otherTowerId=state.mergePartnerId;
+    if(!game.canMergeTowers(towerId,otherTowerId)){state.mergePartnerId=null;refreshUI();return;}
+    if(state.multiplayer){multiplayer.command({action:'merge',towerId,otherTowerId});}
+    else if(game.mergeTowers(towerId,otherTowerId)){save();beep(1000,.2);}
+    state.mergeOpen=false;state.mergePartnerId=null;refreshUI();
+  },
   onMusic:chooseMusic,
   onMusicVolume:value=>{music.setVolume(value);state.musicVolume=music.volume;saveAudioPreferences();refreshUI()},
-  onMap:id=>newGarden(id),onUpgrade:pathIndex=>{if(!ownSelection())return;if(state.multiplayer){multiplayer.command({action:'upgrade',towerId:state.selectedTowerId,path:pathIndex});return;}if(game.upgradeTower(state.selectedTowerId,pathIndex)){beep(880,.16);}else ui.toast('Earn more points, or choose one of your two available paths.');refreshUI()},
+  onMap:id=>newGarden(id),onUpgrade:pathIndex=>{if(!ownSelection())return;const towerId=game.getFusionMembers(state.selectedTowerId).find(member=>member.id===state.selectedFusionMemberId)?.id??state.selectedTowerId;if(state.multiplayer){multiplayer.command({action:'upgrade',towerId,path:pathIndex});return;}if(game.upgradeTower(towerId,pathIndex)){beep(880,.16);}else ui.toast('Earn more points, or choose one of your two available paths.');refreshUI()},
   onSell:()=>{if(!ownSelection())return;if(state.multiplayer){multiplayer.command({action:'sell',towerId:state.selectedTowerId});cancel();return;}game.sellTower(state.selectedTowerId);cancel();beep(400)},onCancel:cancel,
   onSound:()=>{state.sound=!state.sound;saveAudioPreferences();beep(600);refreshUI()},onRestart:()=>newGarden(game.map.id)
 });
@@ -218,7 +236,7 @@ try {
         refreshUI();return;
       }
       if(state.placingType){const t=game.placeTower(state.placingType,x,z);if(t){state.placingType=null;state.selectedTowerId=t.id;beep(520,.12);}else ui.toast(game.gold<TOWERS[state.placingType].cost?'You need more gold for this gnome.':'Place your gnome on the grass, away from the path, hidden relics, and other gnomes.');}
-      else {const nearest=game.towers.find(t=>t.id===hitTowerId)||game.towers.find(t=>Math.hypot(t.x-x,t.z-z)<.85);state.selectedTowerId=nearest?.id??null;}
+      else {const nearest=game.towers.find(t=>!t.fusionParentId&&t.id===hitTowerId)||game.towers.find(t=>!t.fusionParentId&&Math.hypot(t.x-x,t.z-z)<.85);state.selectedTowerId=nearest?.id??null;}
       refreshUI();
     },onCancel:cancel
   });
@@ -272,4 +290,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.3.6'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.4.0'};

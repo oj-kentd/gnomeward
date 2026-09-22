@@ -1,14 +1,15 @@
-Gnomeward 0.3.5 adds Turbo Tumble, a permanent 50-Round-Coin shop power.
+Gnomeward 0.4.0 adds merged gnome forms in solo and co-op.
 
-- Triples Tumble’s attack speed at every upgrade tier, for existing and future Tumbles.
-- Activates immediately in solo, including the current firing cooldown. Buying it twice cannot stack the effect or charge again.
-- In co-op, only the purchasing player’s Tumbles receive the boost. Buy before joining; the room loadout stays fixed.
-- Selected-unit stats and upgrade previews show the boosted rate. Damage per hit, volley size and hidden-combination cooldowns are unchanged.
-- Tumble still unlocks after clearing round 15. Existing coins, costumes and Boss Breaker are preserved.
-- Older servers remain joinable with normal Tumble speed until updated.
+- Merge Sprout, Tumble, and Morrow into Sproutstorm, Gravebloom, or Soulstorm; add the missing third gnome to create Trinity.
+- Keeps each component’s abilities and upgrades, with separate tabs in the unit panel and four new Blender models.
+- Morrow grants guardian summoning to the form’s direct attacks. Guardians never summon additional guardians.
+- Purchased Turbo Tumble gives every attack pattern in a Tumble form 3× speed, without stacking or accelerating guardian dispatch.
+- Merged units put costumes aside; owned costumes stay in the collection.
+- Co-op validates ownership, shares merged state, and retains it through reconnects. Older servers remain joinable with merging disabled.
+- Includes the annual September 22–28 Tumble Day offer: 50 Round Coins during the event, 1,000 otherwise. Purchases remain permanent.
 
-**[Unraid installation and update instructions](https://github.com/oj-kentd/gnomeward/blob/server-v0.3.5/docs/UNRAID.md)**
+**[Unraid installation and update instructions](https://github.com/oj-kentd/gnomeward/blob/server-v0.4.0/docs/UNRAID.md)**
 
-Download the image and `SHA256SUMS`, verify the checksum, then load it with Docker. Set the container’s Repository to `gnomeward-server:0.3.5` and Apply. Keep the same data mount, port, environment variables, and Cloudflare route. Finish active games before restarting.
+Download the image and `SHA256SUMS`, verify the checksum, and load the image with Docker. Set the container’s Repository to `gnomeward-server:0.4.0` and Apply. Keep the same data mount, port, environment variables, and Cloudflare route. Finish active games before restarting.
 
-Verify `/healthz` reports 0.3.5 and `tumbleSpeedVersion: 1`, refresh both browsers, and start a new room. You can update directly from an older release. Browser purchases do not require a server data migration.
+Verify `/healthz` reports `0.4.0` and `fusionVersion: 1`, refresh both browsers, and create a new room. You can update directly from any earlier release. No save migration is required.

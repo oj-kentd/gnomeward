@@ -1,10 +1,11 @@
 import { COSTUMES } from './economy.js';
+import { FUSIONS } from './fusions.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CoopMotionBuffer } from './coop-motion.js';
 import { TOWERS, ENEMIES, SECRETS, cottagePosition } from './data.js';
 
-const ASSETS = [...COSTUMES.map(costume=>costume.modelName),'trait-armored','trait-runed','trait-toxic','combo-marker-sporefire','combo-marker-prismstorm','combo-marker-berry-singularity','berry-singularity-seed-ring','berry-singularity-arcs','berry-singularity-stars','sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
+const ASSETS = [...Object.values(FUSIONS).map(fusion=>fusion.modelName),...COSTUMES.map(costume=>costume.modelName),'trait-armored','trait-runed','trait-toxic','combo-marker-sporefire','combo-marker-prismstorm','combo-marker-berry-singularity','berry-singularity-seed-ring','berry-singularity-arcs','berry-singularity-stars','sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
 const ENEMY_TRAIT_MODELS = { armored: 'trait-armored', runed: 'trait-runed', toxic: 'trait-toxic' };
 const COMBO_MARKER_MODELS = { sporefire: 'combo-marker-sporefire', prismstorm: 'combo-marker-prismstorm', 'berry-singularity': 'combo-marker-berry-singularity' };
 const COMBO_BURSTS = new Set(['sporefire', 'prism-burst', 'berry-singularity']);
@@ -112,8 +113,11 @@ export class GardenRenderer {
   }
   updateComboMarkers(game) {
     const activeIds = new Set(), shownIds = new Set();
-    for (const tower of game.towers) {
-      const active = tower.comboActive;
+    const roots = new Map(game.towers.filter(tower => !tower.fusionParentId).map(tower => [tower.id, tower]));
+    for (const member of game.towers) {
+      const tower = roots.get(member.fusionParentId || member.id);
+      if (!tower || activeIds.has(tower.id)) continue;
+      const active = member.comboActive;
       if (!active || !Object.hasOwn(COMBO_MARKER_MODELS, active.kind) || !Number.isFinite(active.until) || active.until <= game.time || activeIds.size >= 64) continue;
       activeIds.add(tower.id);
       const startedAt = Number.isFinite(active.startedAt) ? active.startedAt : active.until - 3;
@@ -345,7 +349,35 @@ export class GardenRenderer {
       this.motion.reset();
     }
     const seen=new Set();
-    for(const t of game.towers){const key='t'+t.id;seen.add(key);let o=this.entities.get(key);const modelName=COSTUMES.find(costume=>costume.towerType===t.type&&costume.skin===t.skin)?.modelName||'gnome-'+t.type;if(o&&o.userData.modelName!==modelName){this.actors.remove(o);o=null;}if(!o){o=this.clone(modelName);o.userData.modelName=modelName;o.userData.towerId=t.id;this.actors.add(o);this.entities.set(key,o)}o.position.set(t.x,.07,t.z);this.ownershipRing(o,t,state.multiplayer);const nearest=game.enemies.reduce((best,e)=>!best||Math.hypot(e.x-t.x,e.z-t.z)<Math.hypot(best.x-t.x,best.z-t.z)?e:best,null);if(nearest)o.rotation.y=Math.atan2(nearest.x-t.x,nearest.z-t.z);o.scale.setScalar(1+Math.min(t.levels.reduce((a,b)=>a+b,0),6)*.035);}
+    for (const tower of game.towers) {
+      // Combat members stay in the simulation, but a fusion is one visible toy.
+      if (tower.fusionParentId) continue;
+      const key = 't' + tower.id;
+      seen.add(key);
+      let object = this.entities.get(key);
+      const fusion = FUSIONS[tower.fusionKey];
+      const modelName = fusion?.modelName || COSTUMES.find(costume => costume.towerType === tower.type && costume.skin === tower.skin)?.modelName || 'gnome-' + tower.type;
+      const merged = !!object && !!fusion && object.userData.modelName !== modelName;
+      if (object && object.userData.modelName !== modelName) {
+        this.actors.remove(object);
+        object = null;
+      }
+      if (!object) {
+        object = this.clone(modelName);
+        object.userData.modelName = modelName;
+        object.userData.towerId = tower.id;
+        if (merged) object.userData.fusedAt = time;
+        this.actors.add(object);
+        this.entities.set(key, object);
+      }
+      object.position.set(tower.x, .07, tower.z);
+      this.ownershipRing(object, tower, state.multiplayer);
+      const nearest = game.enemies.reduce((best, enemy) => !best || Math.hypot(enemy.x - tower.x, enemy.z - tower.z) < Math.hypot(best.x - tower.x, best.z - tower.z) ? enemy : best, null);
+      if (nearest) object.rotation.y = Math.atan2(nearest.x - tower.x, nearest.z - tower.z);
+      const age = time - (object.userData.fusedAt ?? -Infinity);
+      const mergeBounce = !this.reducedMotion.matches && age >= 0 && age < .55 ? Math.sin(age / .55 * Math.PI) * .12 : 0;
+      object.scale.setScalar(1 + Math.min(tower.levels.reduce((sum, level) => sum + level, 0), 6) * .035 + mergeBounce);
+    }
     this.updateComboMarkers(game);
     for(const e of game.enemies){const key='e'+e.id;seen.add(key);let o=this.entities.get(key);if(!o){o=this.clone(e.boss||e.isBoss?'skeleton-boss':'skeleton');const color=e.color||ENEMIES[e.type]?.color; if(color)o.traverse(m=>{if(!m.isMesh)return;const tint=mat=>{if(!/cream|purple|bone|skull|rib/i.test(mat.name))return mat;const k=mat.uuid+color;if(!this.tintMaterials.has(k)){const copy=mat.clone();copy.color.set(color);this.tintMaterials.set(k,copy)}return this.tintMaterials.get(k)};m.material=Array.isArray(m.material)?m.material.map(tint):tint(m.material)});this.actors.add(o);this.entities.set(key,o);const hp=this.clone('path',0xd5f395);hp.name='health';hp.scale.set(.8,.055,.065);hp.position.set(0,1.65,0);o.add(hp);}this.setEnemyTrait(o,e);o.position.set(e.x,.1+Math.sin(time*10+e.id)*.035,e.z);if(o.userData.lastX!==undefined){const dx=e.x-o.userData.lastX,dz=e.z-o.userData.lastZ;if(Math.abs(dx)+Math.abs(dz)>.001)o.rotation.y=Math.atan2(dx,dz)}o.userData.lastX=e.x;o.userData.lastZ=e.z;const hp=o.getObjectByName('health');if(hp){hp.scale.x=.8*Math.max(.01,e.hp/e.maxHp);hp.visible=e.hp<e.maxHp;}if(e.slowRemaining>0)o.rotation.z=Math.sin(time*5)*.025;else o.rotation.z=0;
       if(!e.capturedBy&&game.barriers.some(b=>b.hp>0&&Math.hypot(e.x-b.x,e.z-b.z)<.4)){o.rotation.z=Math.sin(time*12+e.id)*.1;o.position.y+=Math.abs(Math.sin(time*12+e.id))*.04;}
@@ -561,7 +593,14 @@ export class GardenRenderer {
     for (const [id, object] of this.fx) {
       if (!fs.has(id)) { this.actors.remove(object); this.disposeEffect(object); this.fx.delete(id); }
     }
-    if(!state.placingType){if(this.ghost)this.ghost.visible=false;const t=game.towers.find(t=>t.id===state.selectedTowerId);if(t)this.showRange(t.x,t.z,game.getStats(t).range);else this.range.visible=false;}
+    if (!state.placingType) {
+      if (this.ghost) this.ghost.visible = false;
+      const selected = game.towers.find(tower => tower.id === state.selectedTowerId);
+      const root = selected?.fusionParentId ? game.towers.find(tower => tower.id === selected.fusionParentId) : selected;
+      const component = root && game.towers.find(tower => tower.id === state.selectedFusionMemberId && (tower.id === root.id || tower.fusionParentId === root.id));
+      if (root) this.showRange(root.x, root.z, game.getStats(component || root).range);
+      else this.range.visible = false;
+    }
     this.renderer.render(this.scene,this.camera);
   }
 }

@@ -24,7 +24,7 @@ export const SHOP_ITEMS = Object.freeze([
   Object.freeze({ id: 'boom-orange-knight', name: 'Orange Knight Bramble', cost: 100, description: 'Orange armor and a knight’s helmet for Bramble. Cosmetic only; the same explosive guardian underneath.' }),
   Object.freeze({ id: 'sprout-skeleton', name: 'Skeleton Sprout', cost: 100, description: 'skeleton vs skeletons who wins ???' }),
   Object.freeze({ id: 'boss-damage', name: 'Boss Breaker', cost: 50, description: 'Permanently doubles your gnomes’ damage against bosses, including poison and summoned guardians.' }),
-  Object.freeze({ id: 'tumble-speed', name: 'Turbo Tumble', cost: TUMBLE_DAY_EVENT.regularCost, description: 'Permanently triples Tumble’s attack speed at every upgrade level. Same damage and shots per attack; three times the volleys.' }),
+  Object.freeze({ id: 'tumble-speed', name: 'Turbo Tumble', cost: TUMBLE_DAY_EVENT.regularCost, description: 'Permanently triples attack speed for Tumble and every attack pattern in his merged forms. Works at every upgrade level; guardian dispatch stays unchanged.' }),
 ]);
 
 export function getShopOffer(id, now = Date.now()) {

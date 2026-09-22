@@ -92,7 +92,7 @@ Green arrows mark every entrance. Enemies alternate between the two entrances on
 
 ## Multiplayer server for Unraid
 
-The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and coordinate rounds with Ready controls or shared auto rounds. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.3.5 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
+The main game now supports two-player online co-op through its Co-op button: create a lobby or join a waiting gardener. Both players defend one garden, own their gnomes, spend their own gold and points, and coordinate rounds with Ready controls or shared auto rounds. Cyan rings mark your gnomes and amber rings mark your teammate’s. The host controls speed; either player can pause. Menus do not pause the other player. Follow the **[Unraid and existing Cloudflare Tunnel setup guide](docs/UNRAID.md)** to load the published image, mount its data folder, and add a hostname to an existing tunnel. The default service is `https://multiplayer.lightsoutphotos.com`; use server version 0.4.0 for the current features. The service root retains its connection diagnostic. PvP remains backend-only for now. Solo progress stays separate; leaving co-op restores your previous solo garden, paused.
 
 Run it locally with `npm run server`, then open `http://localhost:2567/`. Match results are stored in `server-data/results.json` by default. `npm test` includes authoritative multiplayer and real WebSocket integration tests; with the server running, `npm run test:server-browser` checks the desktop/phone connection page. See the [server protocol](server/PROTOCOL.md) for client integration and current rules.
 
@@ -168,3 +168,7 @@ Some completed upgrade paths interact in surprising ways. Discoveries celebrate 
 `npm run test:berry-combo` and `npm run test:berry-combo-browser` cover the third hidden interaction’s earned progression and two-phase projectile rendering.
 
 Endless mode introduces three enemy traits after the campaign, using only physical, magic, and poison damage. Each trait has one weakness (double damage), one resistance (half damage), and otherwise normal damage. The field guide records encounters as they happen. Skeleton colors still identify base toughness.
+
+## Merged gnomes (0.4.0)
+
+Sprout, Tumble, and Morrow can merge in any distinct pair, then combine with the missing third gnome to form Trinity. Select a gnome and choose **Merge gnomes** to preview and confirm. Each keeps its abilities and upgrade paths; costumes stay owned but are put aside on merged units. Turbo Tumble triples all attack patterns in forms containing Tumble. Co-op merging requires server **0.4.0**. See [merging rules](docs/FUSIONS.md).

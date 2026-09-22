@@ -71,6 +71,7 @@ Send `room.send('command', { action, ...fields })`. Player identity comes only f
 | --- | --- | --- |
 | `place` | `type`, finite `x`, finite `z` | Validates unlock, location, overlap, wallet; 100-tower limit per board |
 | `upgrade` | integer `towerId`, integer `path` | Owner only; zero-based path index, existing two-path/three-tier rules; locked secret paths are rejected before spending points |
+| `merge` | integer `towerId`, integer `otherTowerId` | Both visible roots owned by caller; distinct Sprout/Tumble/Morrow components, at most one each. Free, retains first root position. |
 | `sell` | integer `towerId` | Owner only; normal gold refund |
 | `target` | integer `towerId`, `mode` | Owner only; `first`, `last`, `strong`, `close` where supported |
 | `discover` | `id` | Validates secret ID against room map; existing puzzle sequence rules |
@@ -127,3 +128,5 @@ A final `result` is `{ mode, mapId, reason, winnerId, earnedPathUnlocks, players
 `{ action: 'ready', ready: true | false }` sets a player’s Ready vote. Omitting `ready` keeps the original true behavior. Marking ready requires both players connected, unpaused, and between rounds. A connected player may withdraw readiness during planning even while paused. When both are ready, the next round starts immediately and clears both votes and the timer.
 
 Round one always needs both manual votes. Once a round has completed, enabled auto starts `autoCountdown` at five seconds during planning. It advances by the unscaled 20 Hz server step, freezes on pause/disconnect, and starts the next round at zero. It is null outside an eligible build window or when auto is off; final results clear it. Campaign victory never starts endless mode automatically: both players must consent first. The browser may animate the remaining time locally but must never start a round itself.
+
+Release **0.4.0** adds `fusionVersion: 1` to health and snapshots. Tower records retain their original combat IDs/types. A visible anchor carries `fusionKey`; its other components carry `fusionParentId` and share its position. Clients render only anchors and direct component upgrade commands to their original IDs. Selling any component sells the entire group. Loadout synchronization never reapplies costumes to a merged form. Purchased Turbo Tumble applies once to all attack patterns of the owner’s forms containing Tumble; guardian cadence and combo cooldowns remain unchanged. Older servers expose no fusion controls in the new client.

@@ -1,3 +1,4 @@
+import { FUSIONS } from './fusions.js';
 import { MAPS, TOWERS, ENEMIES, NECRO_PATH_SECRET } from './data.js';
 import { ENEMY_TRAITS, damageKindForTower } from './enemy-traits.js';
 import { SHOP_ITEMS, COSTUMES, getTowerSkin, getShopOffer, TUMBLE_DAY_EVENT } from './economy.js';
@@ -172,6 +173,12 @@ export class UI {
       actions.onChooseTower?.(card.dataset.tower);
     });
     document.getElementById('selection-panel').addEventListener('click', (event) => {
+      const member = event.target.closest('[data-fusion-member]');
+      if (member) actions.onFusionMember?.(Number(member.dataset.fusionMember));
+      if (event.target.closest('[data-merge-open]:not(:disabled)')) actions.onMergeOpen?.();
+      const partner = event.target.closest('[data-merge-partner]:not(:disabled)');
+      if (partner) actions.onMergePartner?.(Number(partner.dataset.mergePartner));
+      if (event.target.closest('[data-merge-confirm]:not(:disabled)')) actions.onMergeConfirm?.();
       const upgrade = event.target.closest('[data-upgrade]');
       if (upgrade && !upgrade.disabled) actions.onUpgrade?.(Number(upgrade.dataset.upgrade));
       if (event.target.closest('[data-sell]:not(:disabled)')) actions.onSell?.();
@@ -398,26 +405,30 @@ export class UI {
       this.layoutBattlefield();
       if (selected) {
         panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'false');
-        panel.setAttribute('aria-label', `Upgrade ${TOWERS[selected.type].name}`);
+        panel.setAttribute('aria-label', `Upgrade ${FUSIONS[selected.fusionKey]?.name || TOWERS[selected.type].name}`);
         this.dismissTip();
       } else {
         panel.removeAttribute('role'); panel.removeAttribute('aria-modal');
         panel.setAttribute('aria-label', 'Selected defender');
       }
     }
-    const panelSignature = JSON.stringify([selected?.id, selected?.skin, selected?.levels, selected?.targeting, selected?.kills, selected?.ownerId, game.points, game.profile?.pathUnlocks, game.profile?.bossDamageUnlocked, game.bossDamageOwners, game.profile?.tumbleSpeedUnlocked, game.tumbleSpeedOwners, multiplayer?.sessionId, multiplayer?.connected, multiplayer?.result]);
+    const panelSignature = JSON.stringify([state.selectedFusionMemberId, state.mergeOpen, state.mergePartnerId, multiplayer?.fusionsSupported, game.getFusionMembers(selected?.id).map(t=>[t.id,t.levels,t.kills]), game.towers.map(t=>[t.id,t.type,t.fusionKey,t.fusionParentId,t.ownerId,t.purchaseCost]), selected?.id, selected?.skin, selected?.levels, selected?.targeting, selected?.kills, selected?.ownerId, game.points, game.profile?.pathUnlocks, game.profile?.bossDamageUnlocked, game.bossDamageOwners, game.profile?.tumbleSpeedUnlocked, game.tumbleSpeedOwners, multiplayer?.sessionId, multiplayer?.connected, multiplayer?.result]);
     if (panelSignature !== this.panelSignature) {
       this.panelSignature = panelSignature;
       const scrollTop = selectionChanged ? 0 : panel.scrollTop;
       const focusedPath = document.activeElement?.dataset?.upgrade;
       const targetingFocused = document.activeElement?.hasAttribute('data-targeting');
+      const fusionFocusAttribute = ['data-fusion-member', 'data-merge-open', 'data-merge-partner', 'data-merge-confirm'].find(attribute => document.activeElement?.hasAttribute(attribute));
+      const fusionFocusValue = fusionFocusAttribute && document.activeElement.getAttribute(fusionFocusAttribute);
       this.renderSelection(game, selected);
       panel.scrollTop = scrollTop;
       if (!selectionChanged && focusedPath !== undefined) panel.querySelector(`[data-upgrade="${focusedPath}"]:not(:disabled)`)?.focus({ preventScroll: true });
       if (!selectionChanged && targetingFocused) panel.querySelector('[data-targeting]')?.focus({ preventScroll: true });
+      if (!selectionChanged && fusionFocusAttribute) [...panel.querySelectorAll(`[${fusionFocusAttribute}]:not(:disabled)`)].find(button => button.getAttribute(fusionFocusAttribute) === fusionFocusValue)?.focus({ preventScroll: true });
     }
-    if (selected?.type === 'necro') {
-      const counts = summonCounts(game, selected);
+    const selectedMember = game.getFusionMembers(selected?.id).find(member => member.id === state.selectedFusionMemberId) || selected;
+    if (selectedMember?.type === 'necro') {
+      const counts = summonCounts(game, selectedMember);
       for (const key of ['active', 'waiting']) {
         const value = panel.querySelector(`[data-helper-${key}]`);
         if (value) value.textContent = counts[key];
@@ -456,6 +467,13 @@ export class UI {
   renderSelection(game, tower) {
     const container = document.getElementById('selection-panel');
     if (!tower) { container.replaceChildren(); return; }
+    const root = tower;
+    container.dataset.towerId = String(root.id);
+    container.setAttribute('aria-label', `Upgrade ${FUSIONS[root.fusionKey]?.name || TOWERS[root.type].name}`);
+    const members = game.getFusionMembers(root.id);
+    const fusion = FUSIONS[root.fusionKey];
+    const state = this.last.state;
+    tower = members.find(member => member.id === state.selectedFusionMemberId) || root;
     const def = TOWERS[tower.type];
     const damageKind = damageKindForTower(tower.type);
     const multiplayer = this.last?.state.multiplayer;
@@ -464,7 +482,7 @@ export class UI {
     const canEdit = owned && (!multiplayer || multiplayer.connected && !multiplayer.result);
     const owner = multiplayer?.players?.find((player) => player.id === tower.ownerId);
     const stats = game.getStats(tower);
-    const turboTumble = tower.type === 'multi' && (Array.isArray(game.tumbleSpeedOwners) ? game.tumbleSpeedOwners.includes(tower.ownerId) : game.profile.tumbleSpeedUnlocked);
+    const turboTumble = members.some(member => member.type === 'multi') && (Array.isArray(game.tumbleSpeedOwners) ? game.tumbleSpeedOwners.includes(tower.ownerId) : game.profile.tumbleSpeedUnlocked);
     const levels = tower.levels || def.paths.map(() => 0);
     const used = levels.filter((level) => level > 0).length;
     const limit = Math.min(2, def.paths.length);
@@ -481,14 +499,23 @@ export class UI {
         ? `<span><b>${n(stats.barrierHp)}</b> barrier HP</span><span><b>${n(stats.barrierLimit)}</b> max barriers</span><span><b>${precise(stats.interval)}s</b> cooldown</span><span><b>${range}</b> range</span>`
         : `<span><b>${precise(tower.type === 'spore' ? stats.poisonDps : stats.damage)}</b> ${tower.type === 'spore' ? 'poison/s' : tower.type === 'necro' ? 'spell damage' : 'damage'}</span><span><b>${precise(stats.attackSpeed)}</b> attacks/s</span><span><b>${range}</b> range</span>`;
     const automaticNote = tower.type === 'gravity' ? `Creates holes automatically · ${stats.capture ? 'captures enemies in the hole' : 'pulls nearby enemies inward'}` : tower.type === 'crystal' ? `Places barriers automatically · ${stats.explosionDamage > 0 ? `destroyed barriers deal ${n(stats.explosionDamage)} blast damage` : 'upgrade the blast path for on-destruction explosions'}` : stats.poisonSpreadRadius > 0 ? `Wild Garden: each mushroom infection can spread to ${n(stats.poisonSpreadTargets)} nearby ${stats.poisonSpreadTargets === 1 ? 'enemy' : 'enemies'} within ${precise(stats.poisonSpreadRadius)} range, one every ${precise(stats.poisonSpreadInterval)}s, at ${n(stats.poisonSpreadMultiplier * 100)}% damage. Spread poison cannot spread again.` : 'Mushrooms poison passing enemies · Wild Garden unlocks poison spread';
-    container.innerHTML = `<div class="selected-heading">${portrait(costumePortrait(tower.type, tower.skin))}<div><h3>${esc(def.name)}</h3><span>${tower.starting ? 'Free field guardian · ' : tower.starting ? 'Free starting guardian · ' : tower.purchaseCost === 0 ? 'Summoned guardian · ' : ''}${n(tower.kills)} defeated · <b class="damage-kind" data-damage-kind="${damageKind}" title="Base attack damage type">${damageKindLabels[damageKind]}</b></span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
+    const mergeSupported = !multiplayer || multiplayer.fusionsSupported;
+    const candidates = state.mergeOpen && members.length < 3 && mergeSupported && owned ? game.towers.filter(other => !other.fusionParentId && game.canMergeTowers(root.id, other.id)) : [];
+    const partner = candidates.find(other => other.id === state.mergePartnerId);
+    const recipe = partner && FUSIONS[[...members, ...game.getFusionMembers(partner.id)].map(member => member.type).sort().join('-')];
+    const memberTabs = fusion ? `<div class="fusion-members" role="tablist" aria-label="Choose abilities to upgrade">${members.map(member => `<button role="tab" aria-selected="${member.id === tower.id}" data-fusion-member="${member.id}">${portrait(member.type)}<span>${esc(TOWERS[member.type].name)}</span></button>`).join('')}</div><p class="fusion-component-label">${esc(def.name)} abilities & upgrades</p>` : '';
+    const mergeControls = ['sprout', 'multi', 'necro'].includes(root.type) && members.length < 3 && owned ? `<section class="fusion-controls"><button class="fusion-open" data-merge-open aria-expanded="${!!state.mergeOpen}" ${!canEdit || !mergeSupported ? 'disabled' : ''}>${state.mergeOpen ? 'Close merging' : 'Merge gnomes ✦'}</button>${!mergeSupported ? '<p>Update the co-op server to merge gnomes.</p>' : state.mergeOpen ? `<p>Combine one each of Sprout, Tumble and Morrow. Already merged forms can join with the missing gnome.</p>${candidates.length ? `<div class="fusion-candidates">${candidates.map(other => `<button data-merge-partner="${other.id}" aria-pressed="${other.id === partner?.id}">${portrait(FUSIONS[other.fusionKey]?.portrait || other.type)}<span>${esc(FUSIONS[other.fusionKey]?.name || TOWERS[other.type].name)}<small>Gnome #${other.id}</small></span></button>`).join('')}</div>` : '<p class="fusion-empty">Place a compatible gnome first. Only your own gnomes can merge, with one of each kind.</p>'}${recipe ? `<div class="fusion-preview">${portrait(recipe.portrait)}<strong>${esc(recipe.name)}</strong><p>Both defenders become one at this selected gnome’s spot. Keeps every ability and upgrade. Costumes are put aside; your purchases stay yours.</p><p>Free · permanent for this game</p><button class="primary-button" data-merge-confirm ${!canEdit ? 'disabled' : ''}>MERGE INTO ${esc(recipe.name.toUpperCase())}</button></div>` : ''}` : ''}</section>` : '';
+    const refund = members.reduce((total, member) => total + Math.floor((member.purchaseCost ?? TOWERS[member.type].cost) * .75), 0);
+    container.innerHTML = `<div class="selected-heading">${portrait(fusion?.portrait || costumePortrait(tower.type, tower.skin))}<div><h3>${esc(fusion?.name || def.name)}</h3><span>${tower.starting ? 'Free field guardian · ' : tower.purchaseCost === 0 ? 'Summoned guardian · ' : ''}${n(members.reduce((total, member) => total + (member.kills || 0), 0))} defeated · <b class="damage-kind" data-damage-kind="${damageKind}" title="Base attack damage type">${damageKindLabels[damageKind]}</b>${fusion ? ` (${esc(def.name)})` : ''}</span></div><button class="upgrade-close" data-close-upgrades aria-label="Close upgrades">×</button></div>
       ${multiplayer ? `<div class="tower-owner-note">${owned ? 'Your gnome · you choose its upgrades' : `${esc(owner?.name || 'Teammate')}’s gnome · upgrades controlled by your teammate`}</div>` : ''}
+      ${mergeControls}
+      ${memberTabs}
       <div class="unit-summary ${terrain ? 'terrain-summary' : ''}">${summary}</div>
       ${!automatic ? `<button class="targeting-button" data-targeting ${!canEdit ? 'disabled' : ''} title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : `<div class="targeting-note ${tower.type === 'spore' && stats.poisonSpreadRadius > 0 ? 'poison-spread-note' : ''}">${automaticNote}</div>`}
-      ${turboTumble ? '<div class="targeting-note tumble-speed-note">Turbo Tumble · permanent 3× attack speed</div>' : ''}
+      ${turboTumble ? `<div class="targeting-note tumble-speed-note">Turbo Tumble · permanent 3× attack speed${fusion ? ' for every merged ability' : ''}</div>` : ''}
       ${tower.type === 'stun' ? `<div class="targeting-note">50% slower for ${precise(stats.slowDuration)}s · does not stack</div>` : ''}
       ${tower.type === 'strawberry' ? `<div class="targeting-note">Lobs at a fixed landing spot · ${precise(stats.flightDuration)}s flight · ${precise(stats.explosionRadius)} blast radius. Seeds deal ${n(stats.seedDamage)} damage to up to ${n(stats.seedPierce)} ${stats.seedPierce === 1 ? 'target' : 'targets'} each.</div>` : ''}
-      ${helpers ? `<div class="necro-ability"><p>Spell kills queue guardians at the cottage to march toward enemies. Helper kills summon no one; helper upgrades apply to new summons.</p><div class="helper-stats" aria-label="New helper stats"><span><b>${n(stats.summonCount || 1)}</b> ${(stats.summonCount || 1) === 1 ? 'guardian' : 'guardians'} per spell kill</span><span><b>${n(stats.allyHp)}</b> helper HP</span><span><b>${n(stats.allyDamage)}</b> melee damage</span><span><b>${precise(stats.summonInterval)}s</b> dispatch</span><span><b>${precise(stats.allySpeed)}</b> march speed</span></div><div class="helper-counts"><span><b data-helper-active>${helpers.active}</b> / ${n(stats.allyLimit)} active</span><span><b data-helper-waiting>${helpers.waiting}</b> queued guardians</span></div></div>` : ''}
+      ${helpers ? `<div class="necro-ability"><p>${fusion ? 'Direct attack kills from any merged member' : 'Spell kills'} queue guardians at the cottage to march toward enemies. Helper kills summon no one; helper upgrades apply to new summons.</p><div class="helper-stats" aria-label="New helper stats"><span><b>${n(stats.summonCount || 1)}</b> ${(stats.summonCount || 1) === 1 ? 'guardian' : 'guardians'} per ${fusion ? 'direct attack' : 'spell'} kill</span><span><b>${n(stats.allyHp)}</b> helper HP</span><span><b>${n(stats.allyDamage)}</b> melee damage</span><span><b>${precise(stats.summonInterval)}s</b> dispatch</span><span><b>${precise(stats.allySpeed)}</b> march speed</span></div><div class="helper-counts"><span><b data-helper-active>${helpers.active}</b> / ${n(stats.allyLimit)} active</span><span><b data-helper-waiting>${helpers.waiting}</b> queued guardians</span></div></div>` : ''}
       <div class="upgrade-heading"><strong>UPGRADES</strong><span>${icons.leaf}${currency(game.points)} points</span></div>
       <p class="path-rule">${limit === 1 ? '1 special path · 3 powerful tiers' : `Choose ${limit} of ${def.paths.length} paths · ${used}/${limit} chosen`}</p>
       <div class="upgrade-paths">${def.paths.map((path, index) => {
@@ -503,7 +530,7 @@ export class UI {
         const reason = locked ? 'Only 2 paths per gnome' : maxed ? 'Fully upgraded' : !affordable ? `Need ${currency(cost - game.points)} more points` : `Upgrade ${path.name} to tier ${level + 1}`;
         return `<div class="upgrade-path ${locked ? 'path-locked' : ''} ${level ? 'invested' : ''}"><div class="upgrade-copy"><strong>${esc(path.name)}</strong><span class="tier-chips" aria-label="Tier ${level} of ${path.costs.length}">${path.costs.map((_, tier) => `<i class="${tier < level ? 'filled' : ''}">${tier + 1}</i>`).join('')}</span><small>${locked ? 'Choose a different gnome for this path.' : esc(benefit)}</small></div><button class="upgrade-buy ${maxed ? 'maxed' : ''}" data-upgrade="${index}" ${!affordable || !canEdit ? 'disabled' : ''} title="${esc(!owned ? 'Your teammate controls this gnome' : reason)}">${locked ? `${icons.lock}<span>Locked</span>` : maxed ? '<b>✓</b><span>MAX</span>' : `<b>${icons.leaf}${n(cost)}</b><span>${affordable ? 'UPGRADE' : `Need ${currency(cost - game.points)}`}</span>`}</button></div>`;
       }).join('')}</div>
-      <div class="selection-footer"><span>Points come from<br>defeats & cleared rounds</span><button class="sell-button" data-sell ${!canEdit ? 'disabled' : ''}>SELL ${icons.coin}${n(Math.floor((tower.purchaseCost ?? def.cost) * .75))}</button></div>`;
+      <div class="selection-footer"><span>Points come from<br>defeats & cleared rounds</span><button class="sell-button" data-sell ${!canEdit ? 'disabled' : ''}>${fusion ? 'SELL MERGED' : 'SELL'} ${icons.coin}${n(refund)}</button></div>`;
   }
 
   openModal(type, html) {

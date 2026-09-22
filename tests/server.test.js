@@ -136,7 +136,7 @@ test('real HTTP and WebSocket clients enforce authority, room limits, reconnect,
     await t.test('health, origin rejection, request limits and private routes', async () => {
       const response = await fetch(`${url}/healthz`);
       assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { status: 'ok', service: 'gnomeward-server', version: SERVER_VERSION, protocol: 1, costumeVersion: 1, tumbleSpeedVersion: 1 });
+      assert.deepEqual(await response.json(), { status: 'ok', service: 'gnomeward-server', version: SERVER_VERSION, protocol: 1, costumeVersion: 1, tumbleSpeedVersion: 1, fusionVersion: 1 });
       assert.deepEqual(await lobbies(), []);
       assert.equal((await fetch(`${url}/lobbies`, { headers: { origin: 'https://evil.example' } })).status, 403);
       assert.equal((await fetch(`${url}/readyz`)).status, 200);

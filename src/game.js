@@ -1,4 +1,5 @@
 import { MAPS, TOWERS, ENEMIES, SECRETS, NECRO_PATH_SECRET, cottagePosition, cottageDoorPosition } from './data.js';
+import { FUSIONS, fusionKey } from './fusions.js';
 import { SPOREFIRE, PRISMSTORM, BERRY_SINGULARITY } from './combos.js';
 import { ENEMY_TRAITS, traitForSpawn, damageMultiplier, damageKindForTower } from './enemy-traits.js';
 import { normalizeEconomy, MAX_ROUND_COINS, COSTUMES, getTowerSkin } from './economy.js';
@@ -257,6 +258,65 @@ export class Game {
     this._event('summoned', `${TOWERS[type].name} appeared! Your first crystal guardian is free.`, { towerId: tower.id, unit: type });
   }
 
+  getFusionRoot(id) {
+    const tower = this.towers.find(t => t.id === id);
+    if (!tower) return null;
+    return tower.fusionParentId == null ? tower : this.towers.find(t => t.id === tower.fusionParentId && t.fusionParentId == null) || null;
+  }
+
+  getFusionMembers(id) {
+    const root = this.getFusionRoot(id);
+    if (!root) return [];
+    return this.towers.filter(t => t.id === root.id || t.fusionParentId === root.id)
+      .sort((a, b) => a.type.localeCompare(b.type) || a.id - b.id);
+  }
+
+  canMergeTowers(id, otherId) {
+    if (!['planning', 'wave'].includes(this.status) || id === otherId) return false;
+    const root = this.getFusionRoot(id), other = this.getFusionRoot(otherId);
+    if (!root || !other || root.id !== id || other.id !== otherId || root.ownerId !== other.ownerId) return false;
+    const members = [...this.getFusionMembers(id), ...this.getFusionMembers(otherId)];
+    return !!fusionKey(members.map(t => t.type)) && members.every(t => t.ownerId === root.ownerId);
+  }
+
+  mergeTowers(id, otherId) {
+    if (!this.canMergeTowers(id, otherId)) return false;
+    const root = this.getFusionRoot(id);
+    const members = [...this.getFusionMembers(id), ...this.getFusionMembers(otherId)];
+    const hadTurbo = new Set(members.filter(t => this._hasTurboTumble(t)).map(t => t.id));
+    const key = fusionKey(members.map(t => t.type));
+    for (const member of members) {
+      member.x = root.x; member.z = root.z;
+      member.targeting = root.targeting;
+      member.skin = null;
+      delete member.fusionKey;
+      if (member.id === root.id) delete member.fusionParentId;
+      else member.fusionParentId = root.id;
+    }
+    root.fusionKey = key;
+    for (const member of members) {
+      if (!hadTurbo.has(member.id) && this._hasTurboTumble(member)) member.cooldown /= 3;
+    }
+    this._effect('fusion', root, root, '#b7f2dd', 1);
+    this._event('merged', `${FUSIONS[key].name} awakened! Every guardian keeps their abilities and upgrades.`, { towerId: root.id, fusionKey: key });
+    return true;
+  }
+
+  _hasTurboTumble(tower) {
+    const eligible = Array.isArray(this.tumbleSpeedOwners)
+      ? tower.ownerId != null && this.tumbleSpeedOwners.includes(tower.ownerId)
+      : this.profile.tumbleSpeedUnlocked;
+    if (!eligible) return false;
+    return tower.type === 'multi' || !!((tower.fusionKey || tower.fusionParentId != null) && this.getFusionMembers(tower.id).some(t => t.type === 'multi'));
+  }
+
+  _fusionSummoner(tower) {
+    if (!tower) return null;
+    if (tower.type === 'necro') return tower;
+    if (!tower.fusionKey && tower.fusionParentId == null) return null;
+    return this.getFusionMembers(tower.id).find(t => t.type === 'necro') || null;
+  }
+
   upgradeTower(id, pathIndex) {
     if (!['planning', 'wave'].includes(this.status)) return false;
     const tower = this.towers.find(t => t.id === id);
@@ -275,7 +335,7 @@ export class Game {
     if (!['planning', 'wave'].includes(this.status) || !['first', 'last', 'strong', 'close'].includes(mode)) return false;
     const tower = this.towers.find(t => t.id === id);
     if (!tower || ['spore', 'gravity', 'crystal'].includes(tower.type)) return false;
-    tower.targeting = mode;
+    for (const member of this.getFusionMembers(id)) member.targeting = mode;
     return true;
   }
 
@@ -291,21 +351,24 @@ export class Game {
 
   sellTower(id) {
     if (!['planning', 'wave'].includes(this.status)) return false;
-    const index = this.towers.findIndex(t => t.id === id);
-    if (index < 0) return false;
-    const [tower] = this.towers.splice(index, 1);
-    // Poison and projectiles can outlive a sold tower. Preserve who fired them.
-    if (tower.ownerId != null) this._sourceOwners[tower.id] = tower.ownerId;
-    this.gold += Math.floor((tower.purchaseCost ?? TOWERS[tower.type].cost) * 0.75);
-    this.traps = this.traps.filter(trap => trap.sourceId !== id);
-    this.holes = this.holes.filter(hole => hole.sourceId !== id);
+    const root = this.getFusionRoot(id);
+    if (!root) return false;
+    const members = this.getFusionMembers(id), ids = new Set(members.map(t => t.id));
+    this.towers = this.towers.filter(t => !ids.has(t.id));
+    for (const tower of members) {
+      // Projectiles can outlive a sold tower; retain ownership for boss damage.
+      if (tower.ownerId != null) this._sourceOwners[tower.id] = tower.ownerId;
+      this.gold += Math.floor((tower.purchaseCost ?? TOWERS[tower.type].cost) * 0.75);
+      tower.soulQueue = [];
+    }
+    this.traps = this.traps.filter(trap => !ids.has(trap.sourceId));
+    this.holes = this.holes.filter(hole => !ids.has(hole.sourceId));
     for (const enemy of this.enemies) if (enemy.capturedBy != null && !this.holes.some(h => h.id === enemy.capturedBy)) enemy.capturedBy = null;
-    this.barriers = this.barriers.filter(barrier => barrier.sourceId !== id);
-    this.allies = this.allies.filter(ally => ally.sourceId !== id);
+    this.barriers = this.barriers.filter(barrier => !ids.has(barrier.sourceId));
+    this.allies = this.allies.filter(ally => !ids.has(ally.sourceId));
     for (const enemy of this.enemies) if (enemy.allyTargetId != null && !this.allies.some(ally => ally.id === enemy.allyTargetId)) enemy.allyTargetId = null;
-    tower.soulQueue = [];
     this._trySummon();
-    this._event('sold', `${TOWERS[tower.type].name} returned home. Upgrade points stay spent.`);
+    this._event('sold', `${FUSIONS[root.fusionKey]?.name || TOWERS[root.type].name} returned home. Upgrade points stay spent.`);
     return true;
   }
 
@@ -334,9 +397,7 @@ export class Game {
       case 'strawberry': stats = { damage: [18,34,60,96][a], interval: 4 * 0.76 ** c, range: 40, explosionRadius: [2.1,2.45,2.8,3.2][a], seedCount: [8,12,16,20][b], seedDamage: [4,6,9,13][b], seedPierce: [1,1,2,3][b], seedRange: 3 + b * 0.25, flightDuration: [1.5,1.25,1,0.8][c] }; break;
       default: stats = { damage: 0, interval: 1, range: 0 };
     }
-    if (tower.type === 'multi' && (Array.isArray(this.tumbleSpeedOwners)
-      ? tower.ownerId != null && this.tumbleSpeedOwners.includes(tower.ownerId)
-      : this.profile.tumbleSpeedUnlocked)) stats.interval /= 3;
+    if (this._hasTurboTumble(tower)) stats.interval /= 3;
     return { shots: 1, poisonDps: 0, poisonDuration: 0, poisonSpreadRadius: 0, poisonSpreadInterval: 0, poisonSpreadTargets: 0, poisonSpreadMultiplier: 0, slowDuration: 0, slowMultiplier: 1, explosionDamage: 0, explosionRadius: 0, ...stats, attackSpeed: 1 / stats.interval };
   }
 
@@ -410,7 +471,7 @@ export class Game {
       unitType: tower.type, damageKind: damageKindForTower(tower.type), sourceId: tower.id, targetId: target.id,
       x: tower.x, z: tower.z, tx: target.x, tz: target.z,
       ttl: duration, maxTtl: duration, color: TOWERS[tower.type].color,
-      damage: stats.damage, slowDuration: stats.slowDuration, slowMultiplier: stats.slowMultiplier, summonOnKill: tower.type === 'necro',
+      damage: stats.damage, slowDuration: stats.slowDuration, slowMultiplier: stats.slowMultiplier, summonOnKill: !!this._fusionSummoner(tower),
     });
   }
 
@@ -444,7 +505,7 @@ export class Game {
         continue;
       }
       if (shot.unitType === 'boom') this._igniteSpores(target, shot.sourceId);
-      this._damage(target, shot.damage, shot.sourceId, { summon: shot.summonOnKill === true, damageKind: shot.damageKind || damageKindForTower(shot.unitType) });
+      this._damage(target, shot.damage, shot.sourceId, { summon: shot.summonOnKill === true || !!this._fusionSummoner(this.towers.find(t => t.id === shot.sourceId)), damageKind: shot.damageKind || damageKindForTower(shot.unitType) });
       if (target.hp > 0 && shot.slowDuration > 0) {
         target.slowRemaining = Math.max(target.slowRemaining, shot.slowDuration);
         target.slowMultiplier = shot.slowMultiplier;
@@ -506,7 +567,7 @@ export class Game {
     if (target) {
       shot.tx = target.x; shot.tz = target.z; shot.ttl -= dt;
       if (shot.ttl > 0) { this.projectiles.push(shot); return; }
-      this._damage(target, PRISMSTORM.damage + target.maxHp * (target.boss ? PRISMSTORM.bossFraction : PRISMSTORM.healthFraction), tower.id, { damageKind: 'magic' });
+      this._damage(target, PRISMSTORM.damage + target.maxHp * (target.boss ? PRISMSTORM.bossFraction : PRISMSTORM.healthFraction), tower.id, { summon: !!this._fusionSummoner(tower), damageKind: 'magic' });
       this._effect('impact', target, target, shot.color, .12);
     }
     // A missed/dead target also consumes a hop, so retargeting has a finite cost.
@@ -606,10 +667,11 @@ export class Game {
     this.gold += ENEMIES[enemy.type].reward;
     this.points += enemy.boss ? 20 : 1;
     if (tower) tower.kills++;
-    if (tower?.type === 'necro' && summon) {
+    const summoner = summon && this._fusionSummoner(tower);
+    if (summoner) {
       this.necroSpellKills++;
-      const count = this.getStats(tower).summonCount;
-      for (let i = 0; i < count; i++) tower.soulQueue.push({ routeIndex: enemy.routeIndex ?? 0 });
+      const count = this.getStats(summoner).summonCount;
+      for (let i = 0; i < count; i++) summoner.soulQueue.push({ routeIndex: enemy.routeIndex ?? 0 });
       this._effect('soul-reap', enemy, enemy, TOWERS.necro.color, 0.4);
       if (this.necroSpellKills === NECRO_PATH_SECRET.requiredKills && this.canDiscoverNecroPath()) this._event('path-secret-ready', 'Ten souls stir the Hollow lanterns. The cottage rhyme may have an echo…');
     }
@@ -884,9 +946,9 @@ export class Game {
     this._dispatchReborn(dt);
     this._moveReborn(dt);
     for (const tower of this.towers) {
-      // Keep Tumble's sub-tick attack timing at the co-op server's 20 Hz rate.
+      // Keep Tumble and fused components precise at the co-op server's 20 Hz rate.
       // A ready/idle gnome starts a fresh interval instead of banking missed shots.
-      const attackRemainder = tower.type === 'multi' && tower.cooldown > 0
+      const attackRemainder = (tower.type === 'multi' || tower.fusionKey || tower.fusionParentId != null) && tower.cooldown > 0
         ? Math.min(0, tower.cooldown - dt) : 0;
       tower.cooldown = Math.max(0, tower.cooldown - dt);
       tower.prismCooldown = Math.max(0, (tower.prismCooldown || 0) - dt);

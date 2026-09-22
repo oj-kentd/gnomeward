@@ -29,3 +29,5 @@ Co-op rewards and the original shop items require server 0.3.3 or later. Orange 
 ## Tumble Day pricing
 
 Turbo Tumble costs 50 Round Coins from September 22 at midnight through September 28 each year, beginning in 2026, using America/New_York time. At midnight on September 29 it returns to 1,000 coins. The shop displays the dates and regular price, refreshes an open offer at the boundary, and checks the price again on purchase. If the displayed price has changed, the player must click the updated offer before any coins are spent. Existing owners keep the permanent upgrade without paying again. This pricing update needs no server update beyond the existing Turbo Tumble support in server 0.3.5.
+
+Merged forms containing Tumble inherit the owner’s permanent Turbo Tumble power on every component attack pattern. Buying the perk midgame also speeds existing merged forms. Guardian dispatch and helper attack timing are unchanged. Merged costumes are put aside on those units without removing purchases or changing the saved equipment for future placements. See [merging rules](FUSIONS.md).
