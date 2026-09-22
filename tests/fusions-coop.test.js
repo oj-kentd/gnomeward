@@ -4,6 +4,7 @@ import { Match } from '../server/match.js';
 import { applyCoopSnapshot } from '../src/multiplayer.js';
 import { Game } from '../src/game.js';
 import { TOWERS } from '../src/data.js';
+import { FUSIONS, fusionKey } from '../src/fusions.js';
 
 function fixture() {
   const match = new Match({ mode: 'coop', mapId: 'meadow' });
@@ -23,6 +24,75 @@ function fixture() {
   return { match, game, sprout, tumble, morrow, friend };
 }
 const merge = (match, owner, a, b) => match.command(owner, { action: 'merge', towerId: a.id, otherTowerId: b.id });
+
+test('expanded fusion catalog is authoritative for every new pair and snapshots preserve their components', () => {
+  for (const recipe of Object.values(FUSIONS).filter(recipe => recipe.catalogVersion === 2)) {
+    const match = new Match({ mode: 'coop', mapId: 'meadow' });
+    match.addPlayer('a', 'Alice'); match.addPlayer('b', 'Bob');
+    const game = match.board(); game.profile.unlocks = Object.keys(TOWERS);
+    const [type, incoming] = recipe.types;
+    const root = game._makeTower(type, -4, 0, TOWERS[type].cost); root.ownerId = 'a';
+    root.levels[0] = 2;
+    match.players.get('a').gold = 1000; match._syncLoadouts(); match._syncWallets();
+    match.command('a', { action: 'placeMerge', type: incoming, towerId: root.id });
+    const snapshot = match.snapshot('expanded-fusion');
+    assert.equal(snapshot.fusionCatalogVersion, 2);
+    assert.equal(snapshot.placementFusionVersion, 1);
+    const client = applyCoopSnapshot(null, snapshot, 'a');
+    assert.equal(client.game.getFusionRoot(root.id).fusionKey, fusionKey(recipe.types));
+    assert.deepEqual(client.game.getFusionMembers(root.id).map(t => t.type), [...recipe.types]);
+    assert.equal(client.game.getFusionRoot(root.id).levels[0], 2);
+    match.command('a', { action: 'target', towerId: root.id, mode: 'strong' });
+    assert.ok(game.getFusionMembers(root.id).every(t => t.targeting === 'strong'));
+    const gold = match.players.get('a').gold;
+    assert.throws(() => match.command('b', { action: 'sell', towerId: root.id }));
+    match.command('a', { action: 'sell', towerId: root.id });
+    assert.equal(match.players.get('a').gold, gold + recipe.types.reduce((sum, t) => sum + Math.floor(TOWERS[t].cost * 0.75), 0));
+  }
+});
+
+test('co-op shop placement merge buys one owned component and publishes capability', () => {
+  const { match, game, sprout } = fixture();
+  match.players.get('a').gold = 1000; match._syncWallets();
+  const otherGold = match.players.get('b').gold;
+  match.command('a', { action: 'placeMerge', type: 'multi', towerId: sprout.id });
+  assert.equal(match.players.get('a').gold, 1000 - TOWERS.multi.cost);
+  assert.equal(match.players.get('b').gold, otherGold);
+  assert.equal(sprout.fusionKey, 'multi-sprout');
+  const incoming = game.getFusionMembers(sprout.id).find(t => t.type === 'multi');
+  assert.equal(incoming.ownerId, 'a');
+  assert.deepEqual(incoming.levels, [0]);
+  assert.equal(incoming.purchaseCost, TOWERS.multi.cost);
+  assert.equal(match.snapshot().placementFusionVersion, 1);
+  assert.throws(() => match.command('a', { action: 'placeMerge', type: 'multi', towerId: sprout.id }));
+  assert.equal(match.players.get('a').gold, 1000 - TOWERS.multi.cost, 'duplicate requests cannot charge twice');
+  assert.throws(() => match.command('a', { action: 'placeMerge', type: 'necro', towerId: incoming.id }));
+  match.command('a', { action: 'placeMerge', type: 'necro', towerId: sprout.id });
+  assert.equal(sprout.fusionKey, 'multi-necro-sprout');
+  assert.equal(match.players.get('a').gold, 1000 - TOWERS.multi.cost - TOWERS.necro.cost);
+});
+
+test('co-op purchase merging rejects other owners, bad or locked types, duplicates, insufficient own funds and the component cap atomically', () => {
+  const { match, game, sprout, friend } = fixture();
+  const rejectUnchanged = (owner, command) => {
+    const before = JSON.stringify({ towers: game.towers, id: game._id, effects: game.effects, events: game.events, players: [...match.players.values()] });
+    assert.throws(() => match.command(owner, command));
+    assert.equal(JSON.stringify({ towers: game.towers, id: game._id, effects: game.effects, events: game.events, players: [...match.players.values()] }), before);
+  };
+  rejectUnchanged('b', { action: 'placeMerge', type: 'multi', towerId: sprout.id });
+  for (const type of ['sprout', 'boom', 'missing', '__proto__', {}, null]) rejectUnchanged('a', { action: 'placeMerge', type, towerId: sprout.id });
+  rejectUnchanged('a', { action: 'placeMerge', type: 'multi', towerId: String(sprout.id) });
+  game.profile.unlocks = [];
+  rejectUnchanged('a', { action: 'placeMerge', type: 'multi', towerId: sprout.id });
+  game.profile.unlocks = ['multi', 'necro'];
+  match.players.get('a').gold = 289; match.players.get('b').gold = 5000; match._syncWallets();
+  rejectUnchanged('a', { action: 'placeMerge', type: 'multi', towerId: sprout.id });
+  match.players.get('a').gold = 1000; match._syncWallets();
+  while (game.towers.length < 100) { const tower = game._makeTower('sprout', 0, 0, 100); tower.ownerId = 'a'; }
+  match._syncLoadouts();
+  rejectUnchanged('a', { action: 'placeMerge', type: 'multi', towerId: sprout.id });
+  assert.equal(friend.fusionKey, undefined);
+});
 
 test('co-op merges are server-owned, keep component upgrades, and snapshot as one visible form', () => {
   const { match, game, sprout, tumble, morrow } = fixture();
@@ -119,7 +189,10 @@ test('two WebSocket clients receive identical fusions and reconnect preserves th
     return view;
   };
   try {
-    assert.equal((await (await fetch(`${url}/healthz`)).json()).fusionVersion, 1);
+    const health = await (await fetch(`${url}/healthz`)).json();
+    assert.equal(health.fusionVersion, 1);
+    assert.equal(health.placementFusionVersion, 1);
+    assert.equal(health.fusionCatalogVersion, 2);
     const host = await new Client(url).create('gnomeward', { protocol: 1, name: 'Host', mode: 'coop', mapId: 'meadow', loadout: { tumbleSpeed: true, sproutSkin: 'skeleton' } });
     connections.push(host); const a = observe(host);
     const guest = await new Client(url).joinById(host.roomId, { protocol: 1, name: 'Guest' });
@@ -155,6 +228,14 @@ test('two WebSocket clients receive identical fusions and reconnect preserves th
     restored.send('command', { action: 'sell', towerId: units[0].id });
     await until(() => again.snapshot.boards[0].state.towers.length === 0 && b.snapshot.boards[0].state.towers.length === 0);
     assert.equal(match.players.get(host.sessionId).gold, beforeGold + units.reduce((sum,t) => sum + Math.floor(t.purchaseCost * .75), 0));
+    restored.send('command', { action: 'place', type: 'sprout', x: -4, z: 0 });
+    await until(() => again.snapshot.boards[0].state.towers.length === 1);
+    const targetId = game.towers[0].id, purchaseGold = match.players.get(host.sessionId).gold;
+    restored.send('command', { action: 'placeMerge', type: 'multi', towerId: targetId });
+    await until(() => [again, b].every(view => view.snapshot.boards[0].state.towers.find(t => t.id === targetId)?.fusionKey === 'multi-sprout'));
+    assert.equal(match.players.get(host.sessionId).gold, purchaseGold - TOWERS.multi.cost);
+    assert.equal(game.towers.length, 2);
+    assert.equal(again.snapshot.placementFusionVersion, 1);
     assert.deepEqual(a.errors, []); assert.deepEqual(again.errors, []);
   } finally {
     for (const room of connections) if (room.connection.isOpen) await room.leave().catch(() => {});

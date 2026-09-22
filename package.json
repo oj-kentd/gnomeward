@@ -1,6 +1,6 @@
 {
   "name": "gnomeward",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -35,6 +35,8 @@
     "test:tumble-shop-browser": "node scripts/tumble-shop-browser.mjs",
     "test:tumble-day-browser": "node scripts/tumble-day-browser.mjs",
     "test:fusions-browser": "node scripts/fusion-browser.mjs",
+    "test:fusion-expansion-browser": "node scripts/fusion-expansion-browser.mjs",
+    "test:placement-merge-browser": "node scripts/placement-merge-browser.mjs",
     "test:merging-book-browser": "node scripts/merging-book-browser.mjs"
   },
   "dependencies": {

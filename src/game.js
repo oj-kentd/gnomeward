@@ -189,6 +189,26 @@ export class Game {
     return tower;
   }
 
+  canPlaceAndMerge(type, targetId) {
+    if (typeof type !== 'string' || !Object.hasOwn(TOWERS, type) || !this.isUnlocked(type) ||
+        !['planning', 'wave'].includes(this.status) || !(this.gold >= TOWERS[type].cost)) return false;
+    const root = this.getFusionRoot(targetId);
+    if (!root || root.id !== targetId) return false;
+    const members = this.getFusionMembers(targetId);
+    return members.every(member => member.ownerId === root.ownerId) && !!fusionKey([...members.map(member => member.type), type]);
+  }
+
+  placeAndMerge(type, targetId) {
+    // Validate the whole purchase before creating an ID or spending any gold.
+    if (!this.canPlaceAndMerge(type, targetId)) return null;
+    const root = this.getFusionRoot(targetId);
+    const incoming = this._makeTower(type, root.x, root.z, TOWERS[type].cost);
+    incoming.ownerId = root.ownerId;
+    this.mergeTowers(root.id, incoming.id);
+    this.gold -= incoming.purchaseCost;
+    return root;
+  }
+
   discoverSecret(id) {
     const secret = SECRETS[this.map.id];
     if (!['planning', 'wave'].includes(this.status) || !secret?.spots.some(spot => spot.id === id)) return false;
@@ -333,9 +353,9 @@ export class Game {
 
   setTargeting(id, mode) {
     if (!['planning', 'wave'].includes(this.status) || !['first', 'last', 'strong', 'close'].includes(mode)) return false;
-    const tower = this.towers.find(t => t.id === id);
-    if (!tower || ['spore', 'gravity', 'crystal'].includes(tower.type)) return false;
-    for (const member of this.getFusionMembers(id)) member.targeting = mode;
+    const members = this.getFusionMembers(id);
+    if (!members.some(member => !['spore', 'gravity', 'crystal'].includes(member.type))) return false;
+    for (const member of members) member.targeting = mode;
     return true;
   }
 

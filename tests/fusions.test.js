@@ -15,6 +15,130 @@ const victim = game => {
   return enemy;
 };
 
+test('every gnome has a public merge partner, with exactly three additional secret pairs and no extra triples', () => {
+  const catalog = Object.values(FUSIONS);
+  assert.equal(catalog.length, 11);
+  assert.equal(catalog.filter(recipe => recipe.secret).length, 3);
+  assert.equal(catalog.filter(recipe => !recipe.secret).length, 8);
+  const publicTypes = new Set(catalog.filter(recipe => !recipe.secret).flatMap(recipe => recipe.types));
+  assert.deepEqual([...publicTypes].sort(), Object.keys(TOWERS).sort());
+  assert.equal(catalog.filter(recipe => recipe.catalogVersion === 1).length, 4);
+  assert.equal(catalog.filter(recipe => recipe.catalogVersion === 2).length, 7);
+  const types = Object.keys(TOWERS);
+  for (let a = 0; a < types.length; a++) for (let b = a + 1; b < types.length; b++) for (let c = b + 1; c < types.length; c++) {
+    const key = [types[a], types[b], types[c]].sort().join('-');
+    assert.equal(fusionKey([types[a], types[b], types[c]]), key === 'multi-necro-sprout' ? key : null);
+  }
+});
+
+test('all new pairs retain each actual attack, terrain source and guardian dispatch in either merge direction', () => {
+  for (const recipe of Object.values(FUSIONS).filter(recipe => recipe.catalogVersion === 2)) for (const types of [recipe.types, [...recipe.types].reverse()]) {
+    const game = new Game('meadow', { unlocks: Object.keys(TOWERS) });
+    const point = game.pointAt(5);
+    const towers = types.map(type => game._makeTower(type, point.x, point.z, TOWERS[type].cost));
+    for (const tower of towers) tower.levels = tower.levels.map((level, index) => index < 2 ? 1 : level);
+    const stats = towers.map(t => game.getStats(t));
+    const necro = towers.find(t => t.type === 'necro');
+    if (necro) necro.soulQueue.push({ routeIndex: 0 });
+    assert.equal(game.mergeTowers(towers[0].id, towers[1].id), true);
+    for (let i = 0; i < towers.length; i++) assert.deepEqual(game.getStats(towers[i]), stats[i]);
+    assert.equal(game.setTargeting(towers[0].id, 'strong'), true, 'automatic anchors forward targeting to their aimed component');
+    assert.ok(towers.every(tower => tower.targeting === 'strong'));
+    const enemy = game._spawn('boss');
+    Object.assign(enemy, point, { progress: 5, speed: 0, hp: 1e9, maxHp: 1e9 });
+    game.status = 'wave'; game.update(0.05);
+    for (const tower of towers) {
+      const collection = { spore: game.traps, gravity: game.holes, crystal: game.barriers }[tower.type] || game.projectiles;
+      assert.ok(collection.some(item => item.sourceId === tower.id), `${recipe.name}: ${tower.type} still performs its original ability`);
+    }
+    if (necro) assert.ok(game.allies.some(ally => ally.sourceId === necro.id));
+    const strawberry = towers.find(tower => tower.type === 'strawberry');
+    if (strawberry) {
+      const shot = game.projectiles.find(shot => shot.sourceId === strawberry.id);
+      game._burstStrawberry(shot);
+      assert.ok(game.projectiles.some(shot => shot.type === 'strawberry-seed' && shot.sourceId === strawberry.id));
+    }
+    assert.equal(game.sellTower(towers[1].id), true);
+    for (const collection of [game.traps, game.holes, game.barriers, game.allies]) assert.equal(collection.length, 0);
+    assert.equal(game.towers.length, 0);
+  }
+});
+
+test('expanded shop placement merges accept any compatible catalog pair at base level', () => {
+  for (const recipe of Object.values(FUSIONS).filter(recipe => recipe.catalogVersion === 2)) {
+    const game = new Game('meadow', { unlocks: Object.keys(TOWERS) });
+    const [type, incoming] = recipe.types;
+    const root = game._makeTower(type, -4, 0, TOWERS[type].cost);
+    assert.equal(game.canPlaceAndMerge(incoming, root.id), true);
+    assert.equal(game.placeAndMerge(incoming, root.id), root);
+    assert.equal(root.fusionKey, fusionKey(recipe.types));
+    assert.equal(game.gold, 650 - TOWERS[incoming].cost);
+    assert.equal(game.getFusionMembers(root.id).length, 2);
+  }
+});
+
+test('placing a shop gnome on a compatible root merges at tier zero or any existing upgrade level', () => {
+  for (const level of [0, 1, 2, 3]) {
+    const game = new Game('meadow', { unlocks: ['multi', 'necro'], tumbleSpeedUnlocked: true });
+    const root = game._makeTower('sprout', -4, 0, 100);
+    root.levels = [level, 0, 0, level]; root.kills = 17; root.cooldown = 0.9;
+    const gold = game.gold, point = { x: root.x, z: root.z };
+    assert.equal(game.canPlace('multi', root.x, root.z), false, 'ordinary placement still prevents overlap');
+    assert.equal(game.canPlaceAndMerge('multi', root.id), true);
+    assert.equal(game.placeAndMerge('multi', root.id), root);
+    assert.equal(root.fusionKey, 'multi-sprout');
+    assert.deepEqual(root.levels, [level, 0, 0, level]);
+    assert.equal(root.kills, 17);
+    assert.ok(Math.abs(root.cooldown - 0.3) < 1e-10);
+    const tumble = game.getFusionMembers(root.id).find(t => t.type === 'multi');
+    assert.deepEqual(tumble.levels, [0]);
+    assert.equal(tumble.purchaseCost, TOWERS.multi.cost);
+    assert.equal(game.gold, gold - TOWERS.multi.cost);
+    assert.deepEqual({ x: tumble.x, z: tumble.z }, point);
+    assert.equal(game.placeAndMerge('necro', root.id), root);
+    assert.equal(root.fusionKey, 'multi-necro-sprout');
+    assert.equal(game.gold, gold - TOWERS.multi.cost - TOWERS.necro.cost);
+    assert.ok(Math.abs(root.cooldown - 0.3) < 1e-10, 'second purchase does not stack Turbo');
+    assert.equal(game.events.filter(event => event.type === 'merged').length, 2);
+    const beforeSell = game.gold;
+    game.sellTower(tumble.id);
+    assert.equal(game.gold, beforeSell + [100, TOWERS.multi.cost, TOWERS.necro.cost].reduce((sum, price) => sum + Math.floor(price * 0.75), 0));
+  }
+});
+
+test('invalid placement merges reject without changing gold, IDs, existing towers, effects or events', () => {
+  const { game, sprout, multi } = setup();
+  const unchanged = (type, id) => {
+    const before = JSON.stringify({ gold: game.gold, id: game._id, towers: game.towers, effects: game.effects, events: game.events });
+    assert.equal(game.canPlaceAndMerge(type, id), false);
+    assert.equal(game.placeAndMerge(type, id), null);
+    assert.equal(JSON.stringify({ gold: game.gold, id: game._id, towers: game.towers, effects: game.effects, events: game.events }), before);
+  };
+  for (const [type, id] of [['sprout', sprout.id], ['boom', sprout.id], ['unknown', sprout.id], ['toString', sprout.id], [null, sprout.id], ['multi', 999], ['multi', String(sprout.id)]]) unchanged(type, id);
+  game.gold = 289; unchanged('multi', sprout.id);
+  game.gold = 650; game.profile.unlocks = []; unchanged('multi', sprout.id);
+  game.profile.unlocks = ['multi', 'necro']; game.status = 'lost'; unchanged('multi', sprout.id);
+  game.status = 'won'; unchanged('multi', sprout.id);
+  game.status = 'planning'; game.mergeTowers(sprout.id, multi.id);
+  unchanged('necro', multi.id);
+  unchanged('multi', sprout.id);
+  assert.equal(game.placeAndMerge('necro', sprout.id), sprout);
+  unchanged('sprout', sprout.id);
+});
+
+test('purchase merges preserve the owner, existing soul queue and costumes in the collection', () => {
+  const game = new Game('meadow', { unlocks: ['multi', 'necro'], cosmetics: ['necro-skeletor'], equippedNecroSkin: 'skeletor' });
+  const root = game._makeTower('necro', -4, 0, 300);
+  root.ownerId = 'owner'; root.skin = 'skeletor'; root.soulQueue.push({ routeIndex: 0 }); root.summonCooldown = 1.2;
+  game.tumbleSpeedOwners = ['owner'];
+  assert.equal(game.placeAndMerge('multi', root.id), root);
+  const members = game.getFusionMembers(root.id);
+  assert.ok(members.every(member => member.ownerId === 'owner' && member.skin === null));
+  assert.deepEqual(root.soulQueue, [{ routeIndex: 0 }]);
+  assert.equal(root.summonCooldown, 1.2);
+  assert.ok(game.profile.cosmetics.includes('necro-skeletor'));
+});
+
 test('all pair recipes and either merge order converge on the same Trinity abilities', () => {
   assert.equal(fusionKey(['sprout', 'multi']), 'multi-sprout');
   assert.equal(fusionKey(['sprout', 'sprout']), null);

@@ -2,6 +2,8 @@
 
 The Three.js game now uses this service for public two-player co-op: lobby browsing, shared rendering, owned defenders, and synchronized ready controls. The service’s `/` connection-check page remains available for deployment checks. PvP game rendering is not yet exposed in the main game.
 
+Release **0.5.0** keeps protocol **1** and adds `placementFusionVersion: 1` and `fusionCatalogVersion: 2` to `/healthz` and snapshots. These advertise purchasing a gnome directly onto a compatible owned defender and the expanded merge catalog. The existing `fusionVersion: 1` continues to advertise merging already placed defenders. See the fusion section below for validation and older-server behavior.
+
 Release **0.3.5** keeps protocol version **1** and retains `comboVersion: 1` to advertise hidden-combination support. Combo damage, cooldowns, partner eligibility, and shard ricochets are authoritative; players can contribute opposite halves of a pairing. Enemy poison includes `volatile`, victims carry `sporefireReadyAt`, towers carry `prismCooldown`, and `prism-shard` projectiles carry bounded `bounces`/`hitIds`. Effects `sporefire` and `prism-burst` are presentation events. A once-per-run `combo` event carries the discovery name, without explaining its recipe. All existing board serialization includes these nested fields. Charged strawberry seeds additionally carry `gravityCharged`, orbit timing/center fields, and a separate `flightDuration`; holes carry the shared `berryReadyAt` cooldown. These nested fields are serialized by the existing board snapshot. Tower `comboActive` metadata carries the last triggered interaction’s `kind`, `startedAt`, and `until` simulation times for a brief, authoritative participant indicator. Eligibility alone never sets it. Enemy `trait` and profile `enemyTraits` discoveries are authoritative and included in snapshots. Damage categories and trait multipliers are resolved on the server; client knowledge cannot affect damage or spawning. No new client gameplay commands are required.
 
 Release **0.2.4** added `autoStart` and `autoCountdown` to snapshots. The client detects support by the presence of boolean `autoStart`. Older servers still receive ordinary Ready commands and benefit from readiness highlighting, but cannot withdraw Ready or run shared auto. Motion smoothing remains compatible with 0.2.2; Soul Echoes requires 0.2.3 or newer.
@@ -71,8 +73,9 @@ Send `room.send('command', { action, ...fields })`. Player identity comes only f
 | --- | --- | --- |
 | `place` | `type`, finite `x`, finite `z` | Validates unlock, location, overlap, wallet; 100-tower limit per board |
 | `upgrade` | integer `towerId`, integer `path` | Owner only; zero-based path index, existing two-path/three-tier rules; locked secret paths are rejected before spending points |
-| `merge` | integer `towerId`, integer `otherTowerId` | Both visible roots owned by caller; distinct Sprout/Tumble/Morrow components, at most one each. Free, retains first root position. |
-| `sell` | integer `towerId` | Owner only; normal gold refund |
+| `merge` | integer `towerId`, integer `otherTowerId` | Both visible roots owned by caller; their combined components must match an allowed recipe. Free at any upgrade level; retains first root position. |
+| `placeMerge` | `type`, integer `towerId` | Purchase one unlocked, affordable gnome onto an owned visible root; validates recipe and the 100-component board limit before any mutation. Charges the normal gnome price once; retains target position and upgrades. |
+| `sell` | integer `towerId` | Owner only; sells the entire merged group when targeting any component, with each component’s normal gold refund counted once |
 | `target` | integer `towerId`, `mode` | Owner only; `first`, `last`, `strong`, `close` where supported |
 | `discover` | `id` | Validates secret ID against room map; existing puzzle sequence rules |
 | `ready` | optional boolean `ready` (defaults to true) | Set or withdraw your vote between rounds; two connected, unpaused Ready votes start the round |
@@ -85,7 +88,7 @@ Errors arrive on `command-error` as `{ message }`. An incorrect ordered-secret c
 
 ### Soul Echoes discovery
 
-The existing Hollow `discover` command also handles Morrow’s fourth path. After Morrow is unlocked, ten **direct necromancer spell kills in the current Pumpkin Hollow run** enable a second ritual. Submit the existing rune IDs in reverse order: `hollow-flame`, `hollow-leaf`, `hollow-star`, `hollow-moon`. A wrong step resets only `pathSecretDiscoveries`; repeating the most recent correct step is ignored. Other maps, finished boards, and insufficient kills cannot unlock the path. Kills by reborn helpers never advance this counter.
+The existing Hollow `discover` command also handles Morrow’s fourth path. After Morrow is unlocked, ten **direct attack kills that trigger Morrow’s summons in the current Pumpkin Hollow run** enable a second ritual. These include direct attacks from Morrow’s merged components. Submit the existing rune IDs in reverse order: `hollow-flame`, `hollow-leaf`, `hollow-star`, `hollow-moon`. A wrong step resets only `pathSecretDiscoveries`; repeating the most recent correct step is ignored. Other maps, finished boards, and insufficient kills cannot unlock the path. Kills by reborn helpers never advance this counter.
 
 Success adds `necro-echoes` to `profile.pathUnlocks` and emits `path-unlock` with `pathId: 'necro-echoes'`. Progress uses `path-secret-found` and `path-secret-reset`; one-time clue hints use `path-secret-hint` and `path-secret-ready`. Path index **3** has tiers costing **18 / 36 / 65** points. Its `summonCount` becomes **2 / 3 / 4**, queued as separate `{ routeIndex }` entries. Existing dispatch cooldowns and the two-path limit still apply; `allyLimit` is at least the batch size. Reborn kills do not recursively summon more helpers. Server-owned discovery is persisted in `/data/results.json`; client-supplied path unlock lists are ignored.
 
@@ -95,7 +98,8 @@ The service simulates fixed 50 ms steps (20 Hz) and broadcasts complete, plain-d
 
 ```js
 {
-  protocol: 1, roomId, mode, mapId, hostId,
+  protocol: 1, fusionVersion: 1, placementFusionVersion: 1, fusionCatalogVersion: 2,
+  roomId, mode, mapId, hostId,
   players: [{ id, name, connected, ready, endlessReady, gold, points }],
   paused, manualPause, speed, started, autoStart, autoCountdown, tick,
   result: null, // or final result below
@@ -130,3 +134,13 @@ A final `result` is `{ mode, mapId, reason, winnerId, earnedPathUnlocks, players
 Round one always needs both manual votes. Once a round has completed, enabled auto starts `autoCountdown` at five seconds during planning. It advances by the unscaled 20 Hz server step, freezes on pause/disconnect, and starts the next round at zero. It is null outside an eligible build window or when auto is off; final results clear it. Campaign victory never starts endless mode automatically: both players must consent first. The browser may animate the remaining time locally but must never start a round itself.
 
 Release **0.4.0** adds `fusionVersion: 1` to health and snapshots. Tower records retain their original combat IDs/types. A visible anchor carries `fusionKey`; its other components carry `fusionParentId` and share its position. Clients render only anchors and direct component upgrade commands to their original IDs. Selling any component sells the entire group. Loadout synchronization never reapplies costumes to a merged form. Purchased Turbo Tumble applies once to all attack patterns of the owner’s forms containing Tumble; guardian cadence and combo cooldowns remain unchanged. Older servers expose no fusion controls in the new client.
+
+## Expanded fusions and shop placement (0.5.0)
+
+`fusionCatalogVersion: 2` supports eight public merged forms, including the original four, plus three additional secret recipes. Every base gnome has at least one public partner. Recipes remain an explicit server catalog; arbitrary combinations, repeated component types, and additional three-gnome forms are rejected. The secret recipes are intentionally omitted from this protocol guide and the Book of Merging.
+
+`{ action: 'placeMerge', type, towerId }` is an atomic purchase-and-merge operation. The target must be the caller’s visible root. The requested gnome must be unlocked, affordable from that caller’s wallet, and compatible with the root’s existing components. The new component counts toward the same 100-gnome simulation limit as ordinary placement. Its ordinary gold price is deducted exactly once, and it begins with zero upgrades. The target keeps its ID, location, levels, kill growth, cooldowns, and queued summons. No minimum upgrade level is required. Rejected requests create no component, consume no entity ID, and spend no currency. Repeating a successful request with the same type fails because duplicate components cannot merge.
+
+Existing components retain their original attack, poison, terrain and guardian source IDs. Active projectiles, traps, holes and barriers survive merging; selling removes the group’s persistent terrain objects and guardians using those source IDs. Targeting commands issued to a group containing an aimed attacker apply to every member, including when its visible anchor uses an automatic ability. Each component keeps its own upgrade paths and path limits. Current costumes are removed from the merged form without changing the player’s permanent cosmetic loadout.
+
+Clients gate each feature independently. Without `fusionVersion: 1`, no merge commands should be offered. With fusion support but no catalog capability, only the original version-1 recipes are offered. Version-2 recipes require `fusionCatalogVersion: 2`. Purchasing onto a defender additionally requires `placementFusionVersion: 1`; otherwise players can still place compatible gnomes separately and use supported ordinary merges. The server remains authoritative for every command, regardless of client capability checks. Book discovery and recipe knowledge remain browser-local presentation data and grant no server gameplay privileges.

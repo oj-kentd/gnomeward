@@ -1,6 +1,7 @@
 import { normalizeBook, discoverBook, recordBookDiscoveries } from './merging-book.js';
 import './style.css';
 import { Game } from './game.js';
+import { FUSIONS, fusionKey } from './fusions.js';
 import { MAPS, TOWERS } from './data.js';
 import { UI } from './ui.js';
 import { GardenRenderer } from './renderer.js';
@@ -53,8 +54,40 @@ function findMergingBook(){
   saveCollection();refreshUI();ui.showMergingBook();
   if(found){beep(1100,.2);ui.toast('The Book of Merging is yours! Reopen it in the field guide.');}
 }
-function cancel(){state.placingType=null;state.selectedTowerId=null;world?.setGhost(null);refreshUI();}
-function choose(type){if(!ready)return;if(!game.isUnlocked(type)){ui.toast(TOWERS[type].unlockMap ? `Clear all 20 rounds of ${MAPS.find(map=>map.id===TOWERS[type].unlockMap).name} to recruit this gnome.` : TOWERS[type].unlockSecret ? `A hidden friend awaits in ${MAPS.find(map=>map.id===TOWERS[type].unlockSecret).name}.` : 'This gnome joins your team after its milestone.');return;}state.placingType=state.placingType===type?null:type;state.selectedTowerId=null;refreshUI();beep(600);}
+function cancel(){state.placementMergeName=null;state.placingType=null;state.selectedTowerId=null;world?.setGhost(null);refreshUI();}
+function choose(type){if(!ready)return;state.placementMergeName=null;if(!game.isUnlocked(type)){ui.toast(TOWERS[type].unlockMap ? `Clear all 20 rounds of ${MAPS.find(map=>map.id===TOWERS[type].unlockMap).name} to recruit this gnome.` : TOWERS[type].unlockSecret ? `A hidden friend awaits in ${MAPS.find(map=>map.id===TOWERS[type].unlockSecret).name}.` : 'This gnome joins your team after its milestone.');return;}state.placingType=state.placingType===type?null:type;state.selectedTowerId=null;refreshUI();beep(600);}
+function towerAt(x,z,hitTowerId) {
+  return game.towers.find(t=>!t.fusionParentId&&t.id===hitTowerId) || game.towers.find(t=>!t.fusionParentId&&Math.hypot(t.x-x,t.z-z)<.85);
+}
+function recipeAvailable(recipe) { return !!recipe && (!state.multiplayer || (state.multiplayer.fusionsSupported && (recipe.catalogVersion || 1) <= state.multiplayer.fusionCatalogVersion)); }
+function ownsTower(tower) { return !!tower && (!state.multiplayer || tower.ownerId===state.multiplayer.sessionId); }
+function mergeDrop(sourceId,targetId) {
+  if(!ready || state.placingType || state.multiplayer?.reconnecting)return;
+  if(state.multiplayer&&!state.multiplayer.fusionsSupported){ui.toast('Update the co-op server to merge gnomes.');return;}
+  if(!ownsTower(game.getFusionRoot(sourceId))||!ownsTower(game.getFusionRoot(targetId))){ui.toast('Only your own gnomes can merge.');return;}
+  if(!game.canMergeTowers(targetId,sourceId)){ui.toast('These gnomes do not form a merge. Try another partner—any upgrade level works.');return;}
+  if(!recipeAvailable(FUSIONS[fusionKey([...game.getFusionMembers(targetId),...game.getFusionMembers(sourceId)].map(t=>t.type))])){ui.toast('Update the co-op server to 0.5.0 for the new merged forms.');return;}
+  if(state.multiplayer){if(!multiplayer.command({action:'merge',towerId:targetId,otherTowerId:sourceId}))return;}
+  else if(game.mergeTowers(targetId,sourceId)){save();beep(1000,.2);}
+  state.selectedTowerId=targetId;state.mergeOpen=false;state.mergePartnerId=null;refreshUI();
+}
+function placeOntoTower(type,tower) {
+  if(!ownsTower(tower)){ui.toast('Only your own gnomes can merge.');return;}
+  if(state.multiplayer&&!state.multiplayer.placementFusionsSupported){ui.toast('Update the co-op server to 0.5.0 to place gnomes onto each other.');return;}
+  const recipe=FUSIONS[fusionKey([...game.getFusionMembers(tower.id).map(t=>t.type),type])];
+  if(recipe&&!recipeAvailable(recipe)){ui.toast('Update the co-op server to 0.5.0 for the new merged forms.');return;}
+  if(!game.canPlaceAndMerge(type,tower.id)){
+    ui.toast(game.gold<TOWERS[type].cost?'You need more gold for this gnome.':'These gnomes do not form a merge. Try another partner—any upgrade level works.');return;
+  }
+  if(state.multiplayer){
+    if(!multiplayer.command({action:'placeMerge',type,towerId:tower.id}))return;
+    pendingPlacement={type,x:tower.x,z:tower.z};
+  } else {
+    if(!game.placeAndMerge(type,tower.id))return;
+    save();beep(1000,.2);
+  }
+  state.placingType=null;state.placementMergeName=null;state.selectedTowerId=tower.id;world?.setGhost(null);refreshUI();
+}
 function cycleSpeed(){
   const speed=state.speed===1?2:state.speed===2?3:1;
   if(state.multiplayer){if(state.multiplayer.hostId===state.multiplayer.sessionId)multiplayer.command({action:'speed',speed});return;}
@@ -216,6 +249,7 @@ const ui=new UI({
     if(!ownSelection() || (state.multiplayer&&!state.multiplayer.fusionsSupported))return;
     const towerId=state.selectedTowerId,otherTowerId=state.mergePartnerId;
     if(!game.canMergeTowers(towerId,otherTowerId)){state.mergePartnerId=null;refreshUI();return;}
+    if(!recipeAvailable(FUSIONS[fusionKey([...game.getFusionMembers(towerId),...game.getFusionMembers(otherTowerId)].map(t=>t.type))])){ui.toast('Update the co-op server to 0.5.0 for the new merged forms.');return;}
     if(state.multiplayer){multiplayer.command({action:'merge',towerId,otherTowerId});}
     else if(game.mergeTowers(towerId,otherTowerId)){save();beep(1000,.2);}
     state.mergeOpen=false;state.mergePartnerId=null;refreshUI();
@@ -229,7 +263,18 @@ const ui=new UI({
 refreshUI();ui.setLoading?.('Growing your garden…');
 try {
   world=new GardenRenderer(document.getElementById('scene'),{
-    onHover:(x,z)=>{if(!ready||!state.placingType)return;const type=state.placingType;world.setGhost(type,x,z,game.canPlace(type,x,z),game.getStats({type,levels:TOWERS[type].paths.map(()=>0)}).range,state.multiplayer ? state.multiplayer.loadout?.[type+'Skin'] : getTowerSkin(game.profile,type));},
+    canDragTower:id=>ready&&!state.placingType&&!state.multiplayer?.reconnecting&&['planning','wave'].includes(game.status)&&ownsTower(game.getFusionRoot(id)),
+    onMergeDrop:mergeDrop,
+    onMergeHover:(sourceId,targetId)=>!!targetId&&ownsTower(game.getFusionRoot(targetId))&&recipeAvailable(FUSIONS[fusionKey([...game.getFusionMembers(targetId),...game.getFusionMembers(sourceId)].map(t=>t.type))])&&game.canMergeTowers(targetId,sourceId),
+    onHover:(x,z,hitTowerId)=>{
+      if(!ready||!state.placingType)return;
+      const type=state.placingType,tower=towerAt(x,z,hitTowerId);
+      const recipe=tower&&FUSIONS[fusionKey([...game.getFusionMembers(tower.id).map(t=>t.type),type])];
+      const merge=recipeAvailable(recipe)&&ownsTower(tower)&&(!state.multiplayer||state.multiplayer.placementFusionsSupported)&&game.canPlaceAndMerge(type,tower.id);
+      const name=merge?(recipe.secret?'a mystery form':recipe.name):null;
+      if(state.placementMergeName!==name){state.placementMergeName=name;refreshUI();}
+      world.setGhost(type,merge?tower.x:x,merge?tower.z:z,merge||game.canPlace(type,x,z),game.getStats({type,levels:TOWERS[type].paths.map(()=>0)}).range,merge?null:state.multiplayer ? state.multiplayer.loadout?.[type+'Skin'] : getTowerSkin(game.profile,type));
+    },
     onClick:(x,z,hitTowerId,secretId,clueId)=>{
       if(!ready||['won','lost'].includes(game.status)||state.multiplayer?.result||state.multiplayer?.reconnecting)return;
       if(clueId==='merging-book'&&!state.placingType){findMergingBook();return;}
@@ -242,6 +287,8 @@ try {
         if(game.discoverSecret(secretId)){save();state.selectedTowerId=null;beep(1100,.2);refreshUI();}
         return;
       }
+      const placementTarget=state.placingType&&towerAt(x,z,hitTowerId);
+      if(placementTarget){placeOntoTower(state.placingType,placementTarget);return;}
       if(state.placingType&&state.multiplayer){
         const type=state.placingType;
         if(!game.canPlace(type,x,z)){ui.toast(game.gold<TOWERS[type].cost?'You need more gold for this gnome.':'Choose clear grass beside the path.');return;}
@@ -304,4 +351,4 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 // Intentionally available for family playtesting and reproducible bug reports.
-window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.4.2'};
+window.gnomeward={get ready(){return ready},get game(){return game},get state(){return state},get renderer(){return world},get music(){return music},get multiplayer(){return multiplayer},version:'0.5.0'};

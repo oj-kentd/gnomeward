@@ -39,23 +39,75 @@ export class GardenRenderer {
     this.world=new THREE.Group(); this.scene.add(this.world); this.actors=new THREE.Group();this.scene.add(this.actors);
     this.raycaster=new THREE.Raycaster();this.plane=new THREE.Plane(new THREE.Vector3(0,1,0),0);this.pointer=new THREE.Vector2();this.point=new THREE.Vector3();
     this.observer=new ResizeObserver(()=>this.resize()); this.observer.observe(container);
-    this.renderer.domElement.addEventListener('pointermove',e=>{const p=this.pick(e);if(p)this.handlers.onHover(p.x,p.z)});
-    this.renderer.domElement.addEventListener('pointerleave',()=>{if(this.ghost)this.ghost.visible=false;});
-    this.renderer.domElement.addEventListener('pointerdown', e => {
-      if (e.button !== 0) return;
-      const point = this.pick(e);
-      if (!point) return;
-      this.scene.updateMatrixWorld(true);
-      const towers = [...this.entities].filter(([key]) => key.startsWith('t')).map(([, object]) => object);
-      const towerHit = this.raycaster.intersectObjects(towers, true)[0];
-      const secretHit = this.raycaster.intersectObjects([...this.secrets.values(), ...this.clues.values(), ...(this.mergingBook?.visible ? [this.mergingBook] : [])], true)[0];
-      let hit = towerHit?.object;
-      while (hit && hit.userData.towerId === undefined) hit = hit.parent;
-      let secret = secretHit && (!towerHit || secretHit.distance < towerHit.distance) ? secretHit.object : null;
-      while (secret && secret.userData.secretId === undefined && secret.userData.clueId === undefined) secret = secret.parent;
-      this.handlers.onClick(point.x, point.z, secret ? undefined : hit?.userData.towerId, secret?.userData.secretId, secret?.userData.clueId);
+    const canvas = this.renderer.domElement;
+    const clearGesture = () => {
+      const gesture = this.pointerGesture;
+      this.pointerGesture = null;
+      canvas.style.cursor = '';
+      if (this.mergeDragGhost) {
+        this.actors.remove(this.mergeDragGhost);
+        this.disposeEffect(this.mergeDragGhost);
+        this.mergeDragGhost = null;
+      }
+      if (gesture?.dragging) this.handlers.onMergeHover?.(gesture.towerId, null);
+      if (gesture && canvas.hasPointerCapture?.(gesture.pointerId)) canvas.releasePointerCapture(gesture.pointerId);
+    };
+    this.cancelPointerGesture = clearGesture;
+    canvas.addEventListener('pointermove', event => {
+      const gesture = this.pointerGesture;
+      if (gesture && event.pointerId !== gesture.pointerId) return;
+      if (gesture) {
+        gesture.moved ||= Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) >= 8;
+        if (gesture.moved && gesture.draggable) {
+          gesture.dragging = true;
+          const hit = this.interactionAt(event, gesture.towerId, false);
+          if (!this.mergeDragGhost) {
+            const source = [...this.entities.values()].find(object => object.userData.towerId === gesture.towerId);
+            if (source) {
+              this.mergeDragGhost = this.fadingObject(source.clone(true));
+              for (const material of this.mergeDragGhost.userData.fadeMaterials) material.opacity = .55;
+              this.actors.add(this.mergeDragGhost);
+            }
+          }
+          if (this.mergeDragGhost) {
+            this.mergeDragGhost.visible = !!hit;
+            if (hit) this.mergeDragGhost.position.set(hit.x, .2, hit.z);
+          }
+          const targetId = hit?.towerId ?? null;
+          const allowed = this.handlers.onMergeHover?.(gesture.towerId, targetId);
+          canvas.style.cursor = targetId != null ? (allowed ? 'copy' : 'not-allowed') : 'grabbing';
+          return;
+        }
+      }
+      const hit = this.interactionAt(event);
+      if (hit) this.handlers.onHover?.(hit.x, hit.z, hit.towerId);
     });
-    this.renderer.domElement.addEventListener('contextmenu',e=>{e.preventDefault();this.handlers.onCancel()});
+    canvas.addEventListener('pointerleave', () => { if (this.ghost) this.ghost.visible = false; });
+    canvas.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || event.isPrimary === false || this.pointerGesture) return;
+      const hit = this.interactionAt(event);
+      if (!hit) return;
+      this.pointerGesture = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+        towerId: hit.towerId, draggable: hit.towerId != null && this.handlers.canDragTower?.(hit.towerId) === true,
+        moved: false, dragging: false };
+      try { canvas.setPointerCapture?.(event.pointerId); } catch {}
+    });
+    canvas.addEventListener('pointerup', event => {
+      const gesture = this.pointerGesture;
+      if (!gesture || event.pointerId !== gesture.pointerId) return;
+      const moved = gesture.moved || Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) >= 8;
+      const dragging = gesture.draggable && moved;
+      const hit = this.interactionAt(event, dragging ? gesture.towerId : null, !dragging);
+      clearGesture();
+      if (!hit) return;
+      if (dragging) {
+        if (hit.towerId != null) this.handlers.onMergeDrop?.(gesture.towerId, hit.towerId);
+      } else if (!moved) this.handlers.onClick(hit.x, hit.z, hit.towerId, hit.secretId, hit.clueId);
+    });
+    canvas.addEventListener('pointercancel', event => { if (event.pointerId === this.pointerGesture?.pointerId) clearGesture(); });
+    canvas.addEventListener('lostpointercapture', event => { if (event.pointerId === this.pointerGesture?.pointerId) clearGesture(); });
+    canvas.addEventListener('contextmenu', event => { event.preventDefault(); clearGesture(); this.handlers.onCancel(); });
+    window.addEventListener('blur', clearGesture);
     this.resize();
   }
   async load(onProgress) {
@@ -158,6 +210,7 @@ export class GardenRenderer {
   }
   add(name,x,y,z,sx=1,sy=sx,sz=sx,color,rotation=0) {const obj=this.clone(name,color);obj.position.set(x,y,z);obj.scale.set(sx,sy,sz);obj.rotation.y=rotation;this.world.add(obj);return obj;}
   setMap(map,index) {
+    this.cancelPointerGesture?.();
     this.motion.reset();
     for (const material of this.mergingBook?.userData.glowMaterials || []) material.dispose();
     this.mergingBook = null;
@@ -330,6 +383,22 @@ export class GardenRenderer {
     this.camera.bottom = -halfH;
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
+  }
+  interactionAt(event, excludeTowerId = null, includeSecrets = true) {
+    const bounds = this.renderer.domElement.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) return null;
+    const point = this.pick(event);
+    if (!point) return null;
+    this.scene.updateMatrixWorld(true);
+    const towers = [...this.entities].filter(([key, object]) => key.startsWith('t') && object.visible && object.userData.towerId !== excludeTowerId).map(([, object]) => object);
+    const towerHit = this.raycaster.intersectObjects(towers, true)[0];
+    const secretHit = includeSecrets ? this.raycaster.intersectObjects([...this.secrets.values(), ...this.clues.values(), ...(this.mergingBook?.visible ? [this.mergingBook] : [])], true)[0] : null;
+    let tower = towerHit?.object;
+    while (tower && tower.userData.towerId === undefined) tower = tower.parent;
+    let secret = secretHit && (!towerHit || secretHit.distance < towerHit.distance) ? secretHit.object : null;
+    while (secret && secret.userData.secretId === undefined && secret.userData.clueId === undefined) secret = secret.parent;
+    return { x: point.x, z: point.z, towerId: secret ? undefined : tower?.userData.towerId,
+      secretId: secret?.userData.secretId, clueId: secret?.userData.clueId };
   }
   pick(e){const r=this.renderer.domElement.getBoundingClientRect();this.pointer.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);return this.raycaster.ray.intersectPlane(this.plane,this.point);}
   setGhost(type,x,z,valid,range,skin=null) {

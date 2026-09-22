@@ -40,6 +40,8 @@ export function applyCoopSnapshot(game, snapshot, sessionId, lastEventId = 0, re
     costumesSupported: snapshot.costumeVersion === 1,
     tumbleSpeedSupported: snapshot.tumbleSpeedVersion === 1,
     fusionsSupported: snapshot.fusionVersion === 1,
+    placementFusionsSupported: snapshot.placementFusionVersion === 1,
+    fusionCatalogVersion: snapshot.fusionCatalogVersion === 2 ? 2 : 1,
     roundCoinsEarned: snapshot.shopVersion === 1 && Number.isSafeInteger(player.roundCoinsEarned) && player.roundCoinsEarned >= 0 ? player.roundCoinsEarned : 0,
     receiptKey: snapshot.shopVersion === 1 && typeof player.receiptKey === 'string' ? player.receiptKey : null,
     loadout: snapshot.shopVersion === 1 ? player.loadout : null,

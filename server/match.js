@@ -226,11 +226,16 @@ export class Match {
       this._syncLoadouts();
       return;
     }
-    if (!['upgrade', 'sell', 'target', 'merge'].includes(action)) reject('Unknown command.');
+    if (!['upgrade', 'sell', 'target', 'merge', 'placeMerge'].includes(action)) reject('Unknown command.');
     if (!Number.isSafeInteger(message.towerId)) reject('Invalid tower.');
     const tower = game.towers.find(t => t.id === message.towerId);
     if (!tower || tower.ownerId !== id) reject('You can only change your own gnomes.');
     let ok;
+    if (action === 'placeMerge') {
+      if (typeof message.type !== 'string' || !Object.hasOwn(TOWERS, message.type)) reject('Invalid gnome to merge.');
+      if (game.towers.length >= 100) reject('This garden has reached its 100-gnome limit.');
+      ok = this._transaction(player, board => board.placeAndMerge(message.type, tower.id));
+    }
     if (action === 'merge') {
       if (!Number.isSafeInteger(message.otherTowerId)) reject('Invalid merge partner.');
       const partner = game.towers.find(t => t.id === message.otherTowerId);
@@ -273,7 +278,7 @@ export class Match {
 
   snapshot(roomId = '') {
     return structuredClone({
-      protocol: PROTOCOL, comboVersion: 1, shopVersion: 1, costumeVersion: 1, tumbleSpeedVersion: 1, fusionVersion: 1, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
+      protocol: PROTOCOL, comboVersion: 1, shopVersion: 1, costumeVersion: 1, tumbleSpeedVersion: 1, fusionVersion: 1, placementFusionVersion: 1, fusionCatalogVersion: 2, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
       players: [...this.players.values()], paused: this.paused, manualPause: this.manualPause,
       speed: this.speed, started: this.started, autoStart: this.autoStart, autoCountdown: this.autoCountdown, tick: this.tick, result: this.result,
       boards: [...this.boards.entries()].map(([playerId, game]) => ({ playerId, state: {

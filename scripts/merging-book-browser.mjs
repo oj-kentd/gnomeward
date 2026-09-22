@@ -53,8 +53,8 @@ try {
   assert.equal(await page.evaluate(() => gnomeward.game.profile.mergingBookFound), false);
   stage = 'physical scenery click opens book and preserves earlier discoveries';
   await clickBook();
-  assert.match(await page.locator('.book-progress').innerText(), /1 \/ 7/);
-  assert.equal(await page.locator('[data-book-entry]').count(), 7);
+  assert.match(await page.locator('.book-progress').innerText(), /1 \/ 11/);
+  assert.equal(await page.locator('[data-book-entry]').count(), BOOK_ENTRIES.length);
   assert.equal(await page.locator('.book-discovered').count(), 1);
   for (let index = 0; index < BOOK_ENTRIES.length; index++) {
     const entry = BOOK_ENTRIES[index], card = page.locator(`[data-book-entry="${index}"]`);
@@ -70,7 +70,7 @@ try {
   await page.locator('[data-book-tab="combos"]').click();
   assert.equal(await page.locator('#book-combos .book-unknown').count(), 3);
   assert.match(await page.locator('#book-combos .portrait').first().evaluate(image => getComputedStyle(image).filter), /brightness\(0\)/);
-  checks.push('Physical book found by raycast; all seven entries exist, earlier merge recorded, and unknown names/recipes omitted from cards and accessibility markup.');
+  checks.push('Physical book found by raycast; all public entries exist, earlier merge recorded, and unknown names/recipes omitted from cards and accessibility markup.');
   await closeBook();
 
   stage = 'actual upgraded Tumble and Prism activate a discoverable combo';
@@ -91,10 +91,10 @@ try {
   const prismIndex = BOOK_ENTRIES.findIndex(entry => entry.id === 'prismstorm');
   assert.match(await page.locator(`[data-book-entry="${prismIndex}"]`).innerText(), /Prismstorm/);
   assert.match(await page.locator(`[data-book-entry="${prismIndex}"] .book-recipe`).innerText(), /Tumble: .* 3.*Prism: .* 3/);
-  assert.match(await page.locator('.book-progress').innerText(), /2 \/ 7/);
+  assert.match(await page.locator('.book-progress').innerText(), /2 \/ 11/);
   await page.screenshot({ path: 'playtest-results/merging-book-desktop.png' });
   await closeBook(); await page.reload(); await enter(); await openFromMenu();
-  assert.match(await page.locator('.book-progress').innerText(), /2 \/ 7/);
+  assert.match(await page.locator('.book-progress').innerText(), /2 \/ 11/);
   await page.setViewportSize({ width: 320, height: 760 });
   await page.locator('[data-book-tab="combos"]').click();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
@@ -124,13 +124,13 @@ try {
   await page.waitForFunction(() => gnomeward.state.shopProfile?.fusionDiscoveries.includes('multi-necro'));
   const serverBefore = await page.evaluate(() => gnomeward.game.profile.mergingBookFound);
   await clickBook();
-  assert.match(await page.locator('.book-progress').innerText(), /2 \/ 7/);
+  assert.match(await page.locator('.book-progress').innerText(), /2 \/ 11/);
   assert.equal(await page.evaluate(() => gnomeward.game.profile.mergingBookFound), serverBefore, 'local book pickup never changes server profile');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('gnomeward-profile')));
   assert.equal(saved.mergingBookFound, true); assert.deepEqual(saved.fusionDiscoveries, ['multi-necro']); assert.deepEqual(saved.comboDiscoveries, ['sporefire']);
   await closeBook(); await page.evaluate(() => gnomeward.multiplayer.leave());
   await page.waitForFunction(() => !gnomeward.state.multiplayer);
-  await openFromMenu(); assert.match(await page.locator('.book-progress').innerText(), /2 \/ 7/);
+  await openFromMenu(); assert.match(await page.locator('.book-progress').innerText(), /2 \/ 11/);
   checks.push('Co-op records consecutive snapshot discoveries without losing the first event, teammate discoveries, and physical pickup to local collection only; the book remains available after leaving the room.');
   assert.deepEqual(errors, []);
   await writeFile('playtest-results/merging-book-browser.json', JSON.stringify({ checks, errors }, null, 2));

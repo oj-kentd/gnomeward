@@ -8,13 +8,17 @@ const pairHints = {
   'multi-sprout': 'A little green courage meets a whirlwind of surprises.',
   'necro-sprout': 'New growth stirs where the old garden sleeps.',
   'multi-necro': 'Many little surprises answer a whisper from the cottage.',
+  'boom-spore': 'A woodland harvest wears a cap and carries a spark.',
+  'sniper-stun': 'A patient eye follows a pink light past the horizon.',
+  'gravity-strawberry': 'A berry tumbles toward the deepest pocket in the sky.',
+  'crystal-sprout': 'Tender shoots find shelter beneath a gleaming crown.',
   'multi-necro-sprout': 'Three familiar hearts can beat beneath one hat.',
 };
 const path = (type, index) => `${TOWERS[type].name}: ${TOWERS[type].paths[index].name} 3`;
 const freezeEntry = entry => Object.freeze({ ...entry, types: Object.freeze([...entry.types]) });
 
 export const BOOK_ENTRIES = Object.freeze([
-  ...Object.entries(FUSIONS).map(([id, fusion]) => freezeEntry({
+  ...Object.entries(FUSIONS).filter(([, fusion]) => !fusion.secret).map(([id, fusion]) => freezeEntry({
     id, kind: 'fusion', name: fusion.name, types: fusion.types, portrait: fusion.portrait,
     hint: pairHints[id],
     recipe: fusion.types.length === 3

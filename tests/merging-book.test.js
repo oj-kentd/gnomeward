@@ -5,11 +5,11 @@ import { TOWERS } from '../src/data.js';
 import { FUSIONS } from '../src/fusions.js';
 import { BOOK_LOCATION, BOOK_ENTRIES, normalizeBook, discoverBook, recordBookDiscoveries, bookEntryDiscovered } from '../src/merging-book.js';
 
-test('the hidden book catalogs all four forms and three special combinations', () => {
+test('the hidden book catalogs all public forms and three special combinations', () => {
   assert.deepEqual(BOOK_LOCATION, { id: 'merging-book', mapId: 'creek', x: 9.65, z: 5.75 });
-  assert.equal(BOOK_ENTRIES.length, 7);
-  assert.equal(new Set(BOOK_ENTRIES.map(entry => entry.id)).size, 7);
-  assert.deepEqual(BOOK_ENTRIES.filter(entry => entry.kind === 'fusion').map(entry => entry.id).sort(), Object.keys(FUSIONS).sort());
+  assert.equal(BOOK_ENTRIES.length, 11);
+  assert.equal(new Set(BOOK_ENTRIES.map(entry => entry.id)).size, 11);
+  assert.deepEqual(BOOK_ENTRIES.filter(entry => entry.kind === 'fusion').map(entry => entry.id).sort(), Object.entries(FUSIONS).filter(([,fusion])=>!fusion.secret).map(([id])=>id).sort());
   assert.deepEqual(BOOK_ENTRIES.filter(entry => entry.kind === 'combo').map(entry => entry.id).sort(), ['berry-singularity', 'prismstorm', 'sporefire']);
   for (const entry of BOOK_ENTRIES) {
     assert.ok(entry.name && entry.hint && entry.recipe && entry.description);
@@ -91,7 +91,7 @@ test('co-op board observation records teammate forms and active combo markers in
   assert.equal(recordBookDiscoveries(local, structuredClone(board)), false);
 });
 
-test('all seven entries can be learned from validated events even after actors leave the board', () => {
+test('all public entries can be learned from validated events even after actors leave the board', () => {
   const profile = normalizeBook({});
   const events = BOOK_ENTRIES.map(entry => entry.kind === 'fusion'
     ? { type: 'merged', fusionKey: entry.id }
@@ -99,7 +99,7 @@ test('all seven entries can be learned from validated events even after actors l
   assert.equal(recordBookDiscoveries(profile, { towers: [], comboDiscoveries: [] }, events), true);
   for (const entry of BOOK_ENTRIES) assert.equal(bookEntryDiscovered(profile, entry), true);
   assert.equal(recordBookDiscoveries(profile, {}, events), false);
-  assert.equal(profile.fusionDiscoveries.length, 4);
+  assert.equal(profile.fusionDiscoveries.length, 8);
   assert.equal(profile.comboDiscoveries.length, 3);
   assert.equal(bookEntryDiscovered(profile, 'unknown'), false);
   assert.equal(bookEntryDiscovered(null, BOOK_ENTRIES[0]), false);
@@ -154,4 +154,14 @@ test('disclosed recipes name the exact tier-three paths and actual activation co
   assert.match(entries['berry-singularity'].recipe, /land inside.*active, capturing black holes/);
   assert.match(entries['multi-necro-sprout'].recipe, /Sproutstorm with Morrow, Gravebloom with Tumble, or Soulstorm with Sprout/);
   assert.ok(BOOK_ENTRIES.filter(entry => entry.kind === 'fusion').every(entry => entry.recipe.includes('no upgrade tiers are required')));
+});
+
+test('extra secret merges never appear in the book, including after discovery', () => {
+  const secrets=Object.entries(FUSIONS).filter(([,fusion])=>fusion.secret);
+  assert.equal(secrets.length,3);
+  const profile={unlocks:[],mergingBookFound:true,fusionDiscoveries:secrets.map(([id])=>id)};
+  normalizeBook(profile);
+  recordBookDiscoveries(profile,{towers:[],comboDiscoveries:[],time:1},secrets.map(([id])=>({type:'merged',fusionKey:id})));
+  assert.deepEqual(profile.fusionDiscoveries,[]);
+  for(const [id,fusion] of secrets){assert.ok(!BOOK_ENTRIES.some(entry=>entry.id===id||entry.name===fusion.name));}
 });
