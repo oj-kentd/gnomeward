@@ -55,7 +55,7 @@ function findMergingBook(){
   if(found){beep(1100,.2);ui.toast('The Book of Merging is yours! Reopen it in the field guide.');}
 }
 function cancel(){state.placementMergeName=null;state.placingType=null;state.selectedTowerId=null;world?.setGhost(null);refreshUI();}
-function choose(type){if(!ready)return;state.placementMergeName=null;if(!game.isUnlocked(type)){ui.toast(TOWERS[type].unlockMap ? `Clear all 20 rounds of ${MAPS.find(map=>map.id===TOWERS[type].unlockMap).name} to recruit this gnome.` : TOWERS[type].unlockSecret ? `A hidden friend awaits in ${MAPS.find(map=>map.id===TOWERS[type].unlockSecret).name}.` : 'This gnome joins your team after its milestone.');return;}state.placingType=state.placingType===type?null:type;state.selectedTowerId=null;refreshUI();beep(600);}
+function choose(type){if(!ready)return;if(type==='ricochet'&&state.multiplayer&&!state.multiplayer.ricochetSupported){ui.toast('Update the co-op server to 0.6.0 to recruit Skip.');return;}state.placementMergeName=null;if(!game.isUnlocked(type)){ui.toast(TOWERS[type].unlockMap ? `Clear all 20 rounds of ${MAPS.find(map=>map.id===TOWERS[type].unlockMap).name} to recruit this gnome.` : TOWERS[type].unlockSecret ? `A hidden friend awaits in ${MAPS.find(map=>map.id===TOWERS[type].unlockSecret).name}.` : 'This gnome joins your team after its milestone.');return;}state.placingType=state.placingType===type?null:type;state.selectedTowerId=null;refreshUI();beep(600);}
 function towerAt(x,z,hitTowerId) {
   return game.towers.find(t=>!t.fusionParentId&&t.id===hitTowerId) || game.towers.find(t=>!t.fusionParentId&&Math.hypot(t.x-x,t.z-z)<.85);
 }

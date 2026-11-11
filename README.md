@@ -175,4 +175,8 @@ Every gnome now has at least one listed merge partner. Sprout, Tumble, and Morro
 
 ## Book of Merging
 
-A lost book is hidden in Moonlit Creek. Find it to add a permanent book to the game menu. It records all eight listed merged forms and three special combinations: undiscovered entries show guardian silhouettes and hints, while discoveries reveal their names and recipes. Progress is saved in the same browser, including discoveries made before finding the book. Co-op observations fill your own collection; the book itself needs no additional server update beyond the existing server 0.4.0 fusion support.
+A lost book is hidden in Moonlit Creek. Find it to add a permanent book to the game menu. It records all nine listed merged forms and three special combinations: undiscovered entries show guardian silhouettes and hints, while discoveries reveal their names and recipes. Progress is saved in the same browser, including discoveries made before finding the book. Co-op observations fill your own collection; the book itself needs no additional server update beyond the existing server 0.4.0 fusion support.
+
+## Skip and Soulbounce (0.6.0)
+
+Skip is an orange-and-blue gnome available from the start. Blue balls bounce off garden edges until hitting a skeleton; missed base balls fade after 12 seconds. The explosive path adds a six-second fuse, then stronger, wider blasts. Multiball launches two, three, then four balls at different angles. Merge Tumble and Morrow into Soulstorm, then add Skip for Soulbounce. Both paths and all three members’ abilities remain available. Co-op requires server **0.6.0**.

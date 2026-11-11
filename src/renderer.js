@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CoopMotionBuffer } from './coop-motion.js';
 import { TOWERS, ENEMIES, SECRETS, cottagePosition } from './data.js';
 
-const ASSETS = ['merging-book',...Object.values(FUSIONS).map(fusion=>fusion.modelName),...COSTUMES.map(costume=>costume.modelName),'trait-armored','trait-runed','trait-toxic','combo-marker-sporefire','combo-marker-prismstorm','combo-marker-berry-singularity','berry-singularity-seed-ring','berry-singularity-arcs','berry-singularity-stars','sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
+const ASSETS = ['ricochet-ball','merging-book',...Object.values(FUSIONS).map(fusion=>fusion.modelName),...COSTUMES.map(costume=>costume.modelName),'trait-armored','trait-runed','trait-toxic','combo-marker-sporefire','combo-marker-prismstorm','combo-marker-berry-singularity','berry-singularity-seed-ring','berry-singularity-arcs','berry-singularity-stars','sporefire-petals','combo-sparks','prism-shard','prism-burst','strawberry-fruit','strawberry-seed','strawberry-bush','reborn-gnome','soul-puff','necro-clue','secret-pumpkin-moon','secret-pumpkin-star','secret-pumpkin-leaf','secret-pumpkin-flame','path-tile','entry-arrow','black-hole','crystal-barrier','secret-rune','secret-crystal','pumpkin','apple-tree','water','ground','path','tree','bush','rock','flower','mushroom','house','fence','crystal','projectile','ring','explosion','skeleton','skeleton-boss',...Object.keys(TOWERS).map(t=>'gnome-'+t)];
 const ENEMY_TRAIT_MODELS = { armored: 'trait-armored', runed: 'trait-runed', toxic: 'trait-toxic' };
 const COMBO_MARKER_MODELS = { sporefire: 'combo-marker-sporefire', prismstorm: 'combo-marker-prismstorm', 'berry-singularity': 'combo-marker-berry-singularity' };
 const COMBO_BURSTS = new Set(['sporefire', 'prism-burst', 'berry-singularity']);
@@ -573,7 +573,7 @@ export class GardenRenderer {
       let object = this.fx.get(effect.id);
       if (!object) {
         const berryModel = effect.type === 'strawberry-mortar' ? 'strawberry-fruit' : effect.type === 'strawberry-seed' ? 'strawberry-seed' : null;
-        object = COMBO_BURSTS.has(effect.type) ? this.comboBurst(effect.type) : this.clone(berryModel || (effect.type === 'prism-shard' ? 'prism-shard' : ['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type) ? 'soul-puff' : effect.type === 'explosion' ? 'explosion' : 'projectile'), effect.type === 'strawberry-seed' ? '#111111' : berryModel ? undefined : effect.color);
+        object = COMBO_BURSTS.has(effect.type) ? this.comboBurst(effect.type) : this.clone(berryModel || (effect.type === 'ricochet-ball' ? 'ricochet-ball' : effect.type === 'prism-shard' ? 'prism-shard' : ['soul-reap','reborn-spawn','reborn-fade'].includes(effect.type) ? 'soul-puff' : effect.type === 'explosion' ? 'explosion' : 'projectile'), effect.type === 'strawberry-seed' ? '#111111' : berryModel ? undefined : effect.color);
         if (effect.type === 'strawberry-seed' && effect.gravityCharged) object.add(this.clone('berry-singularity-seed-ring'));
         if (comboShot(effect)) object.traverse(child => { if (child.isMesh) child.castShadow = child.receiveShadow = false; });
         this.actors.add(object);
@@ -615,6 +615,10 @@ export class GardenRenderer {
           sparks.rotation.y = reduced ? 0 : -.6 * progress;
         }
         for (const material of object.userData.fadeMaterials) material.opacity = (1 - progress) ** .65;
+      } else if (effect.type === 'ricochet-ball') {
+        object.position.set(effect.x, .45, effect.z);
+        object.scale.setScalar(.22);
+        if (!this.reducedMotion.matches) object.rotation.set(progress * 20, 0, progress * 12);
       } else if (COMBO_SHOTS.has(effect.type)) {
         // Shards are compact solid projectiles, including ricochet flights.
         // Homing endpoints use the same buffered enemy positions as co-op.

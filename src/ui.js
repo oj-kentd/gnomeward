@@ -39,7 +39,7 @@ function upgradeBenefit(game, tower, index, stats) {
   levels[index]++;
   const next = game.getStats({ ...tower, levels });
   const labels = [
-    ['damage', 'Damage'], ['shots', 'Targets'], ['attackSpeed', 'Attacks/s'],
+    ['damage', 'Damage'], ['ballCount', 'Balls per cycle'], ['shots', 'Targets'], ['attackSpeed', 'Attacks/s'],
     ['poisonDps', 'Poison/s'], ['poisonDuration', 'Poison seconds'], ['slowDuration', 'Slow seconds'],
     ['explosionDamage', 'Blast damage'], ['explosionRadius', 'Blast radius'], ['range', 'Range'],
     ['charges', 'Mushroom hits'], ['trapRadius', 'Mushroom radius'],
@@ -60,6 +60,7 @@ function upgradeBenefit(game, tower, index, stats) {
     benefits.push(`Dispatch ${precise(stats.summonInterval)}s → ${precise(next.summonInterval)}s`);
   }
   if (next.poisonSpreadRadius > 0 && !(stats.poisonSpreadRadius > 0)) benefits.unshift('Poison spreads to nearby skeletons');
+  if (tower.type === 'ricochet' && next.explosionDamage > 0 && !stats.explosionDamage) benefits.unshift('Missed balls explode after 6s');
   if (next.capture && !stats.capture) benefits.push('Captures enemies in the hole');
   if (tower.type === 'strawberry' && next.flightDuration < stats.flightDuration) benefits.push(`Flight ${precise(stats.flightDuration)}s → ${precise(next.flightDuration)}s`);
   return benefits.join(' · ') || TOWERS[tower.type].paths[index].description;
@@ -389,17 +390,18 @@ export class UI {
     placement.hidden = !state.placingType;
     if (state.placingType) set('placement-text', state.placementMergeName ? `Merge into ${state.placementMergeName} · ${n(TOWERS[state.placingType]?.cost)} gold` : `Place ${TOWERS[state.placingType]?.name || 'your gnome'} · ${n(TOWERS[state.placingType]?.cost)} gold · Tap a compatible gnome to merge`);
     const rosterSkins = Object.fromEntries(COSTUMES.map(costume => [costume.towerType, multiplayer ? multiplayer.loadout?.[costume.towerType+'Skin'] : getTowerSkin(collection, costume.towerType)]));
-    const rosterSignature = JSON.stringify([state.placingType, rosterSkins, Object.keys(TOWERS).map((id) => [game.isUnlocked(id), game.gold >= TOWERS[id].cost])]);
+    const rosterSignature = JSON.stringify([state.placingType, rosterSkins, multiplayer?.ricochetSupported, Object.keys(TOWERS).map((id) => [game.isUnlocked(id), game.gold >= TOWERS[id].cost])]);
     if (rosterSignature !== this.rosterSignature) {
       this.rosterSignature = rosterSignature;
       document.getElementById('roster').innerHTML = Object.entries(TOWERS).map(([id, tower]) => {
-        const unlocked = game.isUnlocked(id);
+        const unsupported = id === 'ricochet' && multiplayer && !multiplayer.ricochetSupported;
+        const unlocked = game.isUnlocked(id) && !unsupported;
         const affordable = game.gold >= tower.cost;
         const secret = !unlocked && !!tower.unlockSecret;
         const secretGarden = MAPS.find((garden) => garden.id === tower.unlockSecret)?.name || 'a hidden garden';
         const unlockGarden = MAPS.find((garden) => garden.id === tower.unlockMap)?.name;
-        const hint = secret ? id === 'necro' ? `A quiet secret in ${secretGarden}.` : `Three discoveries in ${secretGarden} may reveal a hidden guardian.` : `${tower.description}${!unlocked ? unlockGarden ? ` Clear all 20 rounds of ${unlockGarden} to unlock.` : ` Beat round ${tower.unlockWave} to unlock.` : !affordable ? ' Not enough gold.' : ''}`;
-        return `<button class="tower-card ${!unlocked ? 'locked' : !affordable ? 'unaffordable' : 'affordable'} ${secret ? 'secret-locked' : ''} ${state.placingType === id ? 'chosen' : ''}" data-tower="${id}" ${!unlocked || !affordable ? 'disabled' : ''} aria-pressed="${state.placingType === id}" title="${esc(hint)}" ${secret ? `aria-label="Map secret. ${esc(hint)}"` : ''}><div class="tower-art" style="--tower-color:${tower.color}">${portrait(costumePortrait(id, rosterSkins[id]))}${!unlocked ? `<span class="lock-badge">${icons.lock}</span>` : ''}</div><span class="tower-info"><strong>${secret ? '???' : esc(tower.name)}</strong><span class="tower-cost">${unlocked ? `${icons.coin}${n(tower.cost)}` : secret ? 'Map secret' : unlockGarden ? `Clear ${esc(unlockGarden)}` : `Round ${tower.unlockWave}`}</span></span>${!affordable && unlocked ? '<span class="card-shortage">Need gold</span>' : ''}</button>`;
+        const hint = unsupported ? 'Update the co-op server to 0.6.0 to recruit Skip.' : secret ? id === 'necro' ? `A quiet secret in ${secretGarden}.` : `Three discoveries in ${secretGarden} may reveal a hidden guardian.` : `${tower.description}${!unlocked ? unlockGarden ? ` Clear all 20 rounds of ${unlockGarden} to unlock.` : ` Beat round ${tower.unlockWave} to unlock.` : !affordable ? ' Not enough gold.' : ''}`;
+        return `<button class="tower-card ${!unlocked ? 'locked' : !affordable ? 'unaffordable' : 'affordable'} ${secret ? 'secret-locked' : ''} ${state.placingType === id ? 'chosen' : ''}" data-tower="${id}" ${!unlocked || !affordable ? 'disabled' : ''} aria-pressed="${state.placingType === id}" title="${esc(hint)}" ${secret ? `aria-label="Map secret. ${esc(hint)}"` : ''}><div class="tower-art" style="--tower-color:${tower.color}">${portrait(costumePortrait(id, rosterSkins[id]))}${!unlocked ? `<span class="lock-badge">${icons.lock}</span>` : ''}</div><span class="tower-info"><strong>${secret ? '???' : esc(tower.name)}</strong><span class="tower-cost">${unlocked ? `${icons.coin}${n(tower.cost)}` : unsupported ? 'Update server' : secret ? 'Map secret' : unlockGarden ? `Clear ${esc(unlockGarden)}` : `Round ${tower.unlockWave}`}</span></span>${!affordable && unlocked ? '<span class="card-shortage">Need gold</span>' : ''}</button>`;
       }).join('');
     }
     const selected = game.towers.find((tower) => tower.id === state.selectedTowerId);
@@ -499,7 +501,9 @@ export class UI {
     const terrain = ['gravity', 'crystal'].includes(tower.type);
     const automatic = tower.type === 'spore' || terrain;
     const range = stats.range >= 40 ? '∞' : precise(stats.range);
-    const summary = tower.type === 'strawberry'
+    const summary = tower.type === 'ricochet'
+      ? `<span><b>${n(stats.damage)}</b> impact damage</span><span><b>${n(stats.ballCount)}</b> balls/cycle</span><span><b>${precise(stats.interval)}s</b> reload</span><span><b>${range}</b> aim range</span>`
+      : tower.type === 'strawberry'
       ? `<span><b>${n(stats.damage)}</b> blast damage</span><span><b>${n(stats.seedCount)}</b> seeds</span><span><b>${precise(stats.interval)}s</b> reload</span><span><b>∞</b> range</span>`
       : tower.type === 'gravity'
       ? `<span><b>${precise(stats.gravityDps)}</b> gravity/s</span><span><b>${precise(stats.holeDuration)}s</b> hole duration</span><span><b>${precise(stats.interval)}s</b> cooldown</span><span><b>${range}</b> range</span>`
@@ -525,6 +529,7 @@ export class UI {
       <div class="unit-summary ${terrain ? 'terrain-summary' : ''}">${summary}</div>
       ${!automatic ? `<button class="targeting-button" data-targeting ${!canEdit ? 'disabled' : ''} title="${targetingHints[targeting] || targetingHints.first}"><span>Target: <strong>${targetingNames[targeting] || 'First'}</strong></span><span aria-hidden="true">↻</span></button>` : `<div class="targeting-note ${tower.type === 'spore' && stats.poisonSpreadRadius > 0 ? 'poison-spread-note' : ''}">${automaticNote}</div>`}
       ${turboTumble ? `<div class="targeting-note tumble-speed-note">Turbo Tumble · permanent 3× attack speed${fusion ? ' for every merged ability' : ''}</div>` : ''}
+      ${tower.type === 'ricochet' ? `<div class="targeting-note">Blue balls bounce off the garden edges until the first hit. Extra balls fan out at different angles. ${stats.explosionDamage > 0 ? `Missed balls explode after 6s for ${n(stats.explosionDamage)} damage within ${precise(stats.explosionRadius)} range.` : 'Missed balls fade after 12s.'}</div>` : ''}
       ${tower.type === 'stun' ? `<div class="targeting-note">50% slower for ${precise(stats.slowDuration)}s · does not stack</div>` : ''}
       ${tower.type === 'strawberry' ? `<div class="targeting-note">Lobs at a fixed landing spot · ${precise(stats.flightDuration)}s flight · ${precise(stats.explosionRadius)} blast radius. Seeds deal ${n(stats.seedDamage)} damage to up to ${n(stats.seedPierce)} ${stats.seedPierce === 1 ? 'target' : 'targets'} each.</div>` : ''}
       ${helpers ? `<div class="necro-ability"><p>${fusion ? 'Direct attack kills from any merged member' : 'Spell kills'} queue guardians at the cottage to march toward enemies. Helper kills summon no one; helper upgrades apply to new summons.</p><div class="helper-stats" aria-label="New helper stats"><span><b>${n(stats.summonCount || 1)}</b> ${(stats.summonCount || 1) === 1 ? 'guardian' : 'guardians'} per ${fusion ? 'direct attack' : 'spell'} kill</span><span><b>${n(stats.allyHp)}</b> helper HP</span><span><b>${n(stats.allyDamage)}</b> melee damage</span><span><b>${precise(stats.summonInterval)}s</b> dispatch</span><span><b>${precise(stats.allySpeed)}</b> march speed</span></div><div class="helper-counts"><span><b data-helper-active>${helpers.active}</b> / ${n(stats.allyLimit)} active</span><span><b data-helper-waiting>${helpers.waiting}</b> queued guardians</span></div></div>` : ''}

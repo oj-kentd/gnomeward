@@ -36,7 +36,7 @@ test('expanded fusion catalog is authoritative for every new pair and snapshots 
     match.players.get('a').gold = 1000; match._syncLoadouts(); match._syncWallets();
     match.command('a', { action: 'placeMerge', type: incoming, towerId: root.id });
     const snapshot = match.snapshot('expanded-fusion');
-    assert.equal(snapshot.fusionCatalogVersion, 2);
+    assert.equal(snapshot.fusionCatalogVersion, 3);
     assert.equal(snapshot.placementFusionVersion, 1);
     const client = applyCoopSnapshot(null, snapshot, 'a');
     assert.equal(client.game.getFusionRoot(root.id).fusionKey, fusionKey(recipe.types));
@@ -192,7 +192,7 @@ test('two WebSocket clients receive identical fusions and reconnect preserves th
     const health = await (await fetch(`${url}/healthz`)).json();
     assert.equal(health.fusionVersion, 1);
     assert.equal(health.placementFusionVersion, 1);
-    assert.equal(health.fusionCatalogVersion, 2);
+    assert.equal(health.fusionCatalogVersion, 3);
     const host = await new Client(url).create('gnomeward', { protocol: 1, name: 'Host', mode: 'coop', mapId: 'meadow', loadout: { tumbleSpeed: true, sproutSkin: 'skeleton' } });
     connections.push(host); const a = observe(host);
     const guest = await new Client(url).joinById(host.roomId, { protocol: 1, name: 'Guest' });

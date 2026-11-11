@@ -154,3 +154,14 @@ test('homing projectile targets interpolate while the launch position stays fixe
   close(rendered.x, 2); close(rendered.z, 3);
   close(shot.tx, 4);
 });
+
+
+test('bouncing balls interpolate live positions without changing authoritative samples', () => {
+  const buffer = new CoopMotionBuffer({ delay: .2 });
+  const shot = { id: 84, type: 'ricochet-ball', x: 1, z: 2, vx: 9, vz: 0, ttl: 6, maxTtl: 6 };
+  packet(buffer, 0, 0, board(0, [], { projectiles: [shot] }));
+  packet(buffer, 4, .2, board(.2, [], { projectiles: [{ ...shot, x: 2.8, z: 3, ttl: 5.8 }] }));
+  const rendered = buffer.sample(.3, line).projectiles[0];
+  close(rendered.x, 1.9); close(rendered.z, 2.5); close(rendered.ttl, 5.9);
+  assert.equal(shot.x, 1); assert.equal(shot.z, 2); assert.equal(shot.ttl, 6);
+});

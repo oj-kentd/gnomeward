@@ -132,7 +132,7 @@ export class CoopMotionBuffer {
       const copy = { ...effect };
       const next = afterById.get(effect.id);
       // Homing shots retain the same launch point but track a moving target.
-      for (const key of ['tx', 'tz']) {
+      for (const key of effect.type === 'ricochet-ball' ? ['x', 'z'] : ['tx', 'tz']) {
         if (Number.isFinite(effect[key]) && Number.isFinite(next?.[key])) copy[key] = mix(effect[key], next[key], amount);
       }
       if (Number.isFinite(copy.ttl)) copy.ttl -= elapsed;

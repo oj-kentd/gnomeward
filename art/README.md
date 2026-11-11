@@ -90,3 +90,5 @@ This renders `gnomeward-splash-wood.webp` at 1920×1080 and a separately compose
 `blender --background --python art/generate_combo_markers.py` creates the three small activation badges and `art/combo-markers.blend`. Badges are shown only after an actual combination fires, with shared authoritative timing in co-op.
 
 `blender --background --python art/generate_enemy_traits.py` creates the three endless enemy accessories and `art/enemy-traits.blend`. Each exported accessory uses a single vertex-colored material and primitive, preserving the skeleton’s base color while adding one small draw call.
+
+`blender --background --threads 6 --python art/generate_ricochet.py` creates Skip's orange-and-blue plush model and portrait, the Tumble/Morrow/Skip three-way fusion, and the centered unit-radius blue `ricochet-ball.glb`. Grounded character GLBs use the existing game's orientation and proportions. `art/ricochet.blend` is the editable source and `art/ricochet-preview.png` shows the two characters and ball. This generator preserves existing assets.

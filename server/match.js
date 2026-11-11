@@ -278,7 +278,7 @@ export class Match {
 
   snapshot(roomId = '') {
     return structuredClone({
-      protocol: PROTOCOL, comboVersion: 1, shopVersion: 1, costumeVersion: 1, tumbleSpeedVersion: 1, fusionVersion: 1, placementFusionVersion: 1, fusionCatalogVersion: 2, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
+      protocol: PROTOCOL, comboVersion: 1, shopVersion: 1, costumeVersion: 1, tumbleSpeedVersion: 1, fusionVersion: 1, placementFusionVersion: 1, fusionCatalogVersion: 3, ricochetVersion: 1, roomId, mode: this.mode, mapId: this.mapId, hostId: this.hostId,
       players: [...this.players.values()], paused: this.paused, manualPause: this.manualPause,
       speed: this.speed, started: this.started, autoStart: this.autoStart, autoCountdown: this.autoCountdown, tick: this.tick, result: this.result,
       boards: [...this.boards.entries()].map(([playerId, game]) => ({ playerId, state: {

@@ -12,6 +12,7 @@ const pairHints = {
   'sniper-stun': 'A patient eye follows a pink light past the horizon.',
   'gravity-strawberry': 'A berry tumbles toward the deepest pocket in the sky.',
   'crystal-sprout': 'Tender shoots find shelter beneath a gleaming crown.',
+  'multi-necro-ricochet': 'A restless blue ball joins a whirlwind and a whisper from the cottage.',
   'multi-necro-sprout': 'Three familiar hearts can beat beneath one hat.',
 };
 const path = (type, index) => `${TOWERS[type].name}: ${TOWERS[type].paths[index].name} 3`;
@@ -21,7 +22,9 @@ export const BOOK_ENTRIES = Object.freeze([
   ...Object.entries(FUSIONS).filter(([, fusion]) => !fusion.secret).map(([id, fusion]) => freezeEntry({
     id, kind: 'fusion', name: fusion.name, types: fusion.types, portrait: fusion.portrait,
     hint: pairHints[id],
-    recipe: fusion.types.length === 3
+    recipe: id === 'multi-necro-ricochet'
+      ? 'Merge Tumble and Morrow into Soulstorm, then add Skip. All three guardians must belong to you; no upgrade tiers are required.'
+      : fusion.types.length === 3
       ? 'Merge Sproutstorm with Morrow, Gravebloom with Tumble, or Soulstorm with Sprout. Each guardian must belong to you; no upgrade tiers are required.'
       : `Merge ${fusion.types.map(type => TOWERS[type].name).join(' + ')} using the selected gnome’s Merge controls. Both guardians must belong to you; no upgrade tiers are required.`,
     description: `Every member keeps their attacks and upgrades in one form. Costumes are put aside for this game.${fusion.types.includes('necro') ? ' Direct attack defeats from any member call Morrow’s reborn guardians; helper defeats never summon more helpers.' : ''}${fusion.types.includes('multi') ? ' Purchased Turbo Tumble triples every member’s attack speed, without speeding up guardian dispatch or helper attacks.' : ''}`,

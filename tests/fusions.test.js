@@ -15,11 +15,11 @@ const victim = game => {
   return enemy;
 };
 
-test('every gnome has a public merge partner, with exactly three additional secret pairs and no extra triples', () => {
+test('every gnome has a public merge partner, with exactly three additional secret pairs and two explicit triples', () => {
   const catalog = Object.values(FUSIONS);
-  assert.equal(catalog.length, 11);
+  assert.equal(catalog.length, 12);
   assert.equal(catalog.filter(recipe => recipe.secret).length, 3);
-  assert.equal(catalog.filter(recipe => !recipe.secret).length, 8);
+  assert.equal(catalog.filter(recipe => !recipe.secret).length, 9);
   const publicTypes = new Set(catalog.filter(recipe => !recipe.secret).flatMap(recipe => recipe.types));
   assert.deepEqual([...publicTypes].sort(), Object.keys(TOWERS).sort());
   assert.equal(catalog.filter(recipe => recipe.catalogVersion === 1).length, 4);
@@ -27,7 +27,7 @@ test('every gnome has a public merge partner, with exactly three additional secr
   const types = Object.keys(TOWERS);
   for (let a = 0; a < types.length; a++) for (let b = a + 1; b < types.length; b++) for (let c = b + 1; c < types.length; c++) {
     const key = [types[a], types[b], types[c]].sort().join('-');
-    assert.equal(fusionKey([types[a], types[b], types[c]]), key === 'multi-necro-sprout' ? key : null);
+    assert.equal(fusionKey([types[a], types[b], types[c]]), ['multi-necro-sprout', 'multi-necro-ricochet'].includes(key) ? key : null);
   }
 });
 

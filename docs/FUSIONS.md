@@ -9,13 +9,14 @@ Alternatively, select a placed gnome, choose **Merge gnomes**, choose another of
 | Sprout + Tumble | Sproutstorm |
 | Sprout + Morrow | Gravebloom |
 | Tumble + Morrow | Soulstorm |
-| All three, in any order | Trinity |
+| Sprout + Tumble + Morrow, in any order | Trinity |
+| Soulstorm + Skip (Tumble + Morrow + Skip) | Soulbounce |
 | Morel + Bramble | Sporeburst |
 | Poppy + Aster | Starshot |
 | Orbit + Strawberry | Cosmic Berry |
 | Prism + Sprout | Emerald Keeper |
 
-The original Sprout/Tumble/Morrow pairs can merge with their missing third gnome. Other recipes are pairs. Every character has at least one listed partner. Three additional experimental recipes are intentionally omitted from this guide and the book. Each form contains at most one of each character; merging does not bypass character unlocks. In co-op, both units must belong to you.
+The original Sprout/Tumble/Morrow pairs can merge with their missing third gnome. Soulstorm can also merge with Skip to create Soulbounce. Other recipes are pairs. Every character has at least one listed partner. Three additional experimental recipes are intentionally omitted from this guide and the book. Each form contains at most one of each character; merging does not bypass character unlocks. In co-op, both units must belong to you.
 
 Each component retains its original attack pattern, damage type, range, upgrades, kills, and cooldown. The panel has a tab for each character’s abilities and upgrades. The usual path limits still apply to each component. Selecting a tab shows that component’s range and stats. Targeting is shared by the form.
 
@@ -27,6 +28,8 @@ Buying directly onto a defender in co-op requires server **0.5.0**, advertising 
 
 ## Book of Merging
 
-Find the lost book in Moonlit Creek to keep a permanent journal in the menu. Its eleven entries cover merged forms and special combinations. Locked entries give silhouette clues without revealing upgrade recipes. Creating a form or triggering a combo fills its entry, even if you have not found the book yet. Simply placing compatible units or purchasing their upgrades does not count as triggering a combo.
+Find the lost book in Moonlit Creek to keep a permanent journal in the menu. Its twelve entries cover merged forms and special combinations. Locked entries give silhouette clues without revealing upgrade recipes. Creating a form or triggering a combo fills its entry, even if you have not found the book yet. Simply placing compatible units or purchasing their upgrades does not count as triggering a combo.
 
 The book and discovered entries are saved to this browser’s collection, alongside your costumes and permanent powers. They survive reloads and new gardens. In co-op the book belongs to your local collection, and combinations you observe in the shared garden count toward it. Finding the book does not unlock a character, grant upgrades, or enable merging on older servers. The book UI works with older servers, but the expanded forms require server 0.5.0 with `fusionCatalogVersion: 2`. The three extra secret recipes never become book entries, even after discovery.
+
+Skip and Soulbounce require server **0.6.0**, with `ricochetVersion: 1` and `fusionCatalogVersion: 3`. Skip keeps both its six-second blast and multiball paths in the fusion.

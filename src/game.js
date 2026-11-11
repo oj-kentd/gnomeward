@@ -401,6 +401,7 @@ export class Game {
       case 'boom': stats = { damage: [13, 24, 42, 70][a], interval: 1.4 * 0.73 ** c, range: 3.7 + d * 1.0, explosionDamage: [18, 30, 48, 75][b], explosionRadius: 1.5 + b * 0.5 }; break;
       case 'stun': stats = { damage: [3, 10, 22, 40][c], interval: 1.7 * 0.73 ** b, range: 3.8 + d * 1.0, slowDuration: 2 + a * 0.8, slowMultiplier: 0.5 }; break;
       case 'multi': stats = { damage: [8, 15, 26, 42][a], interval: 1.3 * 0.72 ** a, range: 4, shots: 3 + a }; break;
+      case 'ricochet': stats = { damage: 18, interval: 1.6, range: 5.5, ballCount: 1 + b, ballSpeed: 9, ballLifetime: a > 0 ? 6 : 12, explosionDamage: [0, 30, 55, 90][a], explosionRadius: [0, 1.8, 2.4, 3][a] }; break;
       case 'sniper': stats = { damage: [5, 25, 65, 130][a], interval: 1.25 * 0.48 ** b, range: 100 }; break;
       case 'gravity': {
         const holeDuration = 3 + b * 1.1;
@@ -475,6 +476,22 @@ export class Game {
   }
 
   _launch(tower, target, stats) {
+    if (tower.type === 'ricochet') {
+      const aim = Math.atan2(target.z - tower.z, target.x - tower.x);
+      for (let i = 0; i < stats.ballCount; i++) {
+        // Keep one aimed shot; additional balls fan alternately left and right.
+        const offset = i === 0 ? 0 : Math.ceil(i / 2) * (i % 2 ? 1 : -1) * Math.PI / 6;
+        const angle = aim + offset;
+        this.projectiles.push({ id: ++this._id, type: 'ricochet-ball', unitType: tower.type,
+          sourceId: tower.id, x: tower.x, z: tower.z,
+          vx: Math.cos(angle) * stats.ballSpeed, vz: Math.sin(angle) * stats.ballSpeed,
+          ttl: stats.ballLifetime, maxTtl: stats.ballLifetime, color: '#329cff',
+          damage: stats.damage, explosionDamage: stats.explosionDamage, explosionRadius: stats.explosionRadius,
+          summonOnKill: !!this._fusionSummoner(tower),
+        });
+      }
+      return;
+    }
     if (tower.type === 'strawberry') {
       this.projectiles.push({
         id: ++this._id, type: 'strawberry-mortar', unitType: tower.type, sourceId: tower.id,
@@ -500,6 +517,10 @@ export class Game {
     this.projectiles = [];
     let chargedPending = flying.filter(shot => shot.gravityCharged).length;
     for (const shot of flying) {
+      if (shot.type === 'ricochet-ball') {
+        this._advanceRicochet(shot, dt);
+        continue;
+      }
       if (shot.type === 'prism-shard') {
         this._advancePrismShard(shot, dt);
         continue;
@@ -531,6 +552,54 @@ export class Game {
         target.slowMultiplier = shot.slowMultiplier;
       }
       this._effect('impact', target, target, shot.color, 0.12);
+    }
+  }
+
+  _advanceRicochet(shot, dt) {
+    // Trace each straight segment up to its next wall, then reflect the unused
+    // time. Swept circle intersections prevent fast balls skipping skeletons.
+    const duration = Math.min(Math.max(0, dt), shot.ttl);
+    let remaining = duration;
+    const bounds = { x: 12.8, z: 7.8 };
+    const damageOptions = { damageKind: 'physical', summon: shot.summonOnKill === true ||
+      !!this._fusionSummoner(this.towers.find(t => t.id === shot.sourceId)) };
+    while (remaining > 1e-9) {
+      const wallX = Math.abs(shot.vx) > 1e-9 ? Math.max(0, (Math.sign(shot.vx) * bounds.x - shot.x) / shot.vx) : Infinity;
+      const wallZ = Math.abs(shot.vz) > 1e-9 ? Math.max(0, (Math.sign(shot.vz) * bounds.z - shot.z) / shot.vz) : Infinity;
+      const step = Math.min(remaining, wallX, wallZ);
+      let first = null, firstTime = Infinity;
+      const speedSquared = shot.vx ** 2 + shot.vz ** 2;
+      for (const enemy of this.enemies) {
+        if (enemy.hp <= 0) continue;
+        const dx = shot.x - enemy.x, dz = shot.z - enemy.z;
+        const radius = enemy.boss ? 0.65 : 0.42;
+        const c = dx * dx + dz * dz - radius * radius;
+        const b = dx * shot.vx + dz * shot.vz;
+        const disc = b * b - speedSquared * c;
+        const hitTime = c <= 0 ? 0 : disc >= 0 && speedSquared > 0 ? (-b - Math.sqrt(disc)) / speedSquared : Infinity;
+        if (hitTime >= 0 && hitTime <= step + 1e-9 && hitTime < firstTime) { first = enemy; firstTime = hitTime; }
+      }
+      if (first) {
+        shot.x += shot.vx * firstTime; shot.z += shot.vz * firstTime;
+        this._damage(first, shot.damage, shot.sourceId, damageOptions);
+        this._effect('impact', shot, shot, shot.color, 0.18);
+        return;
+      }
+      shot.x += shot.vx * step; shot.z += shot.vz * step;
+      remaining -= step;
+      if (wallX <= step + 1e-9) { shot.x = clamp(shot.x, -bounds.x, bounds.x); shot.vx *= -1; }
+      if (wallZ <= step + 1e-9) { shot.z = clamp(shot.z, -bounds.z, bounds.z); shot.vz *= -1; }
+    }
+    shot.ttl = Math.max(0, shot.ttl - duration);
+    if (shot.ttl > 1e-9) { this.projectiles.push(shot); return; }
+    if (shot.explosionDamage > 0) {
+      this._effect('explosion', shot, shot, shot.color, 0.48);
+      this.effects.at(-1).radius = shot.explosionRadius;
+      for (const enemy of this.enemies) {
+        if (enemy.hp > 0 && distance(shot, enemy) <= shot.explosionRadius) {
+          this._damage(enemy, shot.explosionDamage, shot.sourceId, damageOptions);
+        }
+      }
     }
   }
 

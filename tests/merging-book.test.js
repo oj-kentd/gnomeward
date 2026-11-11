@@ -7,8 +7,8 @@ import { BOOK_LOCATION, BOOK_ENTRIES, normalizeBook, discoverBook, recordBookDis
 
 test('the hidden book catalogs all public forms and three special combinations', () => {
   assert.deepEqual(BOOK_LOCATION, { id: 'merging-book', mapId: 'creek', x: 9.65, z: 5.75 });
-  assert.equal(BOOK_ENTRIES.length, 11);
-  assert.equal(new Set(BOOK_ENTRIES.map(entry => entry.id)).size, 11);
+  assert.equal(BOOK_ENTRIES.length, 12);
+  assert.equal(new Set(BOOK_ENTRIES.map(entry => entry.id)).size, 12);
   assert.deepEqual(BOOK_ENTRIES.filter(entry => entry.kind === 'fusion').map(entry => entry.id).sort(), Object.entries(FUSIONS).filter(([,fusion])=>!fusion.secret).map(([id])=>id).sort());
   assert.deepEqual(BOOK_ENTRIES.filter(entry => entry.kind === 'combo').map(entry => entry.id).sort(), ['berry-singularity', 'prismstorm', 'sporefire']);
   for (const entry of BOOK_ENTRIES) {
@@ -99,7 +99,7 @@ test('all public entries can be learned from validated events even after actors 
   assert.equal(recordBookDiscoveries(profile, { towers: [], comboDiscoveries: [] }, events), true);
   for (const entry of BOOK_ENTRIES) assert.equal(bookEntryDiscovered(profile, entry), true);
   assert.equal(recordBookDiscoveries(profile, {}, events), false);
-  assert.equal(profile.fusionDiscoveries.length, 8);
+  assert.equal(profile.fusionDiscoveries.length, 9);
   assert.equal(profile.comboDiscoveries.length, 3);
   assert.equal(bookEntryDiscovered(profile, 'unknown'), false);
   assert.equal(bookEntryDiscovered(null, BOOK_ENTRIES[0]), false);
