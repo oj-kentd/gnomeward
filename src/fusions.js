@@ -8,6 +8,7 @@ export const FUSIONS = Object.freeze({
   'necro-sprout': recipe('Gravebloom', ['necro', 'sprout']),
   'multi-necro': recipe('Soulstorm', ['multi', 'necro']),
   'multi-necro-sprout': recipe('Trinity', ['multi', 'necro', 'sprout']),
+  'sniper-spore': recipe('Sporewatch', ['sniper', 'spore'], 4),
   'multi-necro-ricochet': recipe('Soulbounce', ['multi', 'necro', 'ricochet'], 3),
   'boom-spore': recipe('Sporeburst', ['boom', 'spore'], 2),
   'sniper-stun': recipe('Starshot', ['sniper', 'stun'], 2),

@@ -17,9 +17,9 @@ const victim = game => {
 
 test('every gnome has a public merge partner, with exactly three additional secret pairs and two explicit triples', () => {
   const catalog = Object.values(FUSIONS);
-  assert.equal(catalog.length, 12);
+  assert.equal(catalog.length, 13);
   assert.equal(catalog.filter(recipe => recipe.secret).length, 3);
-  assert.equal(catalog.filter(recipe => !recipe.secret).length, 9);
+  assert.equal(catalog.filter(recipe => !recipe.secret).length, 10);
   const publicTypes = new Set(catalog.filter(recipe => !recipe.secret).flatMap(recipe => recipe.types));
   assert.deepEqual([...publicTypes].sort(), Object.keys(TOWERS).sort());
   assert.equal(catalog.filter(recipe => recipe.catalogVersion === 1).length, 4);

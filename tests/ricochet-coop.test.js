@@ -49,7 +49,7 @@ test('Skip tri-fusion and bouncing projectiles survive snapshots and reconnects'
   match.setConnected('a', false); match.setConnected('a', true);
   const snapshot = match.snapshot('skip-room');
   const client = applyCoopSnapshot(null, snapshot, 'a');
-  assert.equal(client.multiplayer.fusionCatalogVersion, 3);
+  assert.equal(client.multiplayer.fusionCatalogVersion, 4);
   assert.equal(client.multiplayer.ricochetSupported, true);
   assert.deepEqual(client.game.projectiles, game.projectiles);
   assert.deepEqual(client.game.getFusionMembers(tumble.id).map(t => t.type).sort(), ['multi', 'necro', 'ricochet']);
@@ -60,12 +60,12 @@ test('Skip tri-fusion and bouncing projectiles survive snapshots and reconnects'
 
 test('older servers retain their original fusion catalog and do not advertise Skip', () => {
   const { match } = fixture();
-  for (const version of [undefined, 1, 2, 3, 99]) {
+  for (const version of [undefined, 1, 2, 3, 4, 99]) {
     const snapshot = match.snapshot();
     delete snapshot.ricochetVersion;
     snapshot.fusionCatalogVersion = version;
     const { multiplayer } = applyCoopSnapshot(null, snapshot, 'a');
     assert.equal(multiplayer.ricochetSupported, false);
-    assert.equal(multiplayer.fusionCatalogVersion, [2, 3].includes(version) ? version : 1);
+    assert.equal(multiplayer.fusionCatalogVersion, [2, 3, 4].includes(version) ? version : 1);
   }
 });

@@ -36,7 +36,7 @@ test('expanded fusion catalog is authoritative for every new pair and snapshots 
     match.players.get('a').gold = 1000; match._syncLoadouts(); match._syncWallets();
     match.command('a', { action: 'placeMerge', type: incoming, towerId: root.id });
     const snapshot = match.snapshot('expanded-fusion');
-    assert.equal(snapshot.fusionCatalogVersion, 3);
+    assert.equal(snapshot.fusionCatalogVersion, 4);
     assert.equal(snapshot.placementFusionVersion, 1);
     const client = applyCoopSnapshot(null, snapshot, 'a');
     assert.equal(client.game.getFusionRoot(root.id).fusionKey, fusionKey(recipe.types));
@@ -192,7 +192,7 @@ test('two WebSocket clients receive identical fusions and reconnect preserves th
     const health = await (await fetch(`${url}/healthz`)).json();
     assert.equal(health.fusionVersion, 1);
     assert.equal(health.placementFusionVersion, 1);
-    assert.equal(health.fusionCatalogVersion, 3);
+    assert.equal(health.fusionCatalogVersion, 4);
     const host = await new Client(url).create('gnomeward', { protocol: 1, name: 'Host', mode: 'coop', mapId: 'meadow', loadout: { tumbleSpeed: true, sproutSkin: 'skeleton' } });
     connections.push(host); const a = observe(host);
     const guest = await new Client(url).joinById(host.roomId, { protocol: 1, name: 'Guest' });
@@ -241,4 +241,46 @@ test('two WebSocket clients receive identical fusions and reconnect preserves th
     for (const room of connections) if (room.connection.isOpen) await room.leave().catch(() => {});
     await app.stop(); await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('Sporewatch keeps owned Aster shots and Morel mushrooms with independently paid upgrades', () => {
+  const match = new Match({ mode: 'coop', mapId: 'meadow' });
+  match.addPlayer('a', 'Alice'); match.addPlayer('b', 'Bob');
+  const game = match.board(); game.profile.unlocks.push('sniper');
+  const aster = game._makeTower('sniper', -4, 0, TOWERS.sniper.cost); aster.ownerId = 'a';
+  const morel = game._makeTower('spore', -2, 0, TOWERS.spore.cost); morel.ownerId = 'b';
+  aster.levels = [1, 1]; morel.levels = [1, 1, 0, 0];
+  assert.throws(() => merge(match, 'a', aster, morel), /own gnomes/);
+  assert.equal(aster.fusionKey, undefined);
+  morel.ownerId = 'a';
+  match.players.get('a').points = 1000;
+  match._syncWallets();
+  const otherWallet = structuredClone(match.players.get('b'));
+  merge(match, 'a', aster, morel);
+  assert.equal(aster.fusionKey, 'sniper-spore');
+  assert.deepEqual(aster.levels, [1, 1]);
+  assert.deepEqual(morel.levels, [1, 1, 0, 0]);
+  match.command('a', { action: 'upgrade', towerId: aster.id, path: 0 });
+  match.command('a', { action: 'upgrade', towerId: morel.id, path: 0 });
+  assert.equal(match.players.get('a').points, 1000 - TOWERS.sniper.paths[0].costs[1] - TOWERS.spore.paths[0].costs[1]);
+  assert.deepEqual(match.players.get('b'), otherWallet);
+  assert.throws(() => match.command('b', { action: 'upgrade', towerId: morel.id, path: 1 }), /own gnomes/);
+  const statsAster = game.getStats(aster), statsMorel = game.getStats(morel);
+  game._launch(aster, { id: 999, x: 6, z: 4 }, statsAster);
+  game._plant(morel, statsMorel);
+  assert.ok(game.projectiles.some(shot => shot.sourceId === aster.id && shot.damage === statsAster.damage));
+  assert.ok(game.traps.some(trap => trap.sourceId === morel.id && trap.poisonDps === statsMorel.poisonDps));
+  const snapshot = match.snapshot();
+  const client = applyCoopSnapshot(null, snapshot, 'a');
+  for (const component of [aster, morel]) {
+    const restored = client.game.towers.find(t => t.id === component.id);
+    assert.deepEqual(restored.levels, component.levels);
+    assert.deepEqual(client.game.getStats(restored), game.getStats(component));
+  }
+  assert.equal(client.multiplayer.fusionCatalogVersion, 4);
+  snapshot.fusionCatalogVersion = 3;
+  const older = applyCoopSnapshot(null, snapshot, 'a').multiplayer;
+  assert.equal(older.fusionCatalogVersion, 3);
+  assert.ok(FUSIONS['sniper-spore'].catalogVersion > older.fusionCatalogVersion, 'old server cannot advertise the Sporewatch recipe');
+  assert.ok(FUSIONS['multi-necro-ricochet'].catalogVersion <= older.fusionCatalogVersion, 'old catalog still permits Soulbounce');
 });

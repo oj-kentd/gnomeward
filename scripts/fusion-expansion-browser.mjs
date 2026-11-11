@@ -80,7 +80,7 @@ try {
   await page.waitForFunction(id => gnomeward.game.getFusionRoot(id)?.fusionKey === 'boom-strawberry', secretDrag.b);
   checks.push('Unadvertised recipes do not appear in partner suggestions or hover names; secret forms work through both shop placement and physical drag.');
 
-  stage = 'all twelve Blender forms render as one actor each';
+  stage = 'all thirteen Blender forms render as one actor each';
   await page.keyboard.press('Escape');
   const cast = await page.evaluate(recipes => {
     const game = gnomeward.game; game.towers = []; game.effects = []; game.projectiles = [];
@@ -94,19 +94,19 @@ try {
   await page.waitForFunction(cast => cast.every(({ id, modelName }) => gnomeward.renderer.entities.get('t' + id)?.userData.modelName === modelName), cast);
   assert.equal(await page.evaluate(() => [...gnomeward.renderer.entities.keys()].filter(key => key.startsWith('t')).length), Object.keys(FUSIONS).length);
   await page.screenshot({ path: 'playtest-results/fusion-expanded-cast.png' });
-  checks.push('Every one of the twelve Blender fusion models loads and renders exactly once; hidden combat members create no duplicate actors.');
+  checks.push('Every one of the thirteen Blender fusion models loads and renders exactly once; hidden combat members create no duplicate actors.');
 
   stage = 'extra secrets never appear in the Book, even after discovery';
   await page.evaluate(() => { gnomeward.game.profile.mergingBookFound = true; });
   await page.locator('#help-button').click(); await page.locator('[data-merging-book]').click();
   assert.equal(await page.locator('[data-book-entry]').count(), BOOK_ENTRIES.length);
-  assert.equal(BOOK_ENTRIES.filter(entry => entry.kind === 'fusion').length, 9);
+  assert.equal(BOOK_ENTRIES.filter(entry => entry.kind === 'fusion').length, 10);
   const html = await page.locator('#merging-book').innerHTML();
   for (const [key, recipe] of Object.entries(FUSIONS).filter(([, recipe]) => recipe.secret)) {
     assert.equal(html.includes(recipe.name), false, `book must never mention ${recipe.name}`);
     assert.equal(html.includes(recipe.portrait), false, `book must never show ${key} portrait`);
   }
-  checks.push('Book catalogs nine public merged forms and three combos; the three extra secrets remain absent after creating every form.');
+  checks.push('Book catalogs ten public merged forms and three combos; the three extra secrets remain absent after creating every form.');
   stage = 'new catalog capability in co-op';
   await page.locator('[aria-label="Close Book of Merging"]').click();
   const match = new Match({ mode: 'coop', mapId: 'meadow' });

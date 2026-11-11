@@ -144,3 +144,106 @@ test('tri-fusion preserves Skip upgrades and ball kills summon Morrow guardians'
   assert.equal(morrow.soulQueue.length, 1);
   assert.equal(tower.kills, 1);
 });
+
+const soulbounceSetup = (levels = [0, 0], fused = true) => {
+  const { game, tower } = setup(levels);
+  const morrow = game._makeTower('necro', 2, 0, TOWERS.necro.cost);
+  if (fused) {
+    const tumble = game._makeTower('multi', 1, 0, TOWERS.multi.cost);
+    game.mergeTowers(tumble.id, morrow.id);
+    game.mergeTowers(tumble.id, tower.id);
+  }
+  const ally = game._spawnReborn(morrow, 0);
+  Object.assign(ally, game.pointAt(20.4), { hp: 1, phase: 'marching', progress: 20.4 });
+  const enemy = victim(game, 0, 0);
+  Object.assign(enemy, game.pointAt(20), { progress: 20, attackDamage: 10 });
+  return { game, tower, morrow, ally, enemy };
+};
+
+test('Soulbounce combat defeat releases exactly one ball using current Skip upgrades', () => {
+  const { game, tower, ally, enemy } = soulbounceSetup([2, 3]);
+  game._moveAgainstBarriers(enemy, enemy.progress, 1);
+  assert.equal(ally.hp, 0);
+  assert.equal(game.projectiles.length, 1, 'death does not produce a multiball volley');
+  const shot = game.projectiles[0];
+  assert.equal(shot.sourceId, tower.id);
+  assert.equal(shot.x, ally.x);
+  assert.equal(shot.z, ally.z);
+  assert.equal(shot.ttl, 6);
+  assert.equal(shot.explosionDamage, 55);
+  assert.equal(shot.explosionRadius, 2.4);
+  assert.equal(shot.noSummon, true);
+  game._moveAgainstBarriers(enemy, enemy.progress, 1);
+  game._releaseSoulbounce(ally);
+  assert.equal(game.projectiles.length, 1);
+});
+
+test('Soulbounce death balls cannot summon replacement ghosts on contact kills', () => {
+  const { game, morrow, ally, enemy } = soulbounceSetup();
+  game._moveAgainstBarriers(enemy, enemy.progress, 1);
+  enemy.hp = 1;
+  game._advanceProjectiles(0.1);
+  assert.equal(enemy.hp, 0);
+  assert.equal(game.projectiles.length, 0);
+  assert.equal(morrow.soulQueue.length, 0);
+  assert.equal(game.necroSpellKills, 0);
+  assert.equal(ally.hp, 0);
+});
+
+test('Soulbounce death-ball explosions cannot summon replacement ghosts', () => {
+  const { game, morrow, enemy } = soulbounceSetup([3, 3]);
+  game._moveAgainstBarriers(enemy, enemy.progress, 1);
+  const shot = game.projectiles[0];
+  Object.assign(shot, { x: 0, z: 0, vx: 9, vz: 0 });
+  Object.assign(enemy, { x: 2.8, z: 1, hp: 1 });
+  // Keep victim off the ball trajectory until just before the fuse finishes.
+  game.enemies = [];
+  game._advanceProjectiles(5.9);
+  game.enemies = [enemy];
+  game._advanceProjectiles(0.1);
+  assert.equal(enemy.hp, 0);
+  assert.equal(morrow.soulQueue.length, 0);
+  assert.equal(game.necroSpellKills, 0);
+});
+
+test('ordinary Morrow defeats, expired ghosts, and cleanup never release balls', () => {
+  const ordinary = soulbounceSetup([0, 0], false);
+  ordinary.game._moveAgainstBarriers(ordinary.enemy, ordinary.enemy.progress, 1);
+  assert.equal(ordinary.ally.hp, 0);
+  assert.equal(ordinary.game.projectiles.length, 0);
+
+  const expired = soulbounceSetup();
+  expired.ally.ttl = 0;
+  expired.game._moveAgainstBarriers(expired.enemy, expired.enemy.progress, 1);
+  assert.equal(expired.ally.hp, 1);
+  assert.equal(expired.game.projectiles.length, 0);
+  expired.game._clearReborn();
+  assert.equal(expired.game.projectiles.length, 0);
+
+  const sold = soulbounceSetup();
+  sold.game.sellTower(sold.morrow.id);
+  assert.equal(sold.game.allies.length, 0);
+  assert.equal(sold.game.projectiles.length, 0);
+});
+
+test('death balls select nearest enemy or use a bounded deterministic launch with none', () => {
+  const nearest = soulbounceSetup();
+  nearest.ally.hp = 0; nearest.ally.x = 0; nearest.ally.z = 0;
+  Object.assign(nearest.enemy, { x: 4, z: 0 });
+  victim(nearest.game, 0, 1);
+  nearest.game._releaseSoulbounce(nearest.ally);
+  assert.ok(Math.abs(nearest.game.projectiles[0].vx) < 1e-8);
+  assert.equal(nearest.game.projectiles[0].vz, 9);
+  const { game, ally } = soulbounceSetup();
+  ally.hp = 0;
+  game.enemies = [];
+  ally.x = 14; ally.z = 9;
+  game._releaseSoulbounce(ally);
+  const shot = game.projectiles[0];
+  assert.equal(shot.x, 12.8);
+  assert.equal(shot.z, 7.8);
+  assert.equal(shot.vx, 9);
+  assert.equal(shot.vz, 0);
+  game._advanceProjectiles(0.1);
+  assert.ok(shot.x < 12.8);
+});

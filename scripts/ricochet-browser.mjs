@@ -31,8 +31,17 @@ try {
  await page.waitForFunction(ids=>ids.every(id=>{const o=gnomeward.renderer.fx.get(id);return o&&Number.isFinite(o.position.x)&&o.scale.x>0;}),volley.ids);
  await page.evaluate(()=>{const g=gnomeward.game;g.profile.unlocks.push('multi','necro');const a=g._makeTower('multi',4,0,290),b=g._makeTower('necro',5,0,320),c=g.towers.find(t=>t.type==='ricochet');if(!g.mergeTowers(a.id,b.id)||!g.mergeTowers(a.id,c.id))throw Error('fusion failed');});
  await page.waitForFunction(()=>[...gnomeward.renderer.entities.values()].some(o=>o.userData.modelName==='gnome-fusion-multi-necro-ricochet'));
+ const ghostBall=await page.evaluate(()=>{
+  const g=gnomeward.game;g.projectiles=[];g.enemies=[];
+  const morrow=g.towers.find(t=>t.type==='necro');const ghost=g._spawnReborn(morrow,0);
+  ghost.hp=0;ghost.x=1;ghost.z=0;g._releaseSoulbounce(ghost);
+  const ball=g.projectiles[0];if(!ball?.noSummon)throw Error('Missing nonrecursive ghost ball');return ball.id;
+ });
+ await page.waitForFunction(id=>gnomeward.renderer.fx.has(id),ghostBall);
+ await page.evaluate(()=>{const g=gnomeward.game;g.profile.unlocks.push('sniper');const a=g._makeTower('sniper',-5,0,200),b=g._makeTower('spore',-3,0,160);if(!g.mergeTowers(a.id,b.id))throw Error('Sporewatch merge failed');});
+ await page.waitForFunction(()=>[...gnomeward.renderer.entities.values()].some(o=>o.userData.modelName==='gnome-fusion-sniper-spore'));
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.locator('[data-tower="ricochet"]').count(),1);
  assert.deepEqual(errors,[]);
- console.log('Skip shop, upgrades, blue projectile rendering, Soulbounce model and phone roster passed.');
+ console.log('Skip shop, upgrades, blue projectile rendering, Soulbounce ghost balls, Sporewatch model and phone roster passed.');
 } finally {await browser.close();}

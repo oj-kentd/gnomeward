@@ -561,8 +561,8 @@ export class Game {
     const duration = Math.min(Math.max(0, dt), shot.ttl);
     let remaining = duration;
     const bounds = { x: 12.8, z: 7.8 };
-    const damageOptions = { damageKind: 'physical', summon: shot.summonOnKill === true ||
-      !!this._fusionSummoner(this.towers.find(t => t.id === shot.sourceId)) };
+    const damageOptions = { damageKind: 'physical', summon: shot.noSummon !== true && (shot.summonOnKill === true ||
+      !!this._fusionSummoner(this.towers.find(t => t.id === shot.sourceId))) };
     while (remaining > 1e-9) {
       const wallX = Math.abs(shot.vx) > 1e-9 ? Math.max(0, (Math.sign(shot.vx) * bounds.x - shot.x) / shot.vx) : Infinity;
       const wallZ = Math.abs(shot.vz) > 1e-9 ? Math.max(0, (Math.sign(shot.vz) * bounds.z - shot.z) / shot.vz) : Infinity;
@@ -871,6 +871,25 @@ export class Game {
     }
   }
 
+  _releaseSoulbounce(ally) {
+    // Only combat defeats reach this hook. Fading, selling, and wave cleanup
+    // must never release balls, nor may their kills create another soul chain.
+    if (ally.hp > 0 || ally.soulbounceReleased) return;
+    ally.soulbounceReleased = true;
+    const root = this.getFusionRoot(ally.sourceId);
+    if (root?.fusionKey !== 'multi-necro-ricochet') return;
+    const skip = this.getFusionMembers(root.id).find(tower => tower.type === 'ricochet');
+    if (!skip) return;
+    const origin = { ...skip, x: clamp(ally.x, -12.8, 12.8), z: clamp(ally.z, -7.8, 7.8) };
+    const target = this.enemies.filter(enemy => enemy.hp > 0)
+      .sort((a, b) => distance(origin, a) - distance(origin, b) || a.id - b.id)[0]
+      || { x: origin.x + 1, z: origin.z };
+    this._launch(origin, target, { ...this.getStats(skip), ballCount: 1 });
+    const shot = this.projectiles.at(-1);
+    shot.noSummon = true;
+    shot.summonOnKill = false;
+  }
+
   _clearReborn() {
     for (const ally of this.allies) this._effect('reborn-fade', ally, ally, TOWERS.necro.color, 0.25);
     this.allies = [];
@@ -1004,6 +1023,7 @@ export class Game {
     if (ally) {
       enemy.allyTargetId = ally.id;
       ally.hp = Math.max(0, ally.hp - (enemy.attackDamage ?? ENEMIES[enemy.type].attackDamage) * contactTime);
+      if (ally.hp <= 0) this._releaseSoulbounce(ally);
     } else {
       barrier.hp -= (enemy.attackDamage ?? ENEMIES[enemy.type].attackDamage) * Math.min(contactTime, barrier.ttl);
       if (barrier.hp <= 0) this._destroyBarrier(barrier);
